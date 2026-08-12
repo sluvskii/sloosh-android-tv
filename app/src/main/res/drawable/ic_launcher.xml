@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Background -->
+    <path
+        android:fillColor="#B2FF00"
+        android:pathData="M0,0h108v108h-108z" />
+    <!-- Letter S Logo -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M54,28 C42,28 36,34 36,42 C36,58 72,50 72,66 C72,74 66,80 54,80 C42,80 34,72 34,64 L46,64 C46,68 50,71 54,71 C58,71 61,68 61,65 C61,56 25,62 25,43 C25,31 35,20 54,20 C69,20 73,30 73,36 L61,36 C61,31 58,28 54,28 Z" />
+</vector>
