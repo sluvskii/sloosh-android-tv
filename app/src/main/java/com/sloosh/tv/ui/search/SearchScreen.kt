@@ -49,7 +49,7 @@ fun SearchScreen(
         OutlinedTextField(
             value = state.query,
             onValueChange = { viewModel.onQueryChanged(it) },
-            placeholder = { Text(text = "Название фильма или сериала...", color = Color.White.copy(alpha = 0.5f)) },
+            placeholder = { androidx.compose.material3.Text(text = "Название фильма или сериала...", color = Color.White.copy(alpha = 0.5f)) },
             singleLine = true,
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = GlassSurfaceDark,

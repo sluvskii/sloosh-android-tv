@@ -25,27 +25,69 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :app:parseDebugLocalResources
 > Task :app:processDebugMainManifest
 > Task :app:processDebugManifest
-> Task :app:processDebugManifestForPackage
 > Task :app:javaPreCompileDebug
 > Task :app:mergeDebugShaders
 > Task :app:compileDebugShaders NO-SOURCE
 > Task :app:generateDebugAssets UP-TO-DATE
 > Task :app:mergeDebugAssets
+> Task :app:processDebugManifestForPackage
 > Task :app:compressDebugAssets
 > Task :app:desugarDebugFileDependencies
-> Task :app:processDebugResources FAILED
-
+> Task :app:processDebugResources
 > Task :app:checkDebugDuplicateClasses
-FAILURE: Build failed with an exception.
+> Task :app:kspDebugKotlin
+> Task :app:mergeExtDexDebug
+> Task :app:mergeDebugJniLibFolders
+> Task :app:mergeLibDexDebug
+> Task :app:mergeDebugNativeLibs NO-SOURCE
+> Task :app:stripDebugDebugSymbols NO-SOURCE
+> Task :app:validateSigningDebug
+> Task :app:writeDebugAppMetadata
+> Task :app:writeDebugSigningConfigVersions
+
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/components/SlooshSideDrawer.kt:19:25 Unresolved reference: material3
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/components/SlooshSideDrawer.kt:181:9 Unresolved reference: Icon
+> Task :app:compileDebugKotlin FAILED
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/details/DetailsScreen.kt:16:25 Unresolved reference: material3
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/details/DetailsScreen.kt:17:25 Unresolved reference: material3
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/details/DetailsScreen.kt:63:13 Unresolved reference: CircularProgressIndicator
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/details/DetailsScreen.kt:133:25 Unresolved reference: Icon
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/details/DetailsScreen.kt:226:25 Unresolved reference: Icon
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/details/DetailsScreen.kt:245:25 Unresolved reference: Icon
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/home/HomeScreen.kt:12:25 Unresolved reference: material3
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/home/HomeScreen.kt:13:25 Unresolved reference: material3
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/home/HomeScreen.kt:47:13 Unresolved reference: CircularProgressIndicator
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/home/HomeScreen.kt:115:37 Unresolved reference: Icon
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/home/HomeScreen.kt:155:33 Unresolved reference: Icon
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/player/PlayerScreen.kt:20:25 Unresolved reference: material3
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/player/PlayerScreen.kt:21:25 Unresolved reference: material3
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/player/PlayerScreen.kt:22:25 Unresolved reference: material3
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/player/PlayerScreen.kt:23:25 Unresolved reference: material3
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/player/PlayerScreen.kt:124:17 Unresolved reference: CircularProgressIndicator
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/player/PlayerScreen.kt:153:21 Unresolved reference: Slider
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/player/PlayerScreen.kt:157:34 Unresolved reference: SliderDefaults
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/player/PlayerScreen.kt:183:33 Unresolved reference: Icon
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/player/PlayerScreen.kt:199:33 Unresolved reference: Icon
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/player/PlayerScreen.kt:220:33 Unresolved reference: Icon
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/player/PlayerScreen.kt:234:37 Unresolved reference: Icon
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/player/PlayerScreen.kt:248:37 Unresolved reference: Icon
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/search/SearchScreen.kt:9:25 Unresolved reference: material3
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/search/SearchScreen.kt:10:25 Unresolved reference: material3
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/search/SearchScreen.kt:11:25 Unresolved reference: material3
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/search/SearchScreen.kt:49:9 Unresolved reference: OutlinedTextField
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/search/SearchScreen.kt:51:56 Unresolved reference: it
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/search/SearchScreen.kt:52:29 @Composable invocations can only happen from the context of a @Composable function
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/search/SearchScreen.kt:54:22 Unresolved reference: OutlinedTextFieldDefaults
+e: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/java/com/sloosh/tv/ui/search/SearchScreen.kt:73:17 Unresolved reference: CircularProgressIndicator
 
 
 [Incubating] Problems report is available at: file:///home/runner/work/sloosh-android-tv/sloosh-android-tv/build/reports/problems/problems-report.html
+FAILURE: Build failed with an exception.
+
 * What went wrong:
-Execution failed for task ':app:processDebugResources' (registered by plugin 'com.android.internal.application').
-> A failure occurred while executing com.android.build.gradle.internal.res.LinkApplicationAndroidResourcesTask$TaskAction
-   > Android resource linking failed
-     ERROR: /home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/AndroidManifest.xml:14:5-35:19: AAPT: error: resource mipmap/ic_launcher (aka com.sloosh.tv:mipmap/ic_launcher) not found.
-         
+Execution failed for task ':app:compileDebugKotlin' (registered by plugin 'org.jetbrains.kotlin.android').
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
 
 * Try:
 > Run with --info or --debug option to get more log output.
@@ -53,7 +95,7 @@ Execution failed for task ':app:processDebugResources' (registered by plugin 'co
 > Get more help at https://help.gradle.org.
 
 * Exception is:
-org.gradle.api.tasks.TaskExecutionException: Execution failed for task ':app:processDebugResources' (registered by plugin 'com.android.internal.application').
+org.gradle.api.tasks.TaskExecutionException: Execution failed for task ':app:compileDebugKotlin' (registered by plugin 'org.jetbrains.kotlin.android').
 	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.lambda$executeIfValid$1(ExecuteActionsTaskExecuter.java:135)
 	at org.gradle.internal.Try$Failure.ifSuccessfulOrElse(Try.java:288)
 	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.executeIfValid(ExecuteActionsTaskExecuter.java:133)
@@ -75,6 +117,7 @@ org.gradle.api.tasks.TaskExecutionException: Execution failed for task ':app:pro
 	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:60)
 	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:54)
 	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter.execute(EventFiringTaskExecuter.java:52)
+
 	at org.gradle.execution.plan.DefaultNodeExecutor.executeLocalTaskNode(DefaultNodeExecutor.java:55)
 	at org.gradle.execution.plan.DefaultNodeExecutor.execute(DefaultNodeExecutor.java:34)
 	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:355)
@@ -85,9 +128,40 @@ org.gradle.api.tasks.TaskExecutionException: Execution failed for task ':app:pro
 	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:328)
 	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.execute(DefaultPlanExecutor.java:459)
 	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.run(DefaultPlanExecutor.java:376)
+	at org.gradle.execution.plan.DefaultPlanExecutor.process(DefaultPlanExecutor.java:111)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph.executeWithServices(DefaultTaskExecutionGraph.java:146)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph.execute(DefaultTaskExecutionGraph.java:131)
+	at org.gradle.execution.SelectedTaskExecutionAction.execute(SelectedTaskExecutionAction.java:35)
+	at org.gradle.execution.BuildOperationFiringBuildWorkerExecutor$ExecuteTasks.call(BuildOperationFiringBuildWorkerExecutor.java:54)
+	at org.gradle.execution.BuildOperationFiringBuildWorkerExecutor$ExecuteTasks.call(BuildOperationFiringBuildWorkerExecutor.java:43)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:210)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:205)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:67)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:60)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:167)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:60)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:54)
+	at org.gradle.execution.BuildOperationFiringBuildWorkerExecutor.execute(BuildOperationFiringBuildWorkerExecutor.java:40)
+	at org.gradle.internal.build.DefaultBuildLifecycleController.lambda$executeTasks$11(DefaultBuildLifecycleController.java:323)
+	at org.gradle.internal.model.StateTransitionController.doTransition(StateTransitionController.java:304)
+	at org.gradle.internal.model.StateTransitionController.lambda$tryTransition$9(StateTransitionController.java:215)
+	at org.gradle.internal.work.DefaultSynchronizer.withLock(DefaultSynchronizer.java:45)
+	at org.gradle.internal.model.StateTransitionController.tryTransition(StateTransitionController.java:215)
+	at org.gradle.internal.build.DefaultBuildLifecycleController.executeTasks(DefaultBuildLifecycleController.java:314)
+	at org.gradle.internal.build.DefaultBuildWorkGraphController$DefaultBuildWorkGraph.runWork(DefaultBuildWorkGraphController.java:220)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.lambda$runAndReleaseLocks$0(DefaultWorkerLeaseService.java:300)
+	at org.gradle.internal.work.ResourceLockStatistics$1.measure(ResourceLockStatistics.java:43)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAndReleaseLocks(DefaultWorkerLeaseService.java:298)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocksAcquired(DefaultWorkerLeaseService.java:294)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocks(DefaultWorkerLeaseService.java:286)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:130)
+	at org.gradle.composite.internal.DefaultBuildController.doRun(DefaultBuildController.java:182)
+	at org.gradle.composite.internal.DefaultBuildController$BuildOpRunnable.lambda$run$0(DefaultBuildController.java:199)
+	at org.gradle.internal.operations.CurrentBuildOperationRef.with(CurrentBuildOperationRef.java:84)
+	at org.gradle.composite.internal.DefaultBuildController$BuildOpRunnable.run(DefaultBuildController.java:199)
 	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
 	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
-Caused by: org.gradle.workers.internal.DefaultWorkerExecutor$WorkExecutionException: A failure occurred while executing com.android.build.gradle.internal.res.LinkApplicationAndroidResourcesTask$TaskAction
+Caused by: org.gradle.workers.internal.DefaultWorkerExecutor$WorkExecutionException: A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
 	at org.gradle.workers.internal.DefaultWorkerExecutor$WorkItemExecution.waitForCompletion(DefaultWorkerExecutor.java:278)
 	at org.gradle.internal.work.DefaultAsyncWorkTracker.lambda$waitForItemsAndGatherFailures$2(DefaultAsyncWorkTracker.java:132)
 	at org.gradle.internal.Factories$1.create(Factories.java:30)
@@ -102,6 +176,7 @@ Caused by: org.gradle.workers.internal.DefaultWorkerExecutor$WorkExecutionExcept
 	at org.gradle.internal.work.DefaultWorkerLeaseService.whileDisallowingProjectLockChanges(DefaultWorkerLeaseService.java:260)
 	at org.gradle.internal.work.DefaultAsyncWorkTracker.waitForItemsAndGatherFailures(DefaultAsyncWorkTracker.java:127)
 	at org.gradle.internal.work.DefaultAsyncWorkTracker.waitForItemsAndGatherFailures(DefaultAsyncWorkTracker.java:93)
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
 	at org.gradle.internal.work.DefaultAsyncWorkTracker.waitForAll(DefaultAsyncWorkTracker.java:79)
 	at org.gradle.internal.work.DefaultAsyncWorkTracker.waitForCompletion(DefaultAsyncWorkTracker.java:67)
 	at org.gradle.api.internal.tasks.execution.TaskExecution$3.run(TaskExecution.java:267)
@@ -134,6 +209,7 @@ Caused by: org.gradle.workers.internal.DefaultWorkerExecutor$WorkExecutionExcept
 	at org.gradle.internal.execution.steps.TimeoutStep.execute(TimeoutStep.java:55)
 	at org.gradle.internal.execution.steps.PreCreateOutputParentsStep.execute(PreCreateOutputParentsStep.java:51)
 	at org.gradle.internal.execution.steps.PreCreateOutputParentsStep.execute(PreCreateOutputParentsStep.java:29)
+
 	at org.gradle.internal.execution.steps.RemovePreviousOutputsStep.executeMutable(RemovePreviousOutputsStep.java:67)
 	at org.gradle.internal.execution.steps.RemovePreviousOutputsStep.executeMutable(RemovePreviousOutputsStep.java:39)
 	at org.gradle.internal.execution.steps.MutableStep.execute(MutableStep.java:26)
@@ -150,16 +226,12 @@ Caused by: org.gradle.workers.internal.DefaultWorkerExecutor$WorkExecutionExcept
 	at org.gradle.internal.execution.caching.CachingState.fold(CachingState.java:62)
 	at org.gradle.internal.execution.steps.BuildCacheStep.execute(BuildCacheStep.java:74)
 	at org.gradle.internal.execution.steps.BuildCacheStep.execute(BuildCacheStep.java:49)
-
-Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
 	at org.gradle.internal.execution.steps.StoreExecutionStateStep.executeMutable(StoreExecutionStateStep.java:46)
 	at org.gradle.internal.execution.steps.StoreExecutionStateStep.executeMutable(StoreExecutionStateStep.java:35)
-
 	at org.gradle.internal.execution.steps.MutableStep.execute(MutableStep.java:26)
 	at org.gradle.internal.execution.steps.SkipUpToDateStep.executeBecause(SkipUpToDateStep.java:75)
 	at org.gradle.internal.execution.steps.SkipUpToDateStep.lambda$execute$2(SkipUpToDateStep.java:53)
 	at org.gradle.internal.execution.steps.SkipUpToDateStep.execute(SkipUpToDateStep.java:53)
-You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
 	at org.gradle.internal.execution.steps.SkipUpToDateStep.execute(SkipUpToDateStep.java:35)
 	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsFinishedStep.execute(MarkSnapshottingInputsFinishedStep.java:37)
 	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsFinishedStep.execute(MarkSnapshottingInputsFinishedStep.java:27)
@@ -178,7 +250,7 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 	at org.gradle.internal.execution.steps.CaptureMutableStateBeforeExecutionStep.execute(CaptureMutableStateBeforeExecutionStep.java:65)
 	at org.gradle.internal.execution.steps.CaptureMutableStateBeforeExecutionStep.execute(CaptureMutableStateBeforeExecutionStep.java:45)
 	at org.gradle.internal.execution.steps.SkipEmptyMutableWorkStep.executeWithNonEmptySources(SkipEmptyMutableWorkStep.java:210)
-	at org.gradle.internal.execution.steps.SkipEmptyMutableWorkStep.executeMutable(SkipEmptyMutableWorkStep.java:85)
+	at org.gradle.internal.execution.steps.SkipEmptyMutableWorkStep.executeMutable(SkipEmptyMutableWorkStep.java:90)
 	at org.gradle.internal.execution.steps.SkipEmptyMutableWorkStep.executeMutable(SkipEmptyMutableWorkStep.java:53)
 	at org.gradle.internal.execution.steps.MutableStep.execute(MutableStep.java:26)
 	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsStartedStep.execute(MarkSnapshottingInputsStartedStep.java:38)
@@ -204,19 +276,11 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 	at org.gradle.internal.execution.steps.IdentifyStep.execute(IdentifyStep.java:38)
 	at org.gradle.internal.execution.impl.DefaultExecutionEngine$1.execute(DefaultExecutionEngine.java:68)
 	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.executeIfValid(ExecuteActionsTaskExecuter.java:132)
-	... 30 more
-Caused by: com.android.builder.internal.aapt.v2.Aapt2Exception: Android resource linking failed
-ERROR: /home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/AndroidManifest.xml:14:5-35:19: AAPT: error: resource mipmap/ic_launcher (aka com.sloosh.tv:mipmap/ic_launcher) not found.
-    
-	at com.android.builder.internal.aapt.v2.Aapt2Exception$Companion.create(Aapt2Exception.kt:45)
-	at com.android.builder.internal.aapt.v2.Aapt2Exception$Companion.create$default(Aapt2Exception.kt:33)
-	at com.android.build.gradle.internal.res.Aapt2ErrorUtils.rewriteException(Aapt2ErrorUtils.kt:262)
-	at com.android.build.gradle.internal.res.Aapt2ErrorUtils.rewriteLinkException(Aapt2ErrorUtils.kt:133)
-	at com.android.build.gradle.internal.res.Aapt2ProcessResourcesRunnableKt.processResources(Aapt2ProcessResourcesRunnable.kt:76)
-	at com.android.build.gradle.internal.res.LinkApplicationAndroidResourcesTask$Companion.invokeAaptForSplit(LinkApplicationAndroidResourcesTask.kt:941)
-	at com.android.build.gradle.internal.res.LinkApplicationAndroidResourcesTask$Companion.access$invokeAaptForSplit(LinkApplicationAndroidResourcesTask.kt:796)
-	at com.android.build.gradle.internal.res.LinkApplicationAndroidResourcesTask$TaskAction.run(LinkApplicationAndroidResourcesTask.kt:432)
-	at com.android.build.gradle.internal.profile.ProfileAwareWorkAction.execute(ProfileAwareWorkAction.kt:74)
+	... 61 more
+Caused by: org.jetbrains.kotlin.gradle.tasks.CompilationErrorException: Compilation error. See log for more details
+	at org.jetbrains.kotlin.gradle.tasks.TasksUtilsKt.throwExceptionIfCompilationFailed(tasksUtils.kt:20)
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.run(GradleKotlinCompilerWork.kt:141)
+	at org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction.execute(GradleCompilerRunnerWithWorkers.kt:73)
 	at org.gradle.workers.internal.DefaultWorkerServer.execute(DefaultWorkerServer.java:68)
 	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:64)
 	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:61)
@@ -250,8 +314,9 @@ ERROR: /home/runner/work/sloosh-android-tv/sloosh-android-tv/app/src/main/Androi
 	... 2 more
 
 
-BUILD FAILED in 1m 34s
+BUILD FAILED in 3m 45s
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
 
 For more on this, please refer to https://docs.gradle.org/9.6.1/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
-20 actionable tasks: 20 executed
+28 actionable tasks: 28 executed
 Error: Process completed with exit code 1.
