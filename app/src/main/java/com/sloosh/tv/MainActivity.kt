@@ -38,6 +38,15 @@ class MainActivity : ComponentActivity() {
 
                 var selectedSection by remember { mutableStateOf(NavSection.HOME) }
 
+                LaunchedEffect(currentRoute) {
+                    when (currentRoute) {
+                        "home" -> selectedSection = NavSection.HOME
+                        "search" -> selectedSection = NavSection.SEARCH
+                        "favorites" -> selectedSection = NavSection.FAVORITES
+                        "settings" -> selectedSection = NavSection.SETTINGS
+                    }
+                }
+
                 val showDrawer = currentRoute in listOf("home", "search", "favorites", "settings")
 
                 Row(modifier = Modifier.fillMaxSize()) {

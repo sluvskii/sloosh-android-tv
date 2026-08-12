@@ -21,6 +21,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -39,11 +40,16 @@ fun SlooshSideDrawer(
     onSectionSelected: (NavSection) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var isDrawerFocused by remember { mutableStateOf(false) }
+    var homeFocused by remember { mutableStateOf(false) }
+    var searchFocused by remember { mutableStateOf(false) }
+    var favFocused by remember { mutableStateOf(false) }
+    var settingsFocused by remember { mutableStateOf(false) }
+
+    val isDrawerFocused = homeFocused || searchFocused || favFocused || settingsFocused
 
     val drawerWidth by animateDpAsState(
         targetValue = if (isDrawerFocused) 220.dp else 72.dp,
-        animationSpec = tween(durationMillis = 250),
+        animationSpec = tween(durationMillis = 200),
         label = "drawer_width"
     )
 
@@ -51,7 +57,7 @@ fun SlooshSideDrawer(
         modifier = modifier
             .fillMaxHeight()
             .width(drawerWidth)
-            .background(Color.Black.copy(alpha = 0.85f))
+            .background(Color.Black.copy(alpha = 0.90f))
             .padding(vertical = 24.dp, horizontal = 12.dp)
     ) {
         Column(
@@ -95,7 +101,7 @@ fun SlooshSideDrawer(
                 label = "Главная",
                 isSelected = selectedSection == NavSection.HOME,
                 isExpanded = isDrawerFocused,
-                onFocusChanged = { if (it) isDrawerFocused = true },
+                onFocusStateChanged = { homeFocused = it },
                 onClick = { onSectionSelected(NavSection.HOME) }
             )
 
@@ -106,7 +112,7 @@ fun SlooshSideDrawer(
                 label = "Поиск",
                 isSelected = selectedSection == NavSection.SEARCH,
                 isExpanded = isDrawerFocused,
-                onFocusChanged = { if (it) isDrawerFocused = true },
+                onFocusStateChanged = { searchFocused = it },
                 onClick = { onSectionSelected(NavSection.SEARCH) }
             )
 
@@ -117,7 +123,7 @@ fun SlooshSideDrawer(
                 label = "Избранное",
                 isSelected = selectedSection == NavSection.FAVORITES,
                 isExpanded = isDrawerFocused,
-                onFocusChanged = { if (it) isDrawerFocused = true },
+                onFocusStateChanged = { favFocused = it },
                 onClick = { onSectionSelected(NavSection.FAVORITES) }
             )
 
@@ -128,7 +134,7 @@ fun SlooshSideDrawer(
                 label = "Настройки",
                 isSelected = selectedSection == NavSection.SETTINGS,
                 isExpanded = isDrawerFocused,
-                onFocusChanged = { if (it) isDrawerFocused = true },
+                onFocusStateChanged = { settingsFocused = it },
                 onClick = { onSectionSelected(NavSection.SETTINGS) }
             )
         }
@@ -141,14 +147,14 @@ private fun DrawerNavItem(
     label: String,
     isSelected: Boolean,
     isExpanded: Boolean,
-    onFocusChanged: (Boolean) -> Unit,
+    onFocusStateChanged: (Boolean) -> Unit,
     onClick: () -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
 
     LaunchedEffect(isFocused) {
-        onFocusChanged(isFocused)
+        onFocusStateChanged(isFocused)
     }
 
     val backgroundColor = when {
@@ -170,6 +176,9 @@ private fun DrawerNavItem(
             .height(48.dp)
             .clip(RoundedCornerShape(24.dp))
             .background(backgroundColor)
+            .onFocusChanged { state ->
+                onFocusStateChanged(state.isFocused)
+            }
             .focusable(interactionSource = interactionSource)
             .clickable(
                 interactionSource = interactionSource,

@@ -15,12 +15,12 @@ import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,7 +31,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -60,6 +59,7 @@ fun PlayerScreen(
 
     var showAudioDialog by remember { mutableStateOf(false) }
     var showQualityDialog by remember { mutableStateOf(false) }
+    var showResumeBadge by remember { mutableStateOf(false) }
 
     LaunchedEffect(iframeUrl) {
         viewModel.initPlayer(iframeUrl, mediaId)
@@ -73,7 +73,7 @@ fun PlayerScreen(
     var currentPositionMs by remember { mutableStateOf(0L) }
     var durationMs by remember { mutableStateOf(0L) }
 
-    // Position progress tracking loop
+    // Track position & save progress
     LaunchedEffect(exoPlayer) {
         while (true) {
             currentPositionMs = exoPlayer.currentPosition
@@ -81,7 +81,7 @@ fun PlayerScreen(
             if (durationMs > 0) {
                 viewModel.saveProgress(currentPositionMs, durationMs)
             }
-            delay(2000)
+            delay(1500)
         }
     }
 
@@ -98,10 +98,19 @@ fun PlayerScreen(
 
         exoPlayer.setMediaSource(mediaSource)
         exoPlayer.prepare()
-        if (state.startPositionSec > 0) {
+        if (state.startPositionSec > 10) {
             exoPlayer.seekTo((state.startPositionSec * 1000).toLong())
+            showResumeBadge = true
         }
         exoPlayer.playWhenReady = true
+    }
+
+    // Hide resume badge after 4 seconds
+    LaunchedEffect(showResumeBadge) {
+        if (showResumeBadge) {
+            delay(4000)
+            showResumeBadge = false
+        }
     }
 
     DisposableEffect(Unit) {
@@ -121,7 +130,15 @@ fun PlayerScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(color = SlooshAccentDark)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = SlooshAccentDark)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Подключение к Alloha HLS...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.7f)
+                    )
+                }
             }
         } else {
             // AndroidX Media3 Player Surface View
@@ -139,6 +156,57 @@ fun PlayerScreen(
                 modifier = Modifier.fillMaxSize()
             )
 
+            // Resume indicator toast
+            AnimatedVisibility(
+                visible = showResumeBadge,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(32.dp)
+            ) {
+                val sec = state.startPositionSec.toInt()
+                val minStr = String.format("%02d:%02d", sec / 60, sec % 60)
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(GlassSurfaceDark)
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = "Продолжаем с $minStr",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = SlooshAccentDark
+                    )
+                }
+            }
+
+            // Skip Intro / Outro Floating Button
+            val introRange = state.resolvedStream?.introRange
+            val posSec = currentPositionMs / 1000.0
+            val showSkipIntro = introRange != null && posSec >= introRange.start && posSec <= introRange.end
+
+            if (showSkipIntro && introRange != null) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(bottom = 120.dp, end = 48.dp)
+                ) {
+                    SlooshButton(
+                        text = "Пропустить заставку",
+                        isPrimary = true,
+                        onClick = {
+                            exoPlayer.seekTo((introRange.end * 1000).toLong())
+                        },
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Default.SkipNext,
+                                contentDescription = null,
+                                tint = Color.Black
+                            )
+                        }
+                    )
+                }
+            }
+
             // D-Pad Player Controls Overlay
             Box(
                 modifier = Modifier
@@ -148,21 +216,40 @@ fun PlayerScreen(
                 Column(
                     modifier = Modifier.align(Alignment.BottomCenter)
                 ) {
+                    // Time Labels
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        val currentSec = (currentPositionMs / 1000).toInt()
+                        val totalSec = (durationMs / 1000).toInt()
+                        Text(
+                            text = String.format("%02d:%02d", currentSec / 60, currentSec % 60),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White
+                        )
+                        Text(
+                            text = String.format("%02d:%02d", totalSec / 60, totalSec % 60),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.7f)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
                     // Progress Bar
-                    val progressFraction = if (durationMs > 0) currentPositionMs.toFloat() / durationMs.toFloat() else 0f
-                    Slider(
-                        value = progressFraction,
-                        onValueChange = {},
-                        enabled = false,
-                        colors = SliderDefaults.colors(
-                            disabledThumbColor = SlooshAccentDark,
-                            disabledActiveTrackColor = SlooshAccentDark,
-                            disabledInactiveTrackColor = Color.White.copy(alpha = 0.3f)
-                        ),
-                        modifier = Modifier.fillMaxWidth()
+                    val progressFraction = if (durationMs > 0) (currentPositionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
+                    LinearProgressIndicator(
+                        progress = { progressFraction },
+                        color = SlooshAccentDark,
+                        trackColor = Color.White.copy(alpha = 0.25f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp))
                     )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     // Controller Row
                     Row(
@@ -263,14 +350,14 @@ fun PlayerScreen(
                 ) {
                     Column(
                         modifier = Modifier
-                            .width(320.dp)
-                            .clip(RoundedCornerShape(16.dp))
+                            .width(340.dp)
+                            .clip(RoundedCornerShape(20.dp))
                             .background(GlassSurfaceDark)
                             .padding(24.dp)
                     ) {
                         Text(text = "Выбор озвучки", style = MaterialTheme.typography.titleMedium, color = Color.White)
                         Spacer(modifier = Modifier.height(16.dp))
-                        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             items(state.resolvedStream?.audioVariants ?: emptyList()) { audio ->
                                 SlooshButton(
                                     text = audio.title,
@@ -297,14 +384,14 @@ fun PlayerScreen(
                 ) {
                     Column(
                         modifier = Modifier
-                            .width(320.dp)
-                            .clip(RoundedCornerShape(16.dp))
+                            .width(340.dp)
+                            .clip(RoundedCornerShape(20.dp))
                             .background(GlassSurfaceDark)
                             .padding(24.dp)
                     ) {
                         Text(text = "Качество видео", style = MaterialTheme.typography.titleMedium, color = Color.White)
                         Spacer(modifier = Modifier.height(16.dp))
-                        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             items(state.resolvedStream?.qualityVariants ?: emptyList()) { quality ->
                                 SlooshButton(
                                     text = quality.label,
