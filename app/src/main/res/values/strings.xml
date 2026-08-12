@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_name">Sloosh</string>
+    <string name="home">Главная</string>
+    <string name="search">Поиск</string>
+    <string name="favorites">Избранное</string>
+    <string name="settings">Настройки</string>
+    <string name="watch">Смотреть</string>
+    <string name="continue_watching">Продолжить</string>
+    <string name="seasons">Сезоны</string>
+    <string name="episodes">Серии</string>
+    <string name="translations">Озвучки</string>
+    <string name="quality">Качество</string>
+    <string name="popular">Популярное</string>
+    <string name="top_movies">Топ фильмов</string>
+    <string name="top_series">Топ сериалов</string>
+    <string name="search_placeholder">Поиск фильмов и сериалов...</string>
+</resources>
