@@ -219,46 +219,34 @@ private fun CenteredDetailsLayout(
                     .padding(horizontal = 24.dp, vertical = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Generous top spacing to lower all elements down
-                Spacer(modifier = Modifier.height(130.dp))
+                // Generous top spacing to lower all elements down to the lower half
+                Spacer(modifier = Modifier.height(180.dp))
 
-                // 1. Logo or Title (Centered)
+                // 1. Logo or Title (Centered, refined size)
                 val logoUrl = details.getDisplayLogoUrl()
                 if (logoUrl != null) {
                     AsyncImage(
                         model = logoUrl,
                         contentDescription = details.title,
                         modifier = Modifier
-                            .height(92.dp)
-                            .widthIn(max = 380.dp),
+                            .height(64.dp)
+                            .widthIn(max = 280.dp),
                         contentScale = ContentScale.Fit
                     )
                 } else {
                     Text(
                         text = details.title ?: details.originalTitle ?: "Без названия",
-                        fontSize = 38.sp,
+                        fontSize = 34.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = Color.White,
-                        lineHeight = 44.sp,
-                        textAlign = TextAlign.Center
-                    )
-                }
-
-                // 2. Original Title (Centered)
-                val originalTitle = details.originalTitle
-                if (!originalTitle.isNullOrBlank() && originalTitle != details.title) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = originalTitle,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondaryDark,
+                        lineHeight = 40.sp,
                         textAlign = TextAlign.Center
                     )
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // 3. Metadata Row (Rating, Year, Duration, Country)
+                // 2. Metadata Row (Rating, Year, Duration, Country)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -311,7 +299,7 @@ private fun CenteredDetailsLayout(
                     }
                 }
 
-                // 4. Genre Pills (Immediately under Rating/Year/Country)
+                // 3. Genre Pills (Immediately under Rating/Year/Country)
                 if (!details.genres.isNullOrEmpty()) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Row(
@@ -335,7 +323,7 @@ private fun CenteredDetailsLayout(
                     }
                 }
 
-                // 5. Continue Progress Indicator (Under Genres, before Play button)
+                // 4. Continue Progress Indicator (Under Genres, before Play button)
                 val prog = state.progress
                 if (prog != null && prog.progressFraction > 0.01f) {
                     Spacer(modifier = Modifier.height(14.dp))
@@ -377,7 +365,7 @@ private fun CenteredDetailsLayout(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // 6. Action Buttons Row (Play/Continue + Favorite Heart)
+                // 5. Action Buttons Row (Play/Continue + Favorite Heart)
                 val hasProgress = prog != null && prog.positionSec > 10
                 val buttonText = if (hasProgress) {
                     val posStr = String.format("%02d:%02d", prog!!.positionSec.toInt() / 60, prog.positionSec.toInt() % 60)
@@ -439,31 +427,45 @@ private fun CenteredDetailsLayout(
                     }
                 }
 
-                // 7. Description (Centered on screen, but text left-aligned inside)
+                // 6. Focusable Description Card (allows TV D-pad navigation & smooth auto-scroll)
                 if (!details.description.isNullOrEmpty()) {
                     Spacer(modifier = Modifier.height(24.dp))
-                    Box(
+                    var isExpanded by remember { mutableStateOf(false) }
+
+                    SlooshFocusableCard(
+                        onClick = { isExpanded = !isExpanded },
+                        shape = ContinuousRoundedRectangle(16.dp),
+                        focusedScale = 1.02f,
                         modifier = Modifier
                             .widthIn(max = 680.dp)
-                            .fillMaxWidth(),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        Text(
-                            text = details.description,
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontSize = 15.5.sp,
-                                lineHeight = 23.sp
-                            ),
-                            color = Color.White.copy(alpha = 0.78f),
-                            textAlign = TextAlign.Start,
-                            maxLines = 6,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                            .fillMaxWidth()
+                    ) { isFocused ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    if (isFocused) Color.White.copy(alpha = 0.10f)
+                                    else Color.White.copy(alpha = 0.04f)
+                                )
+                                .padding(horizontal = 20.dp, vertical = 14.dp)
+                        ) {
+                            Text(
+                                text = details.description,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontSize = 15.sp,
+                                    lineHeight = 22.sp
+                                ),
+                                color = if (isFocused) Color.White else Color.White.copy(alpha = 0.78f),
+                                textAlign = TextAlign.Start,
+                                maxLines = if (isExpanded) 30 else 5,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(56.dp))
+                Spacer(modifier = Modifier.height(64.dp))
             }
         }
     }
