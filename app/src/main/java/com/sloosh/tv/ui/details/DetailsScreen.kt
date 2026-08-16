@@ -169,34 +169,27 @@ private fun SidePosterDetailsLayout(
     Box(modifier = Modifier.fillMaxSize()) {
         val backdropUrl = details.getDisplayBackdropUrl() ?: details.getDisplayPosterUrl()
         
-        // Right-shifted backdrop hero artwork
-        Box(
+        // Fullscreen Backdrop Image (Crop aligned to CenterEnd so subject stays beautifully on the right without any hard cut-off edges)
+        AsyncImage(
+            model = backdropUrl,
+            contentDescription = null,
             modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.CenterEnd
-        ) {
-            AsyncImage(
-                model = backdropUrl,
-                contentDescription = null,
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(0.70f),
-                alignment = Alignment.Center,
-                contentScale = ContentScale.Crop
-            )
-        }
+            alignment = Alignment.CenterEnd,
+            contentScale = ContentScale.Crop
+        )
 
-        // Silky Soft Horizontal Gradient: Smooth and gentle transition from left to right
+        // Silky Soft Horizontal Gradient: Smooth transition across the entire screen without any seams
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.horizontalGradient(
                         colorStops = arrayOf(
-                            0.0f to BackgroundDark,
-                            0.20f to BackgroundDark.copy(alpha = 0.88f),
-                            0.38f to BackgroundDark.copy(alpha = 0.55f),
-                            0.55f to BackgroundDark.copy(alpha = 0.22f),
-                            0.70f to Color.Transparent,
+                            0.0f to BackgroundDark.copy(alpha = 0.95f),
+                            0.25f to BackgroundDark.copy(alpha = 0.85f),
+                            0.45f to BackgroundDark.copy(alpha = 0.50f),
+                            0.65f to BackgroundDark.copy(alpha = 0.15f),
+                            0.82f to Color.Transparent,
                             1.0f to Color.Transparent
                         )
                     )
@@ -210,9 +203,9 @@ private fun SidePosterDetailsLayout(
                 .background(
                     Brush.verticalGradient(
                         colorStops = arrayOf(
-                            0.0f to BackgroundDark.copy(alpha = 0.25f),
+                            0.0f to BackgroundDark.copy(alpha = 0.30f),
                             0.15f to Color.Transparent,
-                            0.80f to Color.Transparent,
+                            0.82f to Color.Transparent,
                             1.0f to BackgroundDark.copy(alpha = 0.50f)
                         )
                     )
