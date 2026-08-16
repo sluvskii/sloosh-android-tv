@@ -3,26 +3,34 @@ package com.sloosh.tv
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.tv.material3.NavigationDrawer
 import com.sloosh.tv.ui.components.NavSection
 import com.sloosh.tv.ui.components.SlooshSideDrawer
+import com.sloosh.tv.ui.continue_watching.ContinueScreen
 import com.sloosh.tv.ui.details.DetailsScreen
 import com.sloosh.tv.ui.home.HomeScreen
+import com.sloosh.tv.ui.home.HomeViewModel
 import com.sloosh.tv.ui.player.PlayerScreen
 import com.sloosh.tv.ui.profile.ProfileScreen
 import com.sloosh.tv.ui.search.SearchScreen
 import com.sloosh.tv.ui.settings.SettingsScreen
+import com.sloosh.tv.ui.theme.BackgroundDark
 import com.sloosh.tv.ui.theme.SlooshTVTheme
+import kotlinx.coroutines.launch
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
@@ -36,108 +44,199 @@ class MainActivity : ComponentActivity() {
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route
 
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val coroutineScope = rememberCoroutineScope()
+                val updateManager = remember { com.sloosh.tv.data.update.UpdateManager(context) }
+                var availableUpdate by remember { mutableStateOf<com.sloosh.tv.data.update.AppUpdateInfo?>(null) }
+
+                LaunchedEffect(Unit) {
+                    val update = updateManager.checkForUpdates()
+                    if (update != null) {
+                        availableUpdate = update
+                    }
+                }
+
                 var selectedSection by remember { mutableStateOf(NavSection.HOME) }
 
                 LaunchedEffect(currentRoute) {
                     when (currentRoute) {
                         "home" -> selectedSection = NavSection.HOME
                         "search" -> selectedSection = NavSection.SEARCH
+                        "continue" -> selectedSection = NavSection.CONTINUE
                         "favorites" -> selectedSection = NavSection.FAVORITES
                         "settings" -> selectedSection = NavSection.SETTINGS
                     }
                 }
 
-                val showDrawer = currentRoute in listOf("home", "search", "favorites", "settings")
+                val showDrawer = currentRoute in listOf("home", "search", "continue", "favorites", "settings")
 
-                Row(modifier = Modifier.fillMaxSize()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(BackgroundDark)
+                ) {
+                    // Native NavigationDrawer Layer
                     if (showDrawer) {
-                        SlooshSideDrawer(
-                            selectedSection = selectedSection,
-                            onSectionSelected = { section ->
-                                selectedSection = section
-                                val targetRoute = when (section) {
-                                    NavSection.HOME -> "home"
-                                    NavSection.SEARCH -> "search"
-                                    NavSection.FAVORITES -> "favorites"
-                                    NavSection.SETTINGS -> "settings"
-                                }
-                                navController.navigate(targetRoute) {
-                                    popUpTo("home") { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
+                        NavigationDrawer(
+                            drawerContent = { drawerValue ->
+                                SlooshSideDrawer(
+                                    selectedSection = selectedSection,
+                                    drawerValue = drawerValue,
+                                    onSectionSelected = { section ->
+                                        selectedSection = section
+                                        val targetRoute = when (section) {
+                                            NavSection.HOME -> "home"
+                                            NavSection.SEARCH -> "search"
+                                            NavSection.CONTINUE -> "continue"
+                                            NavSection.FAVORITES -> "favorites"
+                                            NavSection.SETTINGS -> "settings"
+                                        }
+                                        navController.navigate(targetRoute) {
+                                            popUpTo("home") { saveState = true }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
+                                    }
+                                )
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            AppNavHost(navController = navController)
+                        }
+                    } else {
+                        AppNavHost(navController = navController)
+                    }
+
+                    // ─── Global App Update Dialog ─────────────────────
+                    availableUpdate?.let { updateInfo ->
+                        com.sloosh.tv.ui.components.UpdateDialog(
+                            updateInfo = updateInfo,
+                            onDismiss = { availableUpdate = null },
+                            onStartUpdate = { onProgress, onError ->
+                                coroutineScope.launch {
+                                    updateManager.downloadAndInstall(
+                                        downloadUrl = updateInfo.downloadUrl,
+                                        onProgress = onProgress,
+                                        onError = onError
+                                    )
                                 }
                             }
                         )
                     }
-
-                    Box(modifier = Modifier.weight(1f)) {
-                        NavHost(
-                            navController = navController,
-                            startDestination = "home"
-                        ) {
-                            composable("home") {
-                                HomeScreen(
-                                    onMediaSelected = { mediaId ->
-                                        navController.navigate("details/${mediaId}")
-                                    }
-                                )
-                            }
-
-                            composable("search") {
-                                SearchScreen(
-                                    onMediaSelected = { mediaId ->
-                                        navController.navigate("details/${mediaId}")
-                                    }
-                                )
-                            }
-
-                            composable("favorites") {
-                                ProfileScreen(
-                                    onMediaSelected = { mediaId ->
-                                        navController.navigate("details/${mediaId}")
-                                    }
-                                )
-                            }
-
-                            composable("settings") {
-                                SettingsScreen()
-                            }
-
-                            composable(
-                                route = "details/{mediaId}",
-                                arguments = listOf(navArgument("mediaId") { type = NavType.StringType })
-                            ) { backStack ->
-                                val mediaId = backStack.arguments?.getString("mediaId") ?: ""
-                                DetailsScreen(
-                                    mediaId = mediaId,
-                                    onPlayClick = { iframeUrl, _, _ ->
-                                        val encodedUrl = URLEncoder.encode(iframeUrl, StandardCharsets.UTF_8.toString())
-                                        navController.navigate("player/$encodedUrl/$mediaId")
-                                    }
-                                )
-                            }
-
-                            composable(
-                                route = "player/{iframeUrl}/{mediaId}",
-                                arguments = listOf(
-                                    navArgument("iframeUrl") { type = NavType.StringType },
-                                    navArgument("mediaId") { type = NavType.StringType }
-                                )
-                            ) { backStack ->
-                                val encodedUrl = backStack.arguments?.getString("iframeUrl") ?: ""
-                                val mediaId = backStack.arguments?.getString("mediaId") ?: ""
-                                val decodedUrl = URLDecoder.decode(encodedUrl, StandardCharsets.UTF_8.toString())
-
-                                PlayerScreen(
-                                    iframeUrl = decodedUrl,
-                                    mediaId = mediaId,
-                                    onBack = { navController.popBackStack() }
-                                )
-                            }
-                        }
-                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun AppNavHost(
+    navController: NavHostController
+) {
+    NavHost(
+        navController = navController,
+        startDestination = "home",
+        enterTransition = { androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(180)) },
+        exitTransition = { androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(150)) },
+        popEnterTransition = { androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(180)) },
+        popExitTransition = { androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(150)) },
+        modifier = Modifier.fillMaxSize()
+    ) {
+        composable("home") {
+            HomeScreen(
+                onMediaSelected = { mediaId ->
+                    navController.navigate("details/${mediaId}")
+                }
+            )
+        }
+
+        composable("search") {
+            SearchScreen(
+                onMediaSelected = { mediaId ->
+                    navController.navigate("details/${mediaId}")
+                }
+            )
+        }
+
+        composable("continue") {
+            ContinueScreen(
+                onMediaSelected = { mediaId ->
+                    navController.navigate("details/${mediaId}")
+                }
+            )
+        }
+
+        composable("favorites") {
+            ProfileScreen(
+                onMediaSelected = { mediaId ->
+                    navController.navigate("details/${mediaId}")
+                }
+            )
+        }
+
+        composable("settings") {
+            SettingsScreen()
+        }
+
+        composable(
+            route = "details/{mediaId}",
+            arguments = listOf(navArgument("mediaId") { type = NavType.StringType })
+        ) { backStack ->
+            val mediaId = backStack.arguments?.getString("mediaId") ?: ""
+            DetailsScreen(
+                mediaId = mediaId,
+                onPlayClick = { iframeUrl, season, episode, movieTitle ->
+                    val encodedUrl = android.util.Base64.encodeToString(
+                        iframeUrl.toByteArray(StandardCharsets.UTF_8),
+                        android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP
+                    )
+                    val encodedTitle = android.util.Base64.encodeToString(
+                        movieTitle.toByteArray(StandardCharsets.UTF_8),
+                        android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP
+                    )
+                    val seasonParam = season ?: -1
+                    val epParam = episode ?: -1
+                    navController.navigate("player/$encodedUrl/$mediaId/$seasonParam/$epParam/$encodedTitle")
+                }
+            )
+        }
+
+        composable(
+            route = "player/{iframeUrl}/{mediaId}/{season}/{episode}/{title}",
+            arguments = listOf(
+                navArgument("iframeUrl") { type = NavType.StringType },
+                navArgument("mediaId") { type = NavType.StringType },
+                navArgument("season") { type = NavType.IntType; defaultValue = -1 },
+                navArgument("episode") { type = NavType.IntType; defaultValue = -1 },
+                navArgument("title") { type = NavType.StringType; defaultValue = "" }
+            )
+        ) { backStack ->
+            val rawUrlParam = backStack.arguments?.getString("iframeUrl") ?: ""
+            val mediaId = backStack.arguments?.getString("mediaId") ?: ""
+            val season = backStack.arguments?.getInt("season")?.takeIf { it > 0 }
+            val episode = backStack.arguments?.getInt("episode")?.takeIf { it > 0 }
+            val rawTitleParam = backStack.arguments?.getString("title") ?: ""
+            val decodedUrl = try {
+                val bytes = android.util.Base64.decode(rawUrlParam, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP)
+                String(bytes, StandardCharsets.UTF_8)
+            } catch (e: Exception) {
+                rawUrlParam
+            }
+            val decodedTitle = try {
+                val bytes = android.util.Base64.decode(rawTitleParam, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP)
+                String(bytes, StandardCharsets.UTF_8)
+            } catch (e: Exception) {
+                rawTitleParam
+            }
+
+            PlayerScreen(
+                iframeUrl = decodedUrl,
+                mediaId = mediaId,
+                title = decodedTitle.ifEmpty { "Просмотр" },
+                season = season,
+                episode = episode,
+                onBack = { navController.popBackStack() }
+            )
         }
     }
 }

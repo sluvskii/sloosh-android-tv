@@ -19,6 +19,8 @@ class PlaybackProgressStore(context: Context) {
 
     suspend fun saveProgress(progress: ProgressEntity) = progressDao.saveProgress(progress)
 
+    suspend fun deleteProgress(mediaId: String) = progressDao.deleteProgress(mediaId)
+
     suspend fun isFavorite(mediaId: String): Boolean = favoritesDao.getFavorite(mediaId) != null
 
     suspend fun toggleFavorite(favorite: FavoriteEntity) {

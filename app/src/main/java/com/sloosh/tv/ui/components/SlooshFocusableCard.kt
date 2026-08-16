@@ -1,66 +1,53 @@
 package com.sloosh.tv.ui.components
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.sloosh.tv.ui.theme.GlassBorderFocusedDark
-import com.sloosh.tv.ui.theme.GlassBorderUnfocusedDark
-import com.sloosh.tv.ui.theme.GlassSurfaceDark
+import androidx.tv.material3.Border
+import androidx.tv.material3.Card
+import androidx.tv.material3.CardDefaults
+import com.kyant.capsule.ContinuousRoundedRectangle
+
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 
 @Composable
 fun SlooshFocusableCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(16.dp),
-    focusedScale: Float = 1.08f,
-    focusedBorderColor: Color = GlassBorderFocusedDark,
-    unfocusedBorderColor: Color = GlassBorderUnfocusedDark,
-    borderWidth: Dp = 2.dp,
+    shape: Shape = ContinuousRoundedRectangle(18.dp),
+    focusedScale: Float = 1.05f,
     content: @Composable BoxScope.(isFocused: Boolean) -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
 
-    val scale by animateFloatAsState(
-        targetValue = if (isFocused) focusedScale else 1.0f,
-        animationSpec = tween(durationMillis = 200),
-        label = "card_scale"
-    )
-
-    val currentBorderColor = if (isFocused) focusedBorderColor else unfocusedBorderColor
-
-    Box(
-        modifier = modifier
-            .scale(scale)
-            .clip(shape)
-            .background(GlassSurfaceDark)
-            .border(
-                border = BorderStroke(if (isFocused) borderWidth else 1.dp, currentBorderColor),
-                shape = shape
-            )
-            .focusable(interactionSource = interactionSource)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick
-            )
+    Card(
+        onClick = onClick,
+        modifier = modifier,
+        interactionSource = interactionSource,
+        shape = CardDefaults.shape(shape = shape),
+        colors = CardDefaults.colors(
+            containerColor = Color.Transparent,
+            focusedContainerColor = Color.Transparent
+        ),
+        scale = CardDefaults.scale(focusedScale = focusedScale),
+        border = CardDefaults.border(
+            border = Border(border = BorderStroke(0.dp, Color.Transparent), shape = shape),
+            focusedBorder = Border(border = BorderStroke(2.5.dp, Color.White), shape = shape)
+        )
     ) {
-        content(isFocused)
+        Box {
+            content(isFocused)
+        }
     }
 }

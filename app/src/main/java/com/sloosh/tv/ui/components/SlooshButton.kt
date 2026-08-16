@@ -1,82 +1,96 @@
 package com.sloosh.tv.ui.components
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.tv.material3.Border
+import androidx.tv.material3.Button
+import androidx.tv.material3.ButtonDefaults
+import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import com.sloosh.tv.ui.theme.BackgroundDark
-import com.sloosh.tv.ui.theme.GlassBorderFocusedDark
-import com.sloosh.tv.ui.theme.GlassSurfaceDark
-import com.sloosh.tv.ui.theme.SlooshAccentDark
+import com.kyant.capsule.ContinuousCapsule
+import com.sloosh.tv.ui.theme.SlooshGreen
+import com.sloosh.tv.ui.theme.RatingGreenText
 
 @Composable
 fun SlooshButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    isPrimary: Boolean = true,
+    isPrimary: Boolean = false,
+    isWhite: Boolean = false,
     icon: @Composable (() -> Unit)? = null
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isFocused by interactionSource.collectIsFocusedAsState()
+    val shape = ContinuousCapsule
 
-    val scale by animateFloatAsState(
-        targetValue = if (isFocused) 1.08f else 1.0f,
-        animationSpec = tween(durationMillis = 200),
-        label = "btn_scale"
-    )
-
-    val shape = RoundedCornerShape(50)
-
-    val backgroundColor = when {
-        isPrimary && isFocused -> SlooshAccentDark
-        isPrimary -> SlooshAccentDark.copy(alpha = 0.85f)
-        isFocused -> Color.White.copy(alpha = 0.25f)
-        else -> GlassSurfaceDark
+    val containerColor = when {
+        isWhite -> Color.White
+        isPrimary -> SlooshGreen
+        else -> Color(0xFF1C1C1C)
     }
-
     val contentColor = when {
-        isPrimary -> BackgroundDark
+        isWhite -> Color.Black
+        isPrimary -> RatingGreenText
+        else -> Color.White.copy(alpha = 0.85f)
+    }
+    val focusedContainerColor = when {
+        isWhite -> Color.White
+        isPrimary -> SlooshGreen
+        else -> Color(0xFF2A2A2A)
+    }
+    val focusedContentColor = when {
+        isWhite -> Color.Black
+        isPrimary -> RatingGreenText
+        else -> Color.White
+    }
+    val borderColor = when {
+        isWhite -> Color.White
+        isPrimary -> SlooshGreen
+        else -> Color(0xFF2A2A2A)
+    }
+    val focusedBorderColor = when {
+        isWhite -> Color.White
+        isPrimary -> SlooshGreen
         else -> Color.White
     }
 
-    val borderColor = if (isFocused) GlassBorderFocusedDark else Color.Transparent
-
-    Box(
-        modifier = modifier
-            .scale(scale)
-            .clip(shape)
-            .background(backgroundColor)
-            .border(BorderStroke(2.dp, borderColor), shape)
-            .focusable(interactionSource = interactionSource)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick
+    Button(
+        onClick = onClick,
+        modifier = modifier,
+        shape = ButtonDefaults.shape(shape = shape),
+        colors = ButtonDefaults.colors(
+            containerColor = containerColor,
+            contentColor = contentColor,
+            focusedContainerColor = focusedContainerColor,
+            focusedContentColor = focusedContentColor
+        ),
+        scale = ButtonDefaults.scale(focusedScale = 1.05f),
+        border = ButtonDefaults.border(
+            border = Border(
+                border = BorderStroke(1.dp, borderColor),
+                shape = shape
+            ),
+            focusedBorder = Border(
+                border = BorderStroke(2.5.dp, focusedBorderColor),
+                shape = shape
             )
-            .padding(horizontal = 24.dp, vertical = 12.dp),
-        contentAlignment = Alignment.Center
+        )
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
+            horizontalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
         ) {
             if (icon != null) {
                 icon()
@@ -84,9 +98,12 @@ fun SlooshButton(
             }
             Text(
                 text = text,
-                color = contentColor,
-                style = androidx.tv.material3.MaterialTheme.typography.labelLarge
+                style = MaterialTheme.typography.titleSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                )
             )
         }
     }
 }
+

@@ -73,6 +73,8 @@ data class MediaDetailsDto(
     @SerializedName("ratings") val ratings: RatingsV2Dto?,
     @SerializedName("ids") val ids: IdsDto?
 ) {
+    val displayTitle: String get() = title ?: originalTitle ?: "Без названия"
+
     fun getDisplayPosterUrl(isLowQuality: Boolean = false): String? {
         return normalizeImageUrl(path = poster, id = id, isLowQuality = isLowQuality)
     }

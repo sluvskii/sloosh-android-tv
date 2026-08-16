@@ -37,3 +37,10 @@ data class FavoriteEntity(
     val type: String?,
     val addedAtMs: Long = System.currentTimeMillis()
 )
+
+@Entity(tableName = "search_history")
+data class SearchHistoryEntity(
+    @PrimaryKey val query: String,
+    val timestampMs: Long = System.currentTimeMillis()
+)
+

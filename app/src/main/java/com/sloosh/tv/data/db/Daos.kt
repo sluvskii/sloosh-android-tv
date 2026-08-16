@@ -16,6 +16,9 @@ interface ProgressDao {
 
     @Query("DELETE FROM playback_progress WHERE mediaId = :mediaId")
     suspend fun deleteProgress(mediaId: String)
+
+    @Query("DELETE FROM playback_progress")
+    suspend fun clearAllProgress()
 }
 
 @Dao
@@ -34,4 +37,22 @@ interface FavoritesDao {
 
     @Query("DELETE FROM favorites WHERE mediaId = :mediaId")
     suspend fun deleteFavorite(mediaId: String)
+
+    @Query("DELETE FROM favorites")
+    suspend fun clearAllFavorites()
+}
+
+@Dao
+interface SearchHistoryDao {
+    @Query("SELECT * FROM search_history ORDER BY timestampMs DESC LIMIT 10")
+    fun getRecentSearches(): Flow<List<SearchHistoryEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSearch(search: SearchHistoryEntity)
+
+    @Query("DELETE FROM search_history WHERE `query` = :query")
+    suspend fun deleteSearch(query: String)
+
+    @Query("DELETE FROM search_history")
+    suspend fun clearAllSearchHistory()
 }

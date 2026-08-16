@@ -10,6 +10,8 @@ import com.sloosh.tv.data.db.ProgressEntity
 import com.sloosh.tv.data.repository.AllohaRepository
 import com.sloosh.tv.data.repository.MoviesRepository
 import com.sloosh.tv.data.repository.PlaybackProgressStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,18 +20,20 @@ import kotlinx.coroutines.launch
 data class DetailsUiState(
     val isLoading: Boolean = true,
     val details: MediaDetailsDto? = null,
-    val allohaData: AllohaApiResult? = null,
     val progress: ProgressEntity? = null,
     val isFavorite: Boolean = false,
-    val selectedSeason: Int = 1,
-    val selectedEpisode: Int = 1,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+
+    // ─── Source selection sheet state ───────────────────────────
+    val isFetchingSources: Boolean = false,
+    val allohaData: AllohaApiResult? = null,
+    val showSourceSheet: Boolean = false
 )
 
 class DetailsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = MoviesRepository()
-    private val allohaRepository = AllohaRepository(application)
+    val allohaRepository = AllohaRepository(application)
     private val store = PlaybackProgressStore(application)
 
     private val _uiState = MutableStateFlow(DetailsUiState())
@@ -39,19 +43,57 @@ class DetailsViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
 
-            val details = repository.getDetails(mediaId)
-            val alloha = allohaRepository.fetchAllohaData(mediaId)
-            val progress = store.getProgress(mediaId)
-            val isFav = store.isFavorite(mediaId)
+            val detailsDeferred = async { repository.getDetails(mediaId) }
+            val progressDeferred = async { store.getProgress(mediaId) }
+            val isFavDeferred = async { store.isFavorite(mediaId) }
+
+            val details = detailsDeferred.await()
+            val progress = progressDeferred.await()
+            val isFav = isFavDeferred.await()
 
             _uiState.value = DetailsUiState(
                 isLoading = false,
                 details = details,
-                allohaData = alloha,
                 progress = progress,
                 isFavorite = isFav
             )
         }
+    }
+
+    /** Called when the user presses "Смотреть" — opens the source sheet. */
+    fun openSourceSheet() {
+        val details = _uiState.value.details ?: return
+        val mediaId = details.id ?: return
+        val kpId = details.ids?.kp
+
+        // Already have data — just show sheet
+        if (_uiState.value.allohaData != null) {
+            _uiState.value = _uiState.value.copy(showSourceSheet = true)
+            return
+        }
+
+        _uiState.value = _uiState.value.copy(
+            showSourceSheet = true,
+            isFetchingSources = true
+        )
+
+        viewModelScope.launch {
+            val result = allohaRepository.fetchAllohaData(mediaId, kpId)
+            _uiState.value = _uiState.value.copy(
+                allohaData = result,
+                isFetchingSources = false
+            )
+        }
+    }
+
+    /** Called when the sheet is dismissed. */
+    fun dismissSourceSheet() {
+        _uiState.value = _uiState.value.copy(showSourceSheet = false)
+    }
+
+    /** Resets alloha cache so the next openSourceSheet() re-fetches. */
+    fun resetSourceSheet() {
+        _uiState.value = _uiState.value.copy(allohaData = null)
     }
 
     fun toggleFavorite() {
@@ -70,13 +112,5 @@ class DetailsViewModel(application: Application) : AndroidViewModel(application)
             val updatedIsFav = store.isFavorite(mediaId)
             _uiState.value = _uiState.value.copy(isFavorite = updatedIsFav)
         }
-    }
-
-    fun selectSeason(season: Int) {
-        _uiState.value = _uiState.value.copy(selectedSeason = season, selectedEpisode = 1)
-    }
-
-    fun selectEpisode(episode: Int) {
-        _uiState.value = _uiState.value.copy(selectedEpisode = episode)
     }
 }

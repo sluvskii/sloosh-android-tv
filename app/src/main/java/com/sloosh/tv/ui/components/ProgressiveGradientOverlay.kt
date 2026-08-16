@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.Color
 
 enum class GradientDirection {
     VERTICAL_BOTTOM_TO_TOP,
+    VERTICAL_TOP_TO_BOTTOM,
     HORIZONTAL_LEFT_TO_RIGHT
 }
 
@@ -23,17 +24,26 @@ fun ProgressiveGradientOverlay(
         GradientDirection.HORIZONTAL_LEFT_TO_RIGHT -> {
             Brush.horizontalGradient(
                 0.0f to baseColor.copy(alpha = 1.0f),
-                0.4f to baseColor.copy(alpha = 0.85f),
-                0.7f to baseColor.copy(alpha = 0.45f),
+                0.35f to baseColor.copy(alpha = 0.75f),
+                0.70f to baseColor.copy(alpha = 0.35f),
                 1.0f to Color.Transparent
             )
         }
         GradientDirection.VERTICAL_BOTTOM_TO_TOP -> {
             Brush.verticalGradient(
                 0.0f to Color.Transparent,
-                0.3f to baseColor.copy(alpha = 0.45f),
-                0.7f to baseColor.copy(alpha = 0.85f),
+                0.35f to baseColor.copy(alpha = 0.35f),
+                0.70f to baseColor.copy(alpha = 0.75f),
                 1.0f to baseColor.copy(alpha = 1.0f)
+            )
+        }
+        GradientDirection.VERTICAL_TOP_TO_BOTTOM -> {
+            Brush.verticalGradient(
+                0.0f to baseColor.copy(alpha = 0.80f),
+                0.30f to baseColor.copy(alpha = 0.50f),
+                0.60f to baseColor.copy(alpha = 0.22f),
+                0.85f to baseColor.copy(alpha = 0.05f),
+                1.0f to Color.Transparent
             )
         }
     }

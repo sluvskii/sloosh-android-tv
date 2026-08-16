@@ -1,22 +1,33 @@
 package com.sloosh.tv.ui.home
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
@@ -26,9 +37,20 @@ import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.sloosh.tv.data.api.MediaDto
 import com.sloosh.tv.data.db.ProgressEntity
+import androidx.compose.ui.graphics.Brush
 import com.sloosh.tv.ui.components.*
-import com.sloosh.tv.ui.theme.BackgroundDark
-import com.sloosh.tv.ui.theme.SlooshAccentDark
+import com.sloosh.tv.ui.theme.*
+
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import androidx.tv.foundation.lazy.grid.rememberTvLazyGridState
+import kotlinx.coroutines.launch
+import com.kyant.capsule.ContinuousCapsule
+import com.kyant.capsule.ContinuousRoundedRectangle
 
 @Composable
 fun HomeScreen(
@@ -38,323 +60,187 @@ fun HomeScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
 
-    if (state.isLoading) {
-        Box(
-            modifier = modifier
-                .fillMaxSize()
-                .background(BackgroundDark)
-                .padding(start = 32.dp, top = 24.dp, end = 32.dp)
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(0.5f)
-                        .height(180.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color.White.copy(alpha = 0.08f))
-                ) {
-                    ShimmerEffect(modifier = Modifier.fillMaxSize())
-                }
-                CatalogRowShimmer("Популярное")
-                CatalogRowShimmer("Топ фильмов")
-            }
-        }
-        return
-    }
-
-    val hero = state.heroItem
+    val gridState = rememberTvLazyGridState()
+    val coroutineScope = rememberCoroutineScope()
+    val firstCardFocusRequester = remember { FocusRequester() }
 
     Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(BackgroundDark)
+        modifier = modifier.fillMaxSize()
     ) {
-        // Hero Edge-to-Edge Backdrop
-        if (hero != null) {
-            val backdropUrl = hero.getDisplayPosterUrl()
-            AsyncImage(
-                model = backdropUrl,
-                contentDescription = hero.displayTitle,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
 
-            // Progressive Gradient Overlay (Horizontal + Vertical)
-            ProgressiveGradientOverlay(
-                direction = GradientDirection.HORIZONTAL_LEFT_TO_RIGHT,
-                baseColor = Color.Black
-            )
-            ProgressiveGradientOverlay(
-                direction = GradientDirection.VERTICAL_BOTTOM_TO_TOP,
-                baseColor = Color.Black
-            )
-        }
-
-        // Screen Content Scroll
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(start = 32.dp, top = 24.dp, end = 32.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(28.dp)
-        ) {
-            // Hero Banner Info
-            item {
-                if (hero != null) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth(0.55f)
-                            .padding(top = 20.dp)
-                    ) {
-                        Text(
-                            text = hero.displayTitle,
-                            style = MaterialTheme.typography.headlineLarge,
-                            color = Color.White
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            if (hero.rating != null && hero.rating > 0) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(SlooshAccentDark)
-                                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Star,
-                                        contentDescription = null,
-                                        tint = Color.Black,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = String.format("%.1f", hero.rating),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color.Black
-                                    )
-                                }
-                            }
-
-                            if (hero.yearString.isNotEmpty()) {
-                                Text(
-                                    text = hero.yearString,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = Color.White.copy(alpha = 0.8f)
-                                )
-                            }
-                        }
-
-                        if (!hero.description.isNullOrEmpty()) {
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = hero.description,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = Color.White.copy(alpha = 0.7f),
-                                maxLines = 3
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(20.dp))
-
-                        SlooshButton(
-                            text = "Смотреть",
-                            onClick = { onMediaSelected(hero.identifier) },
-                            icon = {
-                                Icon(
-                                    imageVector = Icons.Default.PlayArrow,
-                                    contentDescription = null,
-                                    tint = Color.Black
-                                )
-                            }
-                        )
-                    }
-                }
-            }
-
-            // Continue Watching Row
-            if (state.continueWatching.isNotEmpty()) {
-                item {
-                    Column {
-                        Text(
-                            text = "Продолжить просмотр",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = Color.White,
-                            modifier = Modifier.padding(bottom = 12.dp)
-                        )
-
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            contentPadding = PaddingValues(end = 32.dp)
-                        ) {
-                            items(state.continueWatching, key = { it.mediaId }) { progress ->
-                                ContinueWatchingCard(
-                                    progress = progress,
-                                    onClick = { onMediaSelected(progress.mediaId) }
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Category Rows
-            if (state.popularMovies.isNotEmpty()) {
-                item {
-                    CategoryRow(
-                        title = "Популярное",
-                        items = state.popularMovies,
-                        onItemFocused = { viewModel.selectHeroItem(it) },
-                        onItemClick = { onMediaSelected(it.identifier) }
-                    )
-                }
-            }
-
-            if (state.topMovies.isNotEmpty()) {
-                item {
-                    CategoryRow(
-                        title = "Топ фильмов",
-                        items = state.topMovies,
-                        onItemFocused = { viewModel.selectHeroItem(it) },
-                        onItemClick = { onMediaSelected(it.identifier) }
-                    )
-                }
-            }
-
-            if (state.topTv.isNotEmpty()) {
-                item {
-                    CategoryRow(
-                        title = "Топ сериалов",
-                        items = state.topTv,
-                        onItemFocused = { viewModel.selectHeroItem(it) },
-                        onItemClick = { onMediaSelected(it.identifier) }
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun ContinueWatchingCard(
-    progress: ProgressEntity,
-    onClick: () -> Unit
-) {
-    SlooshFocusableCard(
-        onClick = onClick,
-        modifier = Modifier
-            .width(200.dp)
-            .height(130.dp),
-        shape = RoundedCornerShape(14.dp)
-    ) { isFocused ->
-        Box(modifier = Modifier.fillMaxSize()) {
-            val backdropUrl = progress.backdropUrl ?: progress.posterUrl
-            AsyncImage(
-                model = backdropUrl,
-                contentDescription = progress.title,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-
-            // Dark overlay
+        // Fullscreen Edge-to-Edge Native TV Poster Grid (Cards scroll seamlessly underneath floating sticky bar)
+        if (state.isLoading) {
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.4f))
-            )
-
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .fillMaxWidth()
-                    .padding(12.dp)
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = if (progress.title.isNotEmpty()) progress.title else "Просмотр",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color.White,
-                    maxLines = 1
-                )
+                CircularProgressIndicator(color = SlooshGreen, modifier = Modifier.size(48.dp))
+            }
+        } else {
+            androidx.tv.foundation.lazy.grid.TvLazyVerticalGrid(
+                state = gridState,
+                columns = androidx.tv.foundation.lazy.grid.TvGridCells.Fixed(5),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp),
+                contentPadding = PaddingValues(start = 24.dp, top = 88.dp, end = 24.dp, bottom = 40.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                // Poster Items
+                items(state.items.size, key = { state.items[it].identifier }) { index ->
+                    val item = state.items[index]
+                    if (index >= state.items.size - 4 && !state.isLoadingMore && state.hasMorePages) {
+                        LaunchedEffect(index) {
+                            viewModel.loadData(reset = false)
+                        }
+                    }
 
-                if (progress.isEpisode) {
-                    Text(
-                        text = "S${progress.season} E${progress.episode}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = SlooshAccentDark
+                    val cardModifier = if (index == 0) {
+                        Modifier.focusRequester(firstCardFocusRequester)
+                    } else Modifier
+
+                    MediaCard(
+                        item = item,
+                        onClick = { onMediaSelected(item.identifier) },
+                        modifier = cardModifier
                     )
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
-
-                LinearProgressIndicator(
-                    progress = { progress.progressFraction },
-                    color = SlooshAccentDark,
-                    trackColor = Color.White.copy(alpha = 0.3f),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(4.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                )
+                if (state.isLoadingMore) {
+                    item(span = { androidx.tv.foundation.lazy.grid.TvGridItemSpan(5) }) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(80.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(color = SlooshGreen, modifier = Modifier.size(32.dp))
+                        }
+                    }
+                }
             }
         }
-    }
-}
 
-@Composable
-fun CategoryRow(
-    title: String,
-    items: List<MediaDto>,
-    onItemFocused: (MediaDto) -> Unit,
-    onItemClick: (MediaDto) -> Unit
-) {
-    Column {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleLarge,
-            color = Color.White,
-            modifier = Modifier.padding(bottom = 12.dp)
-        )
-
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(end = 32.dp)
+        // Floating Sticky Category Bar
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .padding(start = 24.dp, top = 20.dp, end = 24.dp, bottom = 24.dp)
         ) {
-            items(items, key = { it.identifier }) { item ->
-                MediaCard(
-                    item = item,
-                    onClick = { onItemClick(item) },
-                    onFocus = { onItemFocused(item) }
-                )
+            // Category Tabs only
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                HomeCategory.values().forEach { cat ->
+                    SlooshButton(
+                        text = cat.title,
+                        isPrimary = state.selectedCategory == cat,
+                        onClick = {
+                            viewModel.selectCategory(cat)
+                            coroutineScope.launch { gridState.scrollToItem(0) }
+                        },
+                        modifier = Modifier
+                            .onPreviewKeyEvent { keyEvent ->
+                                if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                    keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN) {
+                                    try {
+                                        firstCardFocusRequester.requestFocus()
+                                        true
+                                    } catch (e: Exception) {
+                                        false
+                                    }
+                                } else false
+                            }
+                    )
+                }
             }
         }
     }
 }
+
 
 @Composable
 fun MediaCard(
     item: MediaDto,
     onClick: () -> Unit,
-    onFocus: () -> Unit
+    modifier: Modifier = Modifier,
+    onFocus: (() -> Unit)? = null
 ) {
-    SlooshFocusableCard(
-        onClick = onClick,
-        modifier = Modifier
-            .width(140.dp)
-            .height(210.dp),
-        shape = RoundedCornerShape(14.dp)
-    ) { isFocused ->
-        if (isFocused) {
-            onFocus()
+    Column(modifier = Modifier.width(155.dp)) {
+        // ─── Poster (ONLY the poster scales and focuses) ───────────────
+        SlooshFocusableCard(
+            onClick = onClick,
+            modifier = modifier
+                .width(155.dp)
+                .height(225.dp),
+            shape = ContinuousRoundedRectangle(16.dp)
+        ) { cardFocused ->
+            if (onFocus != null) {
+                LaunchedEffect(cardFocused) {
+                    if (cardFocused) onFocus()
+                }
+            }
+            Box(modifier = Modifier.fillMaxSize()) {
+                AsyncImage(
+                    model = item.getDisplayPosterUrl(),
+                    contentDescription = item.displayTitle,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+
+                // Adaptive rating badge top-left (iOS style: Green >= 7.0, Gray 5.0-7.0, Red < 5.0)
+                if (item.rating != null && item.rating > 0) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(8.dp)
+                            .clip(ContinuousRoundedRectangle(7.dp))
+                            .background(ratingColor(item.rating))
+                            .padding(horizontal = 6.5.dp, vertical = 2.5.dp)
+                    ) {
+                        Text(
+                            text = String.format(java.util.Locale.US, "%.1f", item.rating),
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 13.5.sp,
+                                letterSpacing = (-0.2).sp
+                            ),
+                            color = Color.White
+                        )
+                    }
+                }
+            }
         }
-        AsyncImage(
-            model = item.getDisplayPosterUrl(),
-            contentDescription = item.displayTitle,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop
+
+        // ─── Title + Meta BELOW (does NOT scale or take focus) ────────
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(
+            text = item.displayTitle,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp,
+                lineHeight = 19.sp
+            ),
+            color = Color.White.copy(alpha = 0.95f),
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 2.dp)
         )
+        Spacer(modifier = Modifier.height(3.dp))
+        val genreText = item.genres?.firstOrNull()?.name
+        val metaText = listOfNotNull(item.yearString.ifEmpty { null }, genreText).joinToString(" • ")
+        if (metaText.isNotEmpty()) {
+            Text(
+                text = metaText,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Normal
+                ),
+                color = Color.White.copy(alpha = 0.52f),
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 2.dp)
+            )
+        }
     }
 }
+
+
