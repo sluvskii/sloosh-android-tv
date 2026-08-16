@@ -166,51 +166,40 @@ private fun SidePosterDetailsLayout(
     val moreButtonFocusRequester = remember { FocusRequester() }
     var isExpanded by remember { mutableStateOf(false) }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(BackgroundDark)
+    ) {
         val backdropUrl = details.getDisplayBackdropUrl() ?: details.getDisplayPosterUrl()
         
-        // Fullscreen Backdrop Image (Crop aligned to CenterEnd so subject stays beautifully on the right without any hard cut-off edges)
-        AsyncImage(
-            model = backdropUrl,
-            contentDescription = null,
+        // Native aspect-ratio backdrop shifted to the right, with genuine alpha fade on its left edge
+        Box(
             modifier = Modifier.fillMaxSize(),
-            alignment = Alignment.CenterEnd,
-            contentScale = ContentScale.Crop
-        )
-
-        // Silky Soft Horizontal Gradient: Smooth transition across the entire screen without any seams
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.horizontalGradient(
-                        colorStops = arrayOf(
-                            0.0f to BackgroundDark.copy(alpha = 0.95f),
-                            0.25f to BackgroundDark.copy(alpha = 0.85f),
-                            0.45f to BackgroundDark.copy(alpha = 0.50f),
-                            0.65f to BackgroundDark.copy(alpha = 0.15f),
-                            0.82f to Color.Transparent,
-                            1.0f to Color.Transparent
+            contentAlignment = Alignment.CenterEnd
+        ) {
+            AsyncImage(
+                model = backdropUrl,
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .aspectRatio(16f / 9f)
+                    .offset(x = 120.dp)
+                    .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                    .drawWithContent {
+                        drawContent()
+                        drawRect(
+                            brush = Brush.horizontalGradient(
+                                colors = listOf(Color.Transparent, Color.Black),
+                                startX = 0f,
+                                endX = size.width * 0.52f
+                            ),
+                            blendMode = BlendMode.DstIn
                         )
-                    )
-                )
-        )
-
-        // Subtle Top and Bottom edge gradients
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colorStops = arrayOf(
-                            0.0f to BackgroundDark.copy(alpha = 0.30f),
-                            0.15f to Color.Transparent,
-                            0.82f to Color.Transparent,
-                            1.0f to BackgroundDark.copy(alpha = 0.50f)
-                        )
-                    )
-                )
-        )
+                    },
+                contentScale = ContentScale.FillHeight
+            )
+        }
 
         Column(
             modifier = Modifier
