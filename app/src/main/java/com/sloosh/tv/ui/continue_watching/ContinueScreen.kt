@@ -63,7 +63,7 @@ fun ContinueScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    CircularProgressIndicator(color = SlooshGreen, modifier = Modifier.size(48.dp))
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(48.dp))
                 }
             } else if (state.items.isEmpty()) {
                 // Empty State (Matches iOS ContinueEmptyState)
@@ -79,13 +79,13 @@ fun ContinueScreen(
                             modifier = Modifier
                                 .size(88.dp)
                                 .clip(ContinuousCapsule)
-                                .background(Color.White.copy(alpha = 0.06f)),
+                                .background(Color.White.copy(alpha = 0.08f)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Schedule,
                                 contentDescription = null,
-                                tint = SlooshGreen,
+                                tint = Color.White.copy(alpha = 0.85f),
                                 modifier = Modifier.size(44.dp)
                             )
                         }
@@ -258,7 +258,7 @@ private fun ContinueWatchingCard(
                         .align(Alignment.Center)
                         .size(54.dp)
                         .clip(ContinuousCapsule)
-                        .background(SlooshGreen),
+                        .background(Color.White),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -308,10 +308,10 @@ private fun ContinueWatchingCard(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Green Progress Bar
+                // White Progress Bar
                 LinearProgressIndicator(
                     progress = { item.progressFraction },
-                    color = SlooshGreen,
+                    color = Color.White,
                     trackColor = Color.White.copy(alpha = 0.22f),
                     modifier = Modifier
                         .fillMaxWidth()

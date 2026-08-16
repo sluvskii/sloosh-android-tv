@@ -29,7 +29,6 @@ import androidx.tv.material3.NavigationDrawerItemDefaults
 import androidx.tv.material3.NavigationDrawerScope
 import androidx.tv.material3.Text
 import com.kyant.capsule.ContinuousCapsule
-import com.sloosh.tv.ui.theme.SlooshGreen
 
 enum class NavSection {
     HOME, SEARCH, CONTINUE, FAVORITES, SETTINGS
@@ -133,8 +132,8 @@ private fun NavigationDrawerScope.DrawerNavItem(
             contentColor = Color.White.copy(alpha = 0.75f),
             focusedContainerColor = Color.White,
             focusedContentColor = Color.Black,
-            selectedContainerColor = SlooshGreen.copy(alpha = 0.22f),
-            selectedContentColor = SlooshGreen
+            selectedContainerColor = Color.White.copy(alpha = 0.18f),
+            selectedContentColor = Color.White
         ),
         shape = NavigationDrawerItemDefaults.shape(
             shape = if (isClosed) CircleShape else ContinuousCapsule

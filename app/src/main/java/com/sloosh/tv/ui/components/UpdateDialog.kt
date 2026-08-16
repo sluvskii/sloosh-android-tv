@@ -76,13 +76,13 @@ fun UpdateDialog(
                     modifier = Modifier
                         .size(60.dp)
                         .clip(ContinuousRoundedRectangle(18.dp))
-                        .background(SlooshGreen.copy(alpha = 0.15f)),
+                        .background(Color.White.copy(alpha = 0.08f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = if (isDownloading) Icons.Default.Download else Icons.Default.SystemUpdate,
                         contentDescription = null,
-                        tint = SlooshGreen,
+                        tint = Color.White,
                         modifier = Modifier.size(32.dp)
                     )
                 }
@@ -105,14 +105,14 @@ fun UpdateDialog(
                     Box(
                         modifier = Modifier
                             .clip(ContinuousCapsule)
-                            .background(SlooshGreen)
+                            .background(Color.White)
                             .padding(horizontal = 10.dp, vertical = 4.dp)
                     ) {
                         Text(
                             text = updateInfo.newVersion,
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
-                            color = RatingGreenText
+                            color = Color.Black
                         )
                     }
 
@@ -168,7 +168,7 @@ fun UpdateDialog(
                                 .fillMaxWidth()
                                 .height(8.dp)
                                 .clip(ContinuousCapsule),
-                            color = SlooshGreen,
+                            color = Color.White,
                             trackColor = Color.White.copy(alpha = 0.15f)
                         )
 
@@ -187,7 +187,7 @@ fun UpdateDialog(
                                 text = String.format("%d%%", (downloadProgress * 100).toInt()),
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Bold,
-                                color = SlooshGreen
+                                color = Color.White
                             )
                         }
                     }

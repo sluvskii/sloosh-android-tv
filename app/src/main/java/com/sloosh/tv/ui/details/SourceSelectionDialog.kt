@@ -36,7 +36,6 @@ import com.kyant.capsule.ContinuousRoundedRectangle
 import com.sloosh.tv.data.api.AllohaApiResult
 import com.sloosh.tv.data.api.AllohaTranslation
 import com.sloosh.tv.data.repository.allohaTranslationNamesMatch
-import com.sloosh.tv.ui.theme.SlooshGreen
 
 // ─── Data class for dialog result ────────────────────────────────────────────
 
@@ -334,7 +333,7 @@ fun SourceSelectionDialog(
                                 val isSelected = selectedTranslationName == tName
                                 val isAvailable = isTranslationAvailable(allohaData, tName, selectedSeason, selectedEpisode)
                                 SelectorChip(
-                                    label = tName,
+                                    label = com.sloosh.tv.ui.util.cleanTranslationName(tName),
                                     isSelected = isSelected,
                                     isAvailable = isAvailable,
                                     onClick = { selectTranslation(tName) }
@@ -516,7 +515,7 @@ private fun SelectorChip(
                 shape = shape
             ),
             focusedBorder = Border(
-                border = BorderStroke(2.dp, if (isSelected) SlooshGreen else Color.White),
+                border = BorderStroke(2.dp, Color.White),
                 shape = shape
             )
         ),
@@ -561,7 +560,7 @@ private fun PlayButton(
         scale = ButtonDefaults.scale(focusedScale = 1.03f),
         border = ButtonDefaults.border(
             border = Border(border = BorderStroke(1.dp, Color.Transparent), shape = shape),
-            focusedBorder = Border(border = BorderStroke(2.5.dp, SlooshGreen), shape = shape)
+            focusedBorder = Border(border = BorderStroke(2.5.dp, Color.White), shape = shape)
         )
     ) {
         Row(

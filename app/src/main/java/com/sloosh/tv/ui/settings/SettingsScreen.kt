@@ -234,13 +234,13 @@ fun SettingsScreen(
                                         modifier = Modifier
                                             .size(48.dp)
                                             .clip(ContinuousRoundedRectangle(14.dp))
-                                            .background(SlooshGreen.copy(alpha = 0.15f)),
+                                            .background(Color.White.copy(alpha = 0.08f)),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Info,
                                             contentDescription = null,
-                                            tint = SlooshGreen,
+                                            tint = Color.White.copy(alpha = 0.85f),
                                             modifier = Modifier.size(24.dp)
                                         )
                                     }
@@ -254,7 +254,7 @@ fun SettingsScreen(
                                         Text(
                                             text = "Версия ${com.sloosh.tv.BuildConfig.VERSION_NAME}",
                                             style = MaterialTheme.typography.bodySmall,
-                                            color = SlooshGreen
+                                            color = TextSecondaryDark
                                         )
                                     }
                                 }
@@ -316,13 +316,13 @@ fun SettingsScreen(
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 40.dp)
                     .clip(ContinuousCapsule)
-                    .background(SlooshGreen)
+                    .background(Color.White)
                     .padding(horizontal = 24.dp, vertical = 12.dp)
             ) {
                 Text(
                     text = statusMessage!!,
                     style = MaterialTheme.typography.labelLarge,
-                    color = RatingGreenText,
+                    color = Color.Black,
                     fontWeight = FontWeight.SemiBold
                 )
             }
@@ -335,7 +335,7 @@ private fun SectionHeader(title: String) {
     Text(
         text = title,
         style = MaterialTheme.typography.labelLarge,
-        color = SlooshGreen,
+        color = Color.White.copy(alpha = 0.70f),
         fontWeight = FontWeight.SemiBold,
         modifier = Modifier.padding(bottom = 4.dp, top = 8.dp)
     )

@@ -74,7 +74,7 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(color = SlooshGreen, modifier = Modifier.size(48.dp))
+                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(48.dp))
             }
         } else {
             androidx.tv.foundation.lazy.grid.TvLazyVerticalGrid(
@@ -113,7 +113,7 @@ fun HomeScreen(
                                 .height(80.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            CircularProgressIndicator(color = SlooshGreen, modifier = Modifier.size(32.dp))
+                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(32.dp))
                         }
                     }
                 }

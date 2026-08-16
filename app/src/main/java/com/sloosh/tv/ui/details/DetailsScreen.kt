@@ -83,7 +83,7 @@ fun DetailsScreen(
                 .background(BackgroundDark),
             contentAlignment = Alignment.Center
         ) {
-            CircularProgressIndicator(color = SlooshGreen)
+            CircularProgressIndicator(color = Color.White)
         }
         return
     }
@@ -676,7 +676,7 @@ private fun SidePosterDetailsLayout(
                         modifier = Modifier
                             .fillMaxSize()
                             .background(
-                                if (state.isFavorite) SlooshGreen.copy(alpha = 0.15f)
+                                if (state.isFavorite) Color.White.copy(alpha = 0.25f)
                                 else Color.White.copy(alpha = 0.1f)
                             ),
                         contentAlignment = Alignment.Center
@@ -684,7 +684,7 @@ private fun SidePosterDetailsLayout(
                         Icon(
                             imageVector = if (state.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                             contentDescription = "Избранное",
-                            tint = if (state.isFavorite) SlooshGreen else Color.White.copy(alpha = 0.8f),
+                            tint = if (state.isFavorite) Color.White else Color.White.copy(alpha = 0.8f),
                             modifier = Modifier
                                 .size(24.dp)
                                 .scale(favScale)

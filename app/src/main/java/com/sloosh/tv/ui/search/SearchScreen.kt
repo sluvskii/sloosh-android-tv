@@ -75,7 +75,7 @@ fun SearchScreen(
                     Icon(
                         imageVector = Icons.Default.Search,
                         contentDescription = null,
-                        tint = SlooshGreen,
+                        tint = Color.White.copy(alpha = 0.85f),
                         modifier = Modifier.size(22.dp)
                     )
                 },
@@ -101,11 +101,11 @@ fun SearchScreen(
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = GlassSurfaceFocusedDark,
                     unfocusedContainerColor = GlassSurfaceDark,
-                    focusedBorderColor = SlooshGreen,
+                    focusedBorderColor = Color.White,
                     unfocusedBorderColor = GlassBorderUnfocusedDark,
                     focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White,
-                    cursorColor = SlooshGreen
+                    cursorColor = Color.White
                 ),
                 shape = ContinuousRoundedRectangle(18.dp),
                 modifier = Modifier.fillMaxWidth(0.65f)
@@ -200,7 +200,7 @@ fun SearchScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator(color = SlooshGreen)
+                            CircularProgressIndicator(color = Color.White)
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
                                 text = "Ищем...",

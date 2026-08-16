@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -20,8 +19,6 @@ import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.kyant.capsule.ContinuousCapsule
-import com.sloosh.tv.ui.theme.SlooshGreen
-import com.sloosh.tv.ui.theme.RatingGreenText
 
 @Composable
 fun SlooshButton(
@@ -33,37 +30,15 @@ fun SlooshButton(
     icon: @Composable (() -> Unit)? = null
 ) {
     val shape = ContinuousCapsule
+    val isSolidWhite = isPrimary || isWhite
 
-    val containerColor = when {
-        isWhite -> Color.White
-        isPrimary -> SlooshGreen
-        else -> Color(0xFF1C1C1C)
-    }
-    val contentColor = when {
-        isWhite -> Color.Black
-        isPrimary -> RatingGreenText
-        else -> Color.White.copy(alpha = 0.85f)
-    }
-    val focusedContainerColor = when {
-        isWhite -> Color.White
-        isPrimary -> SlooshGreen
-        else -> Color(0xFF2A2A2A)
-    }
-    val focusedContentColor = when {
-        isWhite -> Color.Black
-        isPrimary -> RatingGreenText
-        else -> Color.White
-    }
-    val borderColor = when {
-        isWhite -> Color.White
-        isPrimary -> SlooshGreen
-        else -> Color(0xFF2A2A2A)
-    }
-    val focusedBorderColor = when {
-        isWhite -> Color.White
-        isPrimary -> SlooshGreen
-        else -> Color.White
-    }
+    val containerColor = if (isSolidWhite) Color.White else Color.White.copy(alpha = 0.09f)
+    val contentColor = if (isSolidWhite) Color.Black else Color.White.copy(alpha = 0.85f)
+    val focusedContainerColor = Color.White
+    val focusedContentColor = Color.Black
+
+    val borderColor = if (isSolidWhite) Color.White else Color.White.copy(alpha = 0.08f)
+    val focusedBorderColor = Color.White
 
     Button(
         onClick = onClick,
@@ -90,7 +65,7 @@ fun SlooshButton(
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
         ) {
             if (icon != null) {
                 icon()
@@ -100,10 +75,9 @@ fun SlooshButton(
                 text = text,
                 style = MaterialTheme.typography.titleSmall.copy(
                     fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp
+                    fontSize = 14.5.sp
                 )
             )
         }
     }
 }
-

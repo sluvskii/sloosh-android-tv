@@ -135,13 +135,13 @@ fun ProfileScreen(
                             modifier = Modifier
                                 .size(72.dp)
                                 .clip(ContinuousRoundedRectangle(20.dp))
-                                .background(SlooshGreen.copy(alpha = 0.1f)),
+                                .background(Color.White.copy(alpha = 0.08f)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Favorite,
                                 contentDescription = null,
-                                tint = SlooshGreen.copy(alpha = 0.5f),
+                                tint = Color.White.copy(alpha = 0.70f),
                                 modifier = Modifier.size(36.dp)
                             )
                         }

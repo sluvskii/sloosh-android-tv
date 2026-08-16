@@ -1192,7 +1192,7 @@ fun PlayerScreen(
                                 val audio = audios[idx]
                                 val itemModifier = if (idx == 0) Modifier.focusRequester(modalFocusRequester) else Modifier
                                 SlooshButton(
-                                    text = audio.title,
+                                    text = com.sloosh.tv.ui.util.cleanTranslationName(audio.title),
                                     isWhite = state.currentAudio?.id == audio.id || state.currentAudio?.title == audio.title,
                                     onClick = {
                                         lastPreservedPositionMs = exoPlayer.currentPosition
