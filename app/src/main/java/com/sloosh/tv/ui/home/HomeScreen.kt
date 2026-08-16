@@ -164,13 +164,13 @@ fun MediaCard(
     modifier: Modifier = Modifier,
     onFocus: (() -> Unit)? = null
 ) {
-    Column(modifier = Modifier.width(155.dp)) {
-        // ─── Poster (ONLY the poster scales and focuses) ───────────────
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // ─── Poster (True 2:3 aspect ratio, no top/bottom cropping) ─────
         SlooshFocusableCard(
             onClick = onClick,
             modifier = modifier
-                .width(155.dp)
-                .height(225.dp),
+                .fillMaxWidth()
+                .aspectRatio(2f / 3f),
             shape = ContinuousRoundedRectangle(16.dp)
         ) { cardFocused ->
             if (onFocus != null) {
