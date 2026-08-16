@@ -179,13 +179,13 @@ private fun SidePosterDetailsLayout(
                 contentDescription = null,
                 modifier = Modifier
                     .fillMaxHeight()
-                    .fillMaxWidth(0.82f),
+                    .fillMaxWidth(0.70f),
                 alignment = Alignment.Center,
                 contentScale = ContentScale.Crop
             )
         }
 
-        // Horizontal gradient: Solid on the left for text readability -> fades smoothly to transparent on the right
+        // Silky Soft Horizontal Gradient: Smooth and gentle transition from left to right
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -193,26 +193,27 @@ private fun SidePosterDetailsLayout(
                     Brush.horizontalGradient(
                         colorStops = arrayOf(
                             0.0f to BackgroundDark,
-                            0.38f to BackgroundDark,
-                            0.55f to BackgroundDark.copy(alpha = 0.85f),
-                            0.72f to BackgroundDark.copy(alpha = 0.35f),
+                            0.20f to BackgroundDark.copy(alpha = 0.88f),
+                            0.38f to BackgroundDark.copy(alpha = 0.55f),
+                            0.55f to BackgroundDark.copy(alpha = 0.22f),
+                            0.70f to Color.Transparent,
                             1.0f to Color.Transparent
                         )
                     )
                 )
         )
 
-        // Soft Top and Bottom edge gradients for seamless TV blending
+        // Subtle Top and Bottom edge gradients
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
                         colorStops = arrayOf(
-                            0.0f to BackgroundDark.copy(alpha = 0.35f),
-                            0.18f to Color.Transparent,
-                            0.75f to Color.Transparent,
-                            1.0f to BackgroundDark.copy(alpha = 0.80f)
+                            0.0f to BackgroundDark.copy(alpha = 0.25f),
+                            0.15f to Color.Transparent,
+                            0.80f to Color.Transparent,
+                            1.0f to BackgroundDark.copy(alpha = 0.50f)
                         )
                     )
                 )
