@@ -184,15 +184,22 @@ private fun SidePosterDetailsLayout(
                 modifier = Modifier
                     .fillMaxHeight()
                     .aspectRatio(16f / 9f)
-                    .offset(x = 120.dp)
+                    .offset(x = 155.dp)
                     .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
                     .drawWithContent {
                         drawContent()
                         drawRect(
                             brush = Brush.horizontalGradient(
-                                colors = listOf(Color.Transparent, Color.Black),
+                                colorStops = arrayOf(
+                                    0.0f to Color.Transparent,
+                                    0.22f to Color.Black.copy(alpha = 0.08f),
+                                    0.42f to Color.Black.copy(alpha = 0.35f),
+                                    0.68f to Color.Black.copy(alpha = 0.75f),
+                                    0.88f to Color.Black.copy(alpha = 0.95f),
+                                    1.0f to Color.Black
+                                ),
                                 startX = 0f,
-                                endX = size.width * 0.52f
+                                endX = size.width * 0.58f
                             ),
                             blendMode = BlendMode.DstIn
                         )
