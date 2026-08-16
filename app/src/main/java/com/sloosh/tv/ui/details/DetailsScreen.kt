@@ -107,7 +107,8 @@ fun DetailsScreen(
                 details = details,
                 state = state,
                 viewModel = viewModel,
-                watchButtonFocusRequester = watchButtonFocusRequester
+                watchButtonFocusRequester = watchButtonFocusRequester,
+                onBackClick = onBackClick
             )
         } else {
             CenteredDetailsLayout(
@@ -702,8 +703,15 @@ private fun SidePosterDetailsLayout(
     details: MediaDetailsDto,
     state: DetailsUiState,
     viewModel: DetailsViewModel,
-    watchButtonFocusRequester: FocusRequester
+    watchButtonFocusRequester: FocusRequester,
+    onBackClick: (() -> Unit)? = null
 ) {
+    val scrollState = rememberScrollState()
+    val coroutineScope = rememberCoroutineScope()
+    val backButtonFocusRequester = remember { FocusRequester() }
+    val moreButtonFocusRequester = remember { FocusRequester() }
+    var isExpanded by remember { mutableStateOf(false) }
+
     Box(modifier = Modifier.fillMaxSize()) {
         val backdropUrl = details.getDisplayBackdropUrl() ?: details.getDisplayPosterUrl()
         AsyncImage(
@@ -756,7 +764,7 @@ private fun SidePosterDetailsLayout(
             modifier = Modifier
                 .fillMaxHeight()
                 .fillMaxWidth(0.62f)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(start = 80.dp, top = 48.dp, end = 32.dp, bottom = 48.dp)
         ) {
             val logoUrl = details.getDisplayLogoUrl()
@@ -858,16 +866,169 @@ private fun SidePosterDetailsLayout(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
+            // Description (3 lines max with inline 'ЕЩЁ' on line 3)
             if (!details.description.isNullOrEmpty()) {
-                Text(
-                    text = details.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.72f),
-                    lineHeight = 22.sp,
-                    maxLines = 6,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(28.dp))
+                val desc = details.description
+                val canExpand = desc.length > 140
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(end = 16.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    if (!isExpanded) {
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = desc,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontSize = 13.5.sp,
+                                    lineHeight = 19.5.sp
+                                ),
+                                color = Color.White.copy(alpha = 0.72f),
+                                textAlign = TextAlign.Start,
+                                maxLines = 3,
+                                overflow = TextOverflow.Clip,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            if (canExpand) {
+                                Row(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .background(
+                                            Brush.horizontalGradient(
+                                                0.0f to Color.Transparent,
+                                                0.30f to BackgroundDark,
+                                                1.0f to BackgroundDark
+                                            )
+                                        )
+                                        .padding(start = 28.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    SlooshFocusableCard(
+                                        onClick = { isExpanded = true },
+                                        shape = ContinuousCapsule,
+                                        modifier = Modifier
+                                            .focusRequester(moreButtonFocusRequester)
+                                            .onPreviewKeyEvent { keyEvent ->
+                                                if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                                                    when (keyEvent.nativeKeyEvent.keyCode) {
+                                                        android.view.KeyEvent.KEYCODE_DPAD_UP -> {
+                                                            try {
+                                                                if (onBackClick != null) {
+                                                                    backButtonFocusRequester.requestFocus()
+                                                                    true
+                                                                } else false
+                                                            } catch (e: Exception) {
+                                                                false
+                                                            }
+                                                        }
+                                                        android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                                            try {
+                                                                watchButtonFocusRequester.requestFocus()
+                                                                true
+                                                            } catch (e: Exception) {
+                                                                false
+                                                            }
+                                                        }
+                                                        else -> false
+                                                    }
+                                                } else false
+                                            }
+                                    ) { isFocused ->
+                                        Box(
+                                            modifier = Modifier
+                                                .background(
+                                                    if (isFocused) Color.White.copy(alpha = 0.28f)
+                                                    else Color.White.copy(alpha = 0.12f)
+                                                )
+                                                .padding(horizontal = 9.dp, vertical = 3.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "ЕЩЁ",
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 11.sp,
+                                                    letterSpacing = 0.6.sp
+                                                ),
+                                                color = if (isFocused) Color.White else Color.White.copy(alpha = 0.85f)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = desc,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontSize = 13.5.sp,
+                                    lineHeight = 19.5.sp
+                                ),
+                                color = Color.White.copy(alpha = 0.72f),
+                                textAlign = TextAlign.Start,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            SlooshFocusableCard(
+                                onClick = { isExpanded = false },
+                                shape = ContinuousCapsule,
+                                modifier = Modifier
+                                    .align(Alignment.End)
+                                    .focusRequester(moreButtonFocusRequester)
+                                    .onPreviewKeyEvent { keyEvent ->
+                                        if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                                            when (keyEvent.nativeKeyEvent.keyCode) {
+                                                android.view.KeyEvent.KEYCODE_DPAD_UP -> {
+                                                    try {
+                                                        if (onBackClick != null) {
+                                                            backButtonFocusRequester.requestFocus()
+                                                            true
+                                                        } else false
+                                                    } catch (e: Exception) {
+                                                        false
+                                                    }
+                                                }
+                                                android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                                    try {
+                                                        watchButtonFocusRequester.requestFocus()
+                                                        true
+                                                    } catch (e: Exception) {
+                                                        false
+                                                    }
+                                                }
+                                                else -> false
+                                            }
+                                        } else false
+                                    }
+                            ) { isFocused ->
+                                Box(
+                                    modifier = Modifier
+                                        .background(
+                                            if (isFocused) Color.White.copy(alpha = 0.28f)
+                                            else Color.White.copy(alpha = 0.12f)
+                                        )
+                                        .padding(horizontal = 9.dp, vertical = 3.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "СВЕРНУТЬ",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp,
+                                            letterSpacing = 0.6.sp
+                                        ),
+                                        color = if (isFocused) Color.White else Color.White.copy(alpha = 0.85f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(20.dp))
             }
 
             val prog = state.progress
@@ -930,7 +1091,25 @@ private fun SidePosterDetailsLayout(
                             modifier = Modifier.size(24.dp)
                         )
                     },
-                    modifier = Modifier.focusRequester(watchButtonFocusRequester)
+                    modifier = Modifier
+                        .focusRequester(watchButtonFocusRequester)
+                        .onPreviewKeyEvent { keyEvent ->
+                            if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP
+                            ) {
+                                try {
+                                    if (!details.description.isNullOrEmpty() && details.description.length > 140) {
+                                        moreButtonFocusRequester.requestFocus()
+                                        true
+                                    } else if (onBackClick != null) {
+                                        backButtonFocusRequester.requestFocus()
+                                        true
+                                    } else false
+                                } catch (e: Exception) {
+                                    false
+                                }
+                            } else false
+                        }
                 )
 
                 var favBounce by remember { mutableStateOf(false) }
@@ -946,7 +1125,25 @@ private fun SidePosterDetailsLayout(
                         viewModel.toggleFavorite()
                     },
                     shape = CircleShape,
-                    modifier = Modifier.size(52.dp)
+                    modifier = Modifier
+                        .size(52.dp)
+                        .onPreviewKeyEvent { keyEvent ->
+                            if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP
+                            ) {
+                                try {
+                                    if (!details.description.isNullOrEmpty() && details.description.length > 140) {
+                                        moreButtonFocusRequester.requestFocus()
+                                        true
+                                    } else if (onBackClick != null) {
+                                        backButtonFocusRequester.requestFocus()
+                                        true
+                                    } else false
+                                } catch (e: Exception) {
+                                    false
+                                }
+                            } else false
+                        }
                 ) { _ ->
                     Box(
                         modifier = Modifier
@@ -970,6 +1167,59 @@ private fun SidePosterDetailsLayout(
             }
 
             Spacer(modifier = Modifier.height(48.dp))
+        }
+
+        // Top-Left Floating Back Button (if onBackClick provided)
+        if (onBackClick != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 36.dp, top = 36.dp)
+            ) {
+                SlooshFocusableCard(
+                    onClick = onBackClick,
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .focusRequester(backButtonFocusRequester)
+                        .onFocusChanged { focusState ->
+                            if (focusState.isFocused) {
+                                coroutineScope.launch {
+                                    scrollState.animateScrollTo(0)
+                                }
+                            }
+                        }
+                        .onPreviewKeyEvent { keyEvent ->
+                            if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN
+                            ) {
+                                try {
+                                    watchButtonFocusRequester.requestFocus()
+                                    true
+                                } catch (e: Exception) {
+                                    false
+                                }
+                            } else false
+                        }
+                ) { isFocused ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                if (isFocused) Color.White.copy(alpha = 0.25f)
+                                else Color.Black.copy(alpha = 0.40f)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Назад",
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+            }
         }
     }
 }
