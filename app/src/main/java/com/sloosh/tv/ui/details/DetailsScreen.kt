@@ -10,6 +10,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
@@ -23,8 +24,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -44,11 +47,13 @@ import com.sloosh.tv.data.repository.DetailsScreenStyle
 import com.sloosh.tv.ui.components.SlooshButton
 import com.sloosh.tv.ui.components.SlooshFocusableCard
 import com.sloosh.tv.ui.theme.*
+import kotlinx.coroutines.launch
 
 @Composable
 fun DetailsScreen(
     mediaId: String,
     onPlayClick: (String, Int?, Int?, String) -> Unit,
+    onBackClick: (() -> Unit)? = null,
     viewModel: DetailsViewModel = viewModel(),
     modifier: Modifier = Modifier
 ) {
@@ -109,7 +114,8 @@ fun DetailsScreen(
                 details = details,
                 state = state,
                 viewModel = viewModel,
-                watchButtonFocusRequester = watchButtonFocusRequester
+                watchButtonFocusRequester = watchButtonFocusRequester,
+                onBackClick = onBackClick
             )
         }
 
@@ -159,8 +165,13 @@ private fun CenteredDetailsLayout(
     details: MediaDetailsDto,
     state: DetailsUiState,
     viewModel: DetailsViewModel,
-    watchButtonFocusRequester: FocusRequester
+    watchButtonFocusRequester: FocusRequester,
+    onBackClick: (() -> Unit)?
 ) {
+    val scrollState = rememberScrollState()
+    val coroutineScope = rememberCoroutineScope()
+    val backButtonFocusRequester = remember { FocusRequester() }
+
     Box(modifier = Modifier.fillMaxSize()) {
         // Fullscreen Backdrop Image
         val backdropUrl = details.getDisplayBackdropUrl() ?: details.getDisplayPosterUrl()
@@ -215,7 +226,7 @@ private fun CenteredDetailsLayout(
                 modifier = Modifier
                     .fillMaxHeight()
                     .widthIn(max = 760.dp)
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(scrollState)
                     .padding(horizontal = 24.dp, vertical = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -323,10 +334,34 @@ private fun CenteredDetailsLayout(
                     }
                 }
 
-                // 4. Continue Progress Indicator (Under Genres, before Play button)
+                // 4. Description (Pure text, NO container, centered on screen, left-aligned, above buttons)
+                if (!details.description.isNullOrEmpty()) {
+                    Spacer(modifier = Modifier.height(18.dp))
+                    Box(
+                        modifier = Modifier
+                            .widthIn(max = 680.dp)
+                            .fillMaxWidth(),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Text(
+                            text = details.description,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontSize = 15.sp,
+                                lineHeight = 22.sp
+                            ),
+                            color = Color.White.copy(alpha = 0.78f),
+                            textAlign = TextAlign.Start,
+                            maxLines = 5,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+
+                // 5. Continue Progress Indicator (Under Description, before Play button)
                 val prog = state.progress
                 if (prog != null && prog.progressFraction > 0.01f) {
-                    Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
                     val posSec = prog.positionSec.toInt()
                     val durSec = prog.durationSec.toInt()
                     val posStr = String.format("%02d:%02d", posSec / 60, posSec % 60)
@@ -365,7 +400,7 @@ private fun CenteredDetailsLayout(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // 5. Action Buttons Row (Play/Continue + Favorite Heart)
+                // 6. Action Buttons Row (Play/Continue + Favorite Heart)
                 val hasProgress = prog != null && prog.positionSec > 10
                 val buttonText = if (hasProgress) {
                     val posStr = String.format("%02d:%02d", prog!!.positionSec.toInt() / 60, prog.positionSec.toInt() % 60)
@@ -388,7 +423,20 @@ private fun CenteredDetailsLayout(
                                 modifier = Modifier.size(24.dp)
                             )
                         },
-                        modifier = Modifier.focusRequester(watchButtonFocusRequester)
+                        modifier = Modifier
+                            .focusRequester(watchButtonFocusRequester)
+                            .onPreviewKeyEvent { keyEvent ->
+                                if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                    keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP
+                                ) {
+                                    try {
+                                        backButtonFocusRequester.requestFocus()
+                                        true
+                                    } catch (e: Exception) {
+                                        false
+                                    }
+                                } else false
+                            }
                     )
 
                     var favBounce by remember { mutableStateOf(false) }
@@ -404,7 +452,20 @@ private fun CenteredDetailsLayout(
                             viewModel.toggleFavorite()
                         },
                         shape = CircleShape,
-                        modifier = Modifier.size(52.dp)
+                        modifier = Modifier
+                            .size(52.dp)
+                            .onPreviewKeyEvent { keyEvent ->
+                                if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                    keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP
+                                ) {
+                                    try {
+                                        backButtonFocusRequester.requestFocus()
+                                        true
+                                    } catch (e: Exception) {
+                                        false
+                                    }
+                                } else false
+                            }
                     ) { _ ->
                         Box(
                             modifier = Modifier
@@ -427,45 +488,60 @@ private fun CenteredDetailsLayout(
                     }
                 }
 
-                // 6. Focusable Description Card (allows TV D-pad navigation & smooth auto-scroll)
-                if (!details.description.isNullOrEmpty()) {
-                    Spacer(modifier = Modifier.height(24.dp))
-                    var isExpanded by remember { mutableStateOf(false) }
+                Spacer(modifier = Modifier.height(64.dp))
+            }
+        }
 
-                    SlooshFocusableCard(
-                        onClick = { isExpanded = !isExpanded },
-                        shape = ContinuousRoundedRectangle(16.dp),
-                        focusedScale = 1.02f,
-                        modifier = Modifier
-                            .widthIn(max = 680.dp)
-                            .fillMaxWidth()
-                    ) { isFocused ->
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(
-                                    if (isFocused) Color.White.copy(alpha = 0.10f)
-                                    else Color.White.copy(alpha = 0.04f)
-                                )
-                                .padding(horizontal = 20.dp, vertical = 14.dp)
-                        ) {
-                            Text(
-                                text = details.description,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontSize = 15.sp,
-                                    lineHeight = 22.sp
-                                ),
-                                color = if (isFocused) Color.White else Color.White.copy(alpha = 0.78f),
-                                textAlign = TextAlign.Start,
-                                maxLines = if (isExpanded) 30 else 5,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.fillMaxWidth()
-                            )
+        // Top-Left Floating Glass Back Button (smoothly scrolls back to top when focused)
+        if (onBackClick != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 36.dp, top = 36.dp)
+            ) {
+                SlooshFocusableCard(
+                    onClick = onBackClick,
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .focusRequester(backButtonFocusRequester)
+                        .onFocusChanged { focusState ->
+                            if (focusState.isFocused) {
+                                coroutineScope.launch {
+                                    scrollState.animateScrollTo(0)
+                                }
+                            }
                         }
+                        .onPreviewKeyEvent { keyEvent ->
+                            if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN
+                            ) {
+                                try {
+                                    watchButtonFocusRequester.requestFocus()
+                                    true
+                                } catch (e: Exception) {
+                                    false
+                                }
+                            } else false
+                        }
+                ) { isFocused ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                if (isFocused) Color.White.copy(alpha = 0.25f)
+                                else Color.Black.copy(alpha = 0.40f)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Назад",
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
                     }
                 }
-
-                Spacer(modifier = Modifier.height(64.dp))
             }
         }
     }

@@ -185,6 +185,7 @@ private fun AppNavHost(
             val mediaId = backStack.arguments?.getString("mediaId") ?: ""
             DetailsScreen(
                 mediaId = mediaId,
+                onBackClick = { navController.popBackStack() },
                 onPlayClick = { iframeUrl, season, episode, movieTitle ->
                     val encodedUrl = android.util.Base64.encodeToString(
                         iframeUrl.toByteArray(StandardCharsets.UTF_8),
