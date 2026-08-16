@@ -296,7 +296,8 @@ private fun SidePosterDetailsLayout(
                     fontSize = 36.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
-                    lineHeight = 42.sp
+                    lineHeight = 42.sp,
+                    letterSpacing = (-0.4).sp
                 )
                 Spacer(modifier = Modifier.height(16.dp))
             }
@@ -478,7 +479,7 @@ private fun SidePosterDetailsLayout(
                                             style = MaterialTheme.typography.labelSmall.copy(
                                                 fontWeight = FontWeight.Bold,
                                                 fontSize = 11.sp,
-                                                letterSpacing = 0.6.sp
+                                                letterSpacing = 0.1.sp
                                             ),
                                             color = if (isFocused) Color.White else Color.White.copy(alpha = 0.90f)
                                         )
@@ -545,7 +546,7 @@ private fun SidePosterDetailsLayout(
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 11.sp,
-                                            letterSpacing = 0.6.sp
+                                            letterSpacing = 0.1.sp
                                         ),
                                         color = if (isFocused) Color.White else Color.White.copy(alpha = 0.90f)
                                     )

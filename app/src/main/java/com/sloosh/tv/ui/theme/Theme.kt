@@ -39,6 +39,7 @@ fun SlooshTVTheme(
 
     MaterialTheme(
         colorScheme = colors,
+        typography = SlooshTypography,
         content = content
     )
 }
