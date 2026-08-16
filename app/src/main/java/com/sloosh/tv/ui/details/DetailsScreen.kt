@@ -231,7 +231,7 @@ private fun CenteredDetailsLayout(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // Generous top spacing to lower all elements down to the lower half
-                Spacer(modifier = Modifier.height(180.dp))
+                Spacer(modifier = Modifier.height(230.dp))
 
                 // 1. Logo or Title (Centered, refined size)
                 val logoUrl = details.getDisplayLogoUrl()
@@ -334,34 +334,94 @@ private fun CenteredDetailsLayout(
                     }
                 }
 
-                // 4. Description (Pure text, NO container, centered on screen, left-aligned, above buttons)
+                // 4. Description (Width-bounded to 520dp, 3 lines max, with 'ещё' button)
+                val moreButtonFocusRequester = remember { FocusRequester() }
+                var isExpanded by remember { mutableStateOf(false) }
+
                 if (!details.description.isNullOrEmpty()) {
-                    Spacer(modifier = Modifier.height(18.dp))
-                    Box(
+                    val desc = details.description
+                    val canExpand = desc.length > 140
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Column(
                         modifier = Modifier
-                            .widthIn(max = 680.dp)
-                            .fillMaxWidth(),
-                        contentAlignment = Alignment.CenterStart
+                            .widthIn(max = 520.dp)
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = details.description,
+                            text = desc,
                             style = MaterialTheme.typography.bodyMedium.copy(
-                                fontSize = 15.sp,
-                                lineHeight = 22.sp
+                                fontSize = 14.5.sp,
+                                lineHeight = 21.sp
                             ),
                             color = Color.White.copy(alpha = 0.78f),
                             textAlign = TextAlign.Start,
-                            maxLines = 5,
+                            maxLines = if (isExpanded) 25 else 3,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.fillMaxWidth()
                         )
+
+                        if (canExpand) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            SlooshFocusableCard(
+                                onClick = { isExpanded = !isExpanded },
+                                shape = ContinuousCapsule,
+                                modifier = Modifier
+                                    .align(Alignment.End)
+                                    .focusRequester(moreButtonFocusRequester)
+                                    .onPreviewKeyEvent { keyEvent ->
+                                        if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                                            when (keyEvent.nativeKeyEvent.keyCode) {
+                                                android.view.KeyEvent.KEYCODE_DPAD_UP -> {
+                                                    try {
+                                                        backButtonFocusRequester.requestFocus()
+                                                        true
+                                                    } catch (e: Exception) {
+                                                        false
+                                                    }
+                                                }
+                                                android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                                    try {
+                                                        watchButtonFocusRequester.requestFocus()
+                                                        true
+                                                    } catch (e: Exception) {
+                                                        false
+                                                    }
+                                                }
+                                                else -> false
+                                            }
+                                        } else false
+                                    }
+                            ) { isFocused ->
+                                Box(
+                                    modifier = Modifier
+                                        .background(
+                                            if (isFocused) Color.White.copy(alpha = 0.25f)
+                                            else Color.White.copy(alpha = 0.10f)
+                                        )
+                                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = if (isExpanded) "Свернуть" else "ещё",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 12.sp
+                                        ),
+                                        color = if (isFocused) Color.White else SlooshGreen
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
                 // 5. Continue Progress Indicator (Under Description, before Play button)
                 val prog = state.progress
                 if (prog != null && prog.progressFraction > 0.01f) {
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
                     val posSec = prog.positionSec.toInt()
                     val durSec = prog.durationSec.toInt()
                     val posStr = String.format("%02d:%02d", posSec / 60, posSec % 60)
@@ -398,7 +458,7 @@ private fun CenteredDetailsLayout(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(18.dp))
 
                 // 6. Action Buttons Row (Play/Continue + Favorite Heart)
                 val hasProgress = prog != null && prog.positionSec > 10
@@ -430,7 +490,11 @@ private fun CenteredDetailsLayout(
                                     keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP
                                 ) {
                                     try {
-                                        backButtonFocusRequester.requestFocus()
+                                        if (!details.description.isNullOrEmpty() && details.description.length > 140) {
+                                            moreButtonFocusRequester.requestFocus()
+                                        } else {
+                                            backButtonFocusRequester.requestFocus()
+                                        }
                                         true
                                     } catch (e: Exception) {
                                         false
@@ -459,7 +523,11 @@ private fun CenteredDetailsLayout(
                                     keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP
                                 ) {
                                     try {
-                                        backButtonFocusRequester.requestFocus()
+                                        if (!details.description.isNullOrEmpty() && details.description.length > 140) {
+                                            moreButtonFocusRequester.requestFocus()
+                                        } else {
+                                            backButtonFocusRequester.requestFocus()
+                                        }
                                         true
                                     } catch (e: Exception) {
                                         false
