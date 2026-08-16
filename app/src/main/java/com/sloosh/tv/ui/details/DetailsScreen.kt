@@ -21,12 +21,18 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -334,7 +340,7 @@ private fun CenteredDetailsLayout(
                     }
                 }
 
-                // 4. Description (Width-bounded to 520dp, 3 lines max with inline 'ЕЩЁ' on line 3)
+                // 4. Description (Width-bounded to 520dp, 3 lines max with true alpha fade on line 3)
                 val moreButtonFocusRequester = remember { FocusRequester() }
                 var isExpanded by remember { mutableStateOf(false) }
 
@@ -362,71 +368,81 @@ private fun CenteredDetailsLayout(
                                     textAlign = TextAlign.Start,
                                     maxLines = 3,
                                     overflow = TextOverflow.Clip,
-                                    modifier = Modifier.fillMaxWidth()
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .then(
+                                            if (canExpand) {
+                                                Modifier
+                                                    .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                                                    .drawWithContent {
+                                                        drawContent()
+                                                        val fadeWidth = 65.dp.toPx()
+                                                        val fadeHeight = 22.dp.toPx()
+                                                        val buttonWidth = 52.dp.toPx()
+                                                        drawRect(
+                                                            brush = Brush.horizontalGradient(
+                                                                colors = listOf(Color.Black, Color.Transparent),
+                                                                startX = size.width - fadeWidth - buttonWidth,
+                                                                endX = size.width - buttonWidth + 8.dp.toPx()
+                                                            ),
+                                                            topLeft = Offset(size.width - fadeWidth - buttonWidth, size.height - fadeHeight),
+                                                            size = Size(fadeWidth + buttonWidth, fadeHeight),
+                                                            blendMode = BlendMode.DstIn
+                                                        )
+                                                    }
+                                            } else Modifier
+                                        )
                                 )
 
                                 if (canExpand) {
-                                    Row(
+                                    SlooshFocusableCard(
+                                        onClick = { isExpanded = true },
+                                        shape = ContinuousCapsule,
                                         modifier = Modifier
                                             .align(Alignment.BottomEnd)
-                                            .background(
-                                                Brush.horizontalGradient(
-                                                    0.0f to Color.Transparent,
-                                                    0.30f to BackgroundDark,
-                                                    1.0f to BackgroundDark
-                                                )
-                                            )
-                                            .padding(start = 28.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        SlooshFocusableCard(
-                                            onClick = { isExpanded = true },
-                                            shape = ContinuousCapsule,
-                                            modifier = Modifier
-                                                .focusRequester(moreButtonFocusRequester)
-                                                .onPreviewKeyEvent { keyEvent ->
-                                                    if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
-                                                        when (keyEvent.nativeKeyEvent.keyCode) {
-                                                            android.view.KeyEvent.KEYCODE_DPAD_UP -> {
-                                                                try {
-                                                                    backButtonFocusRequester.requestFocus()
-                                                                    true
-                                                                } catch (e: Exception) {
-                                                                    false
-                                                                }
+                                            .focusRequester(moreButtonFocusRequester)
+                                            .onPreviewKeyEvent { keyEvent ->
+                                                if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                                                    when (keyEvent.nativeKeyEvent.keyCode) {
+                                                        android.view.KeyEvent.KEYCODE_DPAD_UP -> {
+                                                            try {
+                                                                backButtonFocusRequester.requestFocus()
+                                                                true
+                                                            } catch (e: Exception) {
+                                                                false
                                                             }
-                                                            android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
-                                                                try {
-                                                                    watchButtonFocusRequester.requestFocus()
-                                                                    true
-                                                                } catch (e: Exception) {
-                                                                    false
-                                                                }
-                                                            }
-                                                            else -> false
                                                         }
-                                                    } else false
-                                                }
-                                        ) { isFocused ->
-                                            Box(
-                                                modifier = Modifier
-                                                    .background(
-                                                        if (isFocused) Color.White.copy(alpha = 0.28f)
-                                                        else Color.White.copy(alpha = 0.12f)
-                                                    )
-                                                    .padding(horizontal = 9.dp, vertical = 3.dp),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Text(
-                                                    text = "ЕЩЁ",
-                                                    style = MaterialTheme.typography.labelSmall.copy(
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontSize = 11.sp,
-                                                        letterSpacing = 0.6.sp
-                                                    ),
-                                                    color = if (isFocused) Color.White else Color.White.copy(alpha = 0.85f)
-                                                )
+                                                        android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                                            try {
+                                                                watchButtonFocusRequester.requestFocus()
+                                                                true
+                                                            } catch (e: Exception) {
+                                                                false
+                                                            }
+                                                        }
+                                                        else -> false
+                                                    }
+                                                } else false
                                             }
+                                    ) { isFocused ->
+                                        Box(
+                                            modifier = Modifier
+                                                .background(
+                                                    if (isFocused) Color.White.copy(alpha = 0.30f)
+                                                    else Color.White.copy(alpha = 0.14f)
+                                                )
+                                                .padding(horizontal = 9.dp, vertical = 3.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "ЕЩЁ",
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 11.sp,
+                                                    letterSpacing = 0.6.sp
+                                                ),
+                                                color = if (isFocused) Color.White else Color.White.copy(alpha = 0.90f)
+                                            )
                                         }
                                     }
                                 }
@@ -477,8 +493,8 @@ private fun CenteredDetailsLayout(
                                     Box(
                                         modifier = Modifier
                                             .background(
-                                                if (isFocused) Color.White.copy(alpha = 0.28f)
-                                                else Color.White.copy(alpha = 0.12f)
+                                                if (isFocused) Color.White.copy(alpha = 0.30f)
+                                                else Color.White.copy(alpha = 0.14f)
                                             )
                                             .padding(horizontal = 9.dp, vertical = 3.dp),
                                         contentAlignment = Alignment.Center
@@ -490,7 +506,7 @@ private fun CenteredDetailsLayout(
                                                 fontSize = 11.sp,
                                                 letterSpacing = 0.6.sp
                                             ),
-                                            color = if (isFocused) Color.White else Color.White.copy(alpha = 0.85f)
+                                            color = if (isFocused) Color.White else Color.White.copy(alpha = 0.90f)
                                         )
                                     }
                                 }
@@ -866,7 +882,7 @@ private fun SidePosterDetailsLayout(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // Description (3 lines max with inline 'ЕЩЁ' on line 3)
+            // Description (3 lines max with true alpha fade on line 3)
             if (!details.description.isNullOrEmpty()) {
                 val desc = details.description
                 val canExpand = desc.length > 140
@@ -889,73 +905,83 @@ private fun SidePosterDetailsLayout(
                                 textAlign = TextAlign.Start,
                                 maxLines = 3,
                                 overflow = TextOverflow.Clip,
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .then(
+                                        if (canExpand) {
+                                            Modifier
+                                                .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                                                .drawWithContent {
+                                                    drawContent()
+                                                    val fadeWidth = 65.dp.toPx()
+                                                    val fadeHeight = 22.dp.toPx()
+                                                    val buttonWidth = 52.dp.toPx()
+                                                    drawRect(
+                                                        brush = Brush.horizontalGradient(
+                                                            colors = listOf(Color.Black, Color.Transparent),
+                                                            startX = size.width - fadeWidth - buttonWidth,
+                                                            endX = size.width - buttonWidth + 8.dp.toPx()
+                                                        ),
+                                                        topLeft = Offset(size.width - fadeWidth - buttonWidth, size.height - fadeHeight),
+                                                        size = Size(fadeWidth + buttonWidth, fadeHeight),
+                                                        blendMode = BlendMode.DstIn
+                                                    )
+                                                }
+                                        } else Modifier
+                                    )
                             )
 
                             if (canExpand) {
-                                Row(
+                                SlooshFocusableCard(
+                                    onClick = { isExpanded = true },
+                                    shape = ContinuousCapsule,
                                     modifier = Modifier
                                         .align(Alignment.BottomEnd)
-                                        .background(
-                                            Brush.horizontalGradient(
-                                                0.0f to Color.Transparent,
-                                                0.30f to BackgroundDark,
-                                                1.0f to BackgroundDark
-                                            )
-                                        )
-                                        .padding(start = 28.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    SlooshFocusableCard(
-                                        onClick = { isExpanded = true },
-                                        shape = ContinuousCapsule,
-                                        modifier = Modifier
-                                            .focusRequester(moreButtonFocusRequester)
-                                            .onPreviewKeyEvent { keyEvent ->
-                                                if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
-                                                    when (keyEvent.nativeKeyEvent.keyCode) {
-                                                        android.view.KeyEvent.KEYCODE_DPAD_UP -> {
-                                                            try {
-                                                                if (onBackClick != null) {
-                                                                    backButtonFocusRequester.requestFocus()
-                                                                    true
-                                                                } else false
-                                                            } catch (e: Exception) {
-                                                                false
-                                                            }
-                                                        }
-                                                        android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
-                                                            try {
-                                                                watchButtonFocusRequester.requestFocus()
+                                        .focusRequester(moreButtonFocusRequester)
+                                        .onPreviewKeyEvent { keyEvent ->
+                                            if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                                                when (keyEvent.nativeKeyEvent.keyCode) {
+                                                    android.view.KeyEvent.KEYCODE_DPAD_UP -> {
+                                                        try {
+                                                            if (onBackClick != null) {
+                                                                backButtonFocusRequester.requestFocus()
                                                                 true
-                                                            } catch (e: Exception) {
-                                                                false
-                                                            }
+                                                            } else false
+                                                        } catch (e: Exception) {
+                                                            false
                                                         }
-                                                        else -> false
                                                     }
-                                                } else false
-                                            }
-                                    ) { isFocused ->
-                                        Box(
-                                            modifier = Modifier
-                                                .background(
-                                                    if (isFocused) Color.White.copy(alpha = 0.28f)
-                                                    else Color.White.copy(alpha = 0.12f)
-                                                )
-                                                .padding(horizontal = 9.dp, vertical = 3.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = "ЕЩЁ",
-                                                style = MaterialTheme.typography.labelSmall.copy(
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 11.sp,
-                                                    letterSpacing = 0.6.sp
-                                                ),
-                                                color = if (isFocused) Color.White else Color.White.copy(alpha = 0.85f)
-                                            )
+                                                    android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                                        try {
+                                                            watchButtonFocusRequester.requestFocus()
+                                                            true
+                                                        } catch (e: Exception) {
+                                                            false
+                                                        }
+                                                    }
+                                                    else -> false
+                                                }
+                                            } else false
                                         }
+                                ) { isFocused ->
+                                    Box(
+                                        modifier = Modifier
+                                            .background(
+                                                if (isFocused) Color.White.copy(alpha = 0.30f)
+                                                else Color.White.copy(alpha = 0.14f)
+                                            )
+                                            .padding(horizontal = 9.dp, vertical = 3.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "ЕЩЁ",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 11.sp,
+                                                letterSpacing = 0.6.sp
+                                            ),
+                                            color = if (isFocused) Color.White else Color.White.copy(alpha = 0.90f)
+                                        )
                                     }
                                 }
                             }
@@ -1008,8 +1034,8 @@ private fun SidePosterDetailsLayout(
                                 Box(
                                     modifier = Modifier
                                         .background(
-                                            if (isFocused) Color.White.copy(alpha = 0.28f)
-                                            else Color.White.copy(alpha = 0.12f)
+                                            if (isFocused) Color.White.copy(alpha = 0.30f)
+                                            else Color.White.copy(alpha = 0.14f)
                                         )
                                         .padding(horizontal = 9.dp, vertical = 3.dp),
                                     contentAlignment = Alignment.Center
@@ -1021,7 +1047,7 @@ private fun SidePosterDetailsLayout(
                                             fontSize = 11.sp,
                                             letterSpacing = 0.6.sp
                                         ),
-                                        color = if (isFocused) Color.White else Color.White.copy(alpha = 0.85f)
+                                        color = if (isFocused) Color.White else Color.White.copy(alpha = 0.90f)
                                     )
                                 }
                             }
