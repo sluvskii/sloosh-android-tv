@@ -37,7 +37,6 @@ fun SettingsScreen(
     val coroutineScope = rememberCoroutineScope()
     val appSettings = remember { com.sloosh.tv.data.repository.AppSettings(context) }
 
-    var detailsStyle by remember { mutableStateOf(appSettings.detailsStyle) }
     var isHighPosterQuality by remember { mutableStateOf(appSettings.isHighPosterQuality) }
     var isAutoplayEnabled by remember { mutableStateOf(appSettings.isAutoplayEnabled) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
@@ -80,44 +79,6 @@ fun SettingsScreen(
                 contentPadding = PaddingValues(bottom = 80.dp),
                 modifier = Modifier.fillMaxWidth(0.72f)
             ) {
-
-                // ─── Section: Внешний вид ─────────────────────────────
-                item {
-                    SectionHeader("Внешний вид")
-                }
-
-                item {
-                    SettingCard(
-                        icon = Icons.Default.Star,
-                        title = "Стиль экрана фильма",
-                        description = if (detailsStyle == com.sloosh.tv.data.repository.DetailsScreenStyle.CENTERED)
-                            "По центру (iOS-стиль с плавным затуханием обложки)"
-                        else
-                            "С постером сбоку (Классический стиль)",
-                        action = {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                SlooshButton(
-                                    text = "По центру",
-                                    isPrimary = detailsStyle == com.sloosh.tv.data.repository.DetailsScreenStyle.CENTERED,
-                                    onClick = {
-                                        detailsStyle = com.sloosh.tv.data.repository.DetailsScreenStyle.CENTERED
-                                        appSettings.detailsStyle = com.sloosh.tv.data.repository.DetailsScreenStyle.CENTERED
-                                        statusMessage = "✓ Стиль экрана фильма изменён"
-                                    }
-                                )
-                                SlooshButton(
-                                    text = "С постером",
-                                    isPrimary = detailsStyle == com.sloosh.tv.data.repository.DetailsScreenStyle.SIDE_POSTER,
-                                    onClick = {
-                                        detailsStyle = com.sloosh.tv.data.repository.DetailsScreenStyle.SIDE_POSTER
-                                        appSettings.detailsStyle = com.sloosh.tv.data.repository.DetailsScreenStyle.SIDE_POSTER
-                                        statusMessage = "✓ Стиль экрана фильма изменён"
-                                    }
-                                )
-                            }
-                        }
-                    )
-                }
 
                 // ─── Section: Воспроизведение ─────────────────────────
                 item {
