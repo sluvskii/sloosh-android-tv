@@ -183,14 +183,16 @@ private fun SidePosterDetailsLayout(
                     Brush.horizontalGradient(
                         colorStops = arrayOf(
                             0.0f to ambientColor,
-                            0.35f to ambientColor.copy(alpha = 0.85f),
-                            0.65f to Color.Transparent
+                            0.25f to ambientColor.copy(alpha = 0.90f),
+                            0.45f to ambientColor.copy(alpha = 0.60f),
+                            0.65f to ambientColor.copy(alpha = 0.25f),
+                            0.85f to Color.Transparent
                         )
                     )
                 )
         )
 
-        // Native aspect-ratio backdrop shifted to the right, with genuine alpha fade on its left edge
+        // Native aspect-ratio backdrop shifted to the right, with ultra-smooth alpha fade on its left edge
         Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.CenterEnd
@@ -209,14 +211,16 @@ private fun SidePosterDetailsLayout(
                             brush = Brush.horizontalGradient(
                                 colorStops = arrayOf(
                                     0.0f to Color.Transparent,
-                                    0.22f to Color.Black.copy(alpha = 0.08f),
-                                    0.42f to Color.Black.copy(alpha = 0.35f),
-                                    0.68f to Color.Black.copy(alpha = 0.75f),
-                                    0.88f to Color.Black.copy(alpha = 0.95f),
+                                    0.15f to Color.Black.copy(alpha = 0.03f),
+                                    0.30f to Color.Black.copy(alpha = 0.12f),
+                                    0.45f to Color.Black.copy(alpha = 0.30f),
+                                    0.60f to Color.Black.copy(alpha = 0.55f),
+                                    0.75f to Color.Black.copy(alpha = 0.80f),
+                                    0.90f to Color.Black.copy(alpha = 0.96f),
                                     1.0f to Color.Black
                                 ),
                                 startX = 0f,
-                                endX = size.width * 0.58f
+                                endX = size.width * 0.72f
                             ),
                             blendMode = BlendMode.DstIn
                         )
