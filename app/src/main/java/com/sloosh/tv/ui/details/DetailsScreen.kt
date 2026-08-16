@@ -178,10 +178,10 @@ private fun CenteredDetailsLayout(
                 .background(
                     Brush.verticalGradient(
                         colorStops = arrayOf(
-                            0.0f to Color.Black.copy(alpha = 0.50f),
-                            0.25f to Color.Black.copy(alpha = 0.35f),
-                            0.50f to Color.Black.copy(alpha = 0.65f),
-                            0.75f to Color.Black.copy(alpha = 0.88f),
+                            0.0f to Color.Black.copy(alpha = 0.35f),
+                            0.20f to Color.Black.copy(alpha = 0.25f),
+                            0.45f to Color.Black.copy(alpha = 0.55f),
+                            0.70f to Color.Black.copy(alpha = 0.85f),
                             1.0f to BackgroundDark
                         )
                     )
@@ -195,8 +195,8 @@ private fun CenteredDetailsLayout(
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            Color.Black.copy(alpha = 0.60f),
-                            Color.Black.copy(alpha = 0.30f),
+                            Color.Black.copy(alpha = 0.55f),
+                            Color.Black.copy(alpha = 0.25f),
                             Color.Transparent
                         ),
                         radius = 800f
@@ -204,7 +204,7 @@ private fun CenteredDetailsLayout(
                 )
         )
 
-        // Centered Content Column
+        // Centered Content Column (shifted lower to showcase backdrop)
         Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.TopCenter
@@ -214,20 +214,21 @@ private fun CenteredDetailsLayout(
                     .fillMaxHeight()
                     .widthIn(max = 760.dp)
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 24.dp, vertical = 40.dp),
+                    .padding(horizontal = 24.dp, vertical = 32.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Spacer(modifier = Modifier.height(16.dp))
+                // Generous top spacing to lower all elements down
+                Spacer(modifier = Modifier.height(72.dp))
 
-                // Logo or Title (Centered)
+                // 1. Logo or Title (Centered)
                 val logoUrl = details.getDisplayLogoUrl()
                 if (logoUrl != null) {
                     AsyncImage(
                         model = logoUrl,
                         contentDescription = details.title,
                         modifier = Modifier
-                            .height(88.dp)
-                            .widthIn(max = 360.dp),
+                            .height(92.dp)
+                            .widthIn(max = 380.dp),
                         contentScale = ContentScale.Fit
                     )
                 } else {
@@ -241,7 +242,7 @@ private fun CenteredDetailsLayout(
                     )
                 }
 
-                // Original Title
+                // 2. Original Title (Centered)
                 val originalTitle = details.originalTitle
                 if (!originalTitle.isNullOrBlank() && originalTitle != details.title) {
                     Spacer(modifier = Modifier.height(6.dp))
@@ -255,7 +256,7 @@ private fun CenteredDetailsLayout(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Metadata Row (Rating, Year, Country, Duration)
+                // 3. Metadata Row (Rating, Year, Duration, Country)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -308,10 +309,73 @@ private fun CenteredDetailsLayout(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(18.dp))
+                // 4. Genre Pills (Immediately under Rating/Year/Country)
+                if (!details.genres.isNullOrEmpty()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        details.genres.take(5).forEach { genre ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(ContinuousCapsule)
+                                    .background(Color.White.copy(alpha = 0.12f))
+                                    .padding(horizontal = 14.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = genre,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                    color = Color.White.copy(alpha = 0.9f)
+                                )
+                            }
+                        }
+                    }
+                }
 
-                // Action Buttons Row (Play/Continue + Favorite Heart)
+                // 5. Continue Progress Indicator (Under Genres, before Play button)
                 val prog = state.progress
+                if (prog != null && prog.progressFraction > 0.01f) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    val posSec = prog.positionSec.toInt()
+                    val durSec = prog.durationSec.toInt()
+                    val posStr = String.format("%02d:%02d", posSec / 60, posSec % 60)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = "Просмотрено $posStr",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = SlooshGreen
+                        )
+                        if (durSec > 0) {
+                            val durStr = if (durSec >= 3600)
+                                String.format("%d:%02d:%02d", durSec / 3600, (durSec % 3600) / 60, durSec % 60)
+                            else
+                                String.format("%02d:%02d", durSec / 60, durSec % 60)
+                            Text(
+                                text = " / $durStr",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextMutedDark
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    LinearProgressIndicator(
+                        progress = { prog.progressFraction },
+                        color = SlooshGreen,
+                        trackColor = Color.White.copy(alpha = 0.15f),
+                        modifier = Modifier
+                            .width(360.dp)
+                            .height(3.5.dp)
+                            .clip(ContinuousCapsule)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // 6. Action Buttons Row (Play/Continue + Favorite Heart)
                 val hasProgress = prog != null && prog.positionSec > 10
                 val buttonText = if (hasProgress) {
                     val posStr = String.format("%02d:%02d", prog!!.positionSec.toInt() / 60, prog.positionSec.toInt() % 60)
@@ -373,87 +437,31 @@ private fun CenteredDetailsLayout(
                     }
                 }
 
-                // Continue Progress Indicator
-                if (prog != null && prog.progressFraction > 0.01f) {
-                    Spacer(modifier = Modifier.height(14.dp))
-                    val posSec = prog.positionSec.toInt()
-                    val durSec = prog.durationSec.toInt()
-                    val posStr = String.format("%02d:%02d", posSec / 60, posSec % 60)
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
+                // 7. Description (Centered on screen, but text left-aligned inside)
+                if (!details.description.isNullOrEmpty()) {
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Box(
+                        modifier = Modifier
+                            .widthIn(max = 680.dp)
+                            .fillMaxWidth(),
+                        contentAlignment = Alignment.CenterStart
                     ) {
                         Text(
-                            text = "Просмотрено $posStr",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = SlooshGreen
+                            text = details.description,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontSize = 15.5.sp,
+                                lineHeight = 23.sp
+                            ),
+                            color = Color.White.copy(alpha = 0.78f),
+                            textAlign = TextAlign.Start,
+                            maxLines = 6,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.fillMaxWidth()
                         )
-                        if (durSec > 0) {
-                            val durStr = if (durSec >= 3600)
-                                String.format("%d:%02d:%02d", durSec / 3600, (durSec % 3600) / 60, durSec % 60)
-                            else
-                                String.format("%02d:%02d", durSec / 60, durSec % 60)
-                            Text(
-                                text = " / $durStr",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = TextMutedDark
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    LinearProgressIndicator(
-                        progress = { prog.progressFraction },
-                        color = SlooshGreen,
-                        trackColor = Color.White.copy(alpha = 0.15f),
-                        modifier = Modifier
-                            .width(360.dp)
-                            .height(3.5.dp)
-                            .clip(ContinuousCapsule)
-                    )
-                }
-
-                // Genre Pills
-                if (!details.genres.isNullOrEmpty()) {
-                    Spacer(modifier = Modifier.height(18.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        details.genres.take(5).forEach { genre ->
-                            Box(
-                                modifier = Modifier
-                                    .clip(ContinuousCapsule)
-                                    .background(Color.White.copy(alpha = 0.12f))
-                                    .padding(horizontal = 14.dp, vertical = 6.dp)
-                            ) {
-                                Text(
-                                    text = genre,
-                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                                    color = Color.White.copy(alpha = 0.9f)
-                                )
-                            }
-                        }
                     }
                 }
 
-                // Description
-                if (!details.description.isNullOrEmpty()) {
-                    Spacer(modifier = Modifier.height(18.dp))
-                    Text(
-                        text = details.description,
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontSize = 15.5.sp,
-                            lineHeight = 23.sp
-                        ),
-                        color = Color.White.copy(alpha = 0.78f),
-                        textAlign = TextAlign.Center,
-                        maxLines = 6,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.fillMaxWidth(0.95f)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(48.dp))
+                Spacer(modifier = Modifier.height(56.dp))
             }
         }
     }
