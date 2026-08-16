@@ -219,8 +219,50 @@ private fun SidePosterDetailsLayout(
                 .fillMaxHeight()
                 .fillMaxWidth(0.62f)
                 .verticalScroll(scrollState)
-                .padding(start = 80.dp, top = 48.dp, end = 32.dp, bottom = 48.dp)
+                .padding(start = 56.dp, top = 36.dp, end = 32.dp, bottom = 48.dp)
         ) {
+            // ─── Top Back Button ──────────────────────────────────────────────
+            if (onBackClick != null) {
+                SlooshFocusableCard(
+                    onClick = onBackClick,
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .focusRequester(backButtonFocusRequester)
+                        .onPreviewKeyEvent { keyEvent ->
+                            if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN
+                            ) {
+                                try {
+                                    watchButtonFocusRequester.requestFocus()
+                                    true
+                                } catch (e: Exception) {
+                                    false
+                                }
+                            } else false
+                        }
+                ) { isFocused ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                if (isFocused) Color.White.copy(alpha = 0.30f)
+                                else Color.White.copy(alpha = 0.12f)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Назад",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(20.dp))
+            }
+
+            // ─── Logo or Title ────────────────────────────────────────────────
             val logoUrl = details.getDisplayLogoUrl()
             if (logoUrl != null) {
                 AsyncImage(
@@ -280,7 +322,7 @@ private fun SidePosterDetailsLayout(
                     val m = details.duration % 60
                     val durText = if (h > 0) "${h} ч ${m} мин" else "${m} мин"
                     Text(
-                        text = durText,
+                        durText,
                         style = MaterialTheme.typography.bodyLarge,
                         color = TextSecondaryDark
                     )
@@ -631,59 +673,6 @@ private fun SidePosterDetailsLayout(
             }
 
             Spacer(modifier = Modifier.height(48.dp))
-        }
-
-        // Top-Left Floating Back Button (if onBackClick provided)
-        if (onBackClick != null) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 36.dp, top = 36.dp)
-            ) {
-                SlooshFocusableCard(
-                    onClick = onBackClick,
-                    shape = CircleShape,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .focusRequester(backButtonFocusRequester)
-                        .onFocusChanged { focusState ->
-                            if (focusState.isFocused) {
-                                coroutineScope.launch {
-                                    scrollState.animateScrollTo(0)
-                                }
-                            }
-                        }
-                        .onPreviewKeyEvent { keyEvent ->
-                            if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
-                                keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN
-                            ) {
-                                try {
-                                    watchButtonFocusRequester.requestFocus()
-                                    true
-                                } catch (e: Exception) {
-                                    false
-                                }
-                            } else false
-                        }
-                ) { isFocused ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                if (isFocused) Color.White.copy(alpha = 0.25f)
-                                else Color.Black.copy(alpha = 0.40f)
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = "Назад",
-                            tint = Color.White,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                }
-            }
         }
     }
 }
