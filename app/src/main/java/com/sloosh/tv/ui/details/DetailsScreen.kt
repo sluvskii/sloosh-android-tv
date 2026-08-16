@@ -371,18 +371,13 @@ private fun CenteredDetailsLayout(
                                             .background(
                                                 Brush.horizontalGradient(
                                                     0.0f to Color.Transparent,
-                                                    0.25f to BackgroundDark,
+                                                    0.30f to BackgroundDark,
                                                     1.0f to BackgroundDark
                                                 )
                                             )
-                                            .padding(start = 20.dp),
+                                            .padding(start = 28.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(
-                                            text = "… ",
-                                            color = Color.White.copy(alpha = 0.45f),
-                                            fontSize = 13.5.sp
-                                        )
                                         SlooshFocusableCard(
                                             onClick = { isExpanded = true },
                                             shape = ContinuousCapsule,
