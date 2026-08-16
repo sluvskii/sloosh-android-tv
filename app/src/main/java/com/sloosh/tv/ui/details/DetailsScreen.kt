@@ -166,6 +166,7 @@ private fun SidePosterDetailsLayout(
     val backButtonFocusRequester = remember { FocusRequester() }
     val moreButtonFocusRequester = remember { FocusRequester() }
     var isExpanded by remember { mutableStateOf(false) }
+    var canExpand by remember(details.description) { mutableStateOf(false) }
 
     val backdropUrl = details.getDisplayBackdropUrl() ?: details.getDisplayPosterUrl()
     val ambientColor by rememberAdaptiveAmbientColor(imageUrl = backdropUrl)
@@ -377,10 +378,9 @@ private fun SidePosterDetailsLayout(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // Description (4 lines max with true alpha fade on line 4)
+            // Description (4 lines max with true alpha fade on line 4, expands only if overflowing)
             if (!details.description.isNullOrEmpty()) {
                 val desc = details.description
-                val canExpand = desc.length > 180
 
                 Box(
                     modifier = Modifier
@@ -400,6 +400,11 @@ private fun SidePosterDetailsLayout(
                                 textAlign = TextAlign.Start,
                                 maxLines = 4,
                                 overflow = TextOverflow.Clip,
+                                onTextLayout = { textLayoutResult ->
+                                    if (!isExpanded) {
+                                        canExpand = textLayoutResult.hasVisualOverflow || textLayoutResult.lineCount > 4
+                                    }
+                                },
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .then(
@@ -619,7 +624,7 @@ private fun SidePosterDetailsLayout(
                                 keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP
                             ) {
                                 try {
-                                    if (!details.description.isNullOrEmpty() && details.description.length > 180) {
+                                    if (canExpand) {
                                         moreButtonFocusRequester.requestFocus()
                                         true
                                     } else if (onBackClick != null) {
@@ -653,7 +658,7 @@ private fun SidePosterDetailsLayout(
                                 keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP
                             ) {
                                 try {
-                                    if (!details.description.isNullOrEmpty() && details.description.length > 180) {
+                                    if (canExpand) {
                                         moreButtonFocusRequester.requestFocus()
                                         true
                                     } else if (onBackClick != null) {
