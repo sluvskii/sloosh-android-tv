@@ -19,7 +19,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
@@ -27,7 +26,10 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -36,6 +38,9 @@ import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.kyant.capsule.ContinuousCapsule
 import com.kyant.capsule.ContinuousRoundedRectangle
+import com.sloosh.tv.data.api.MediaDetailsDto
+import com.sloosh.tv.data.repository.AppSettings
+import com.sloosh.tv.data.repository.DetailsScreenStyle
 import com.sloosh.tv.ui.components.SlooshButton
 import com.sloosh.tv.ui.components.SlooshFocusableCard
 import com.sloosh.tv.ui.theme.*
@@ -49,6 +54,9 @@ fun DetailsScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val watchButtonFocusRequester = remember { FocusRequester() }
+    val context = LocalContext.current
+    val appSettings = remember { AppSettings(context) }
+    val detailsStyle = remember { appSettings.detailsStyle }
 
     LaunchedEffect(mediaId) {
         viewModel.loadDetails(mediaId)
@@ -89,8 +97,72 @@ fun DetailsScreen(
     val kpId = details.ids?.kp
 
     Box(modifier = modifier.fillMaxSize()) {
+        if (detailsStyle == DetailsScreenStyle.SIDE_POSTER) {
+            SidePosterDetailsLayout(
+                details = details,
+                state = state,
+                viewModel = viewModel,
+                watchButtonFocusRequester = watchButtonFocusRequester
+            )
+        } else {
+            CenteredDetailsLayout(
+                details = details,
+                state = state,
+                viewModel = viewModel,
+                watchButtonFocusRequester = watchButtonFocusRequester
+            )
+        }
 
-        // ─── Layer 1: Full-Screen Crisp Backdrop ────────────────────────────
+        // ─── Source Selection Sheet ───────────────────────────────────────────
+        when {
+            state.showSourceSheet && state.isFetchingSources -> {
+                SourceSelectionLoadingDialog(
+                    title = details.title ?: details.originalTitle ?: "",
+                    onDismiss = { viewModel.dismissSourceSheet() }
+                )
+            }
+            state.showSourceSheet && state.allohaData != null -> {
+                val alloha = state.allohaData!!
+                val savedVoiceover = kpId?.let { viewModel.allohaRepository.getLastVoiceover(it) }
+                val globalLastVoiceover = viewModel.allohaRepository.getLastTranslation()
+                val lastSeason = kpId?.let { viewModel.allohaRepository.getLastSeason(it) }
+                val lastEpisode = kpId?.let { viewModel.allohaRepository.getLastEpisode(it) }
+
+                SourceSelectionDialog(
+                    allohaData = alloha,
+                    kpId = kpId,
+                    savedVoiceover = savedVoiceover,
+                    globalLastVoiceover = globalLastVoiceover,
+                    lastSeason = lastSeason ?: state.progress?.season,
+                    lastEpisode = lastEpisode ?: state.progress?.episode,
+                    onSelect = { result ->
+                        // Save last-played preferences
+                        if (kpId != null) {
+                            viewModel.allohaRepository.saveLastVoiceover(kpId, result.translation.name)
+                            viewModel.allohaRepository.saveLastPlayed(kpId, result.season, result.episode)
+                        }
+                        viewModel.allohaRepository.saveLastTranslation(result.translation.name)
+                        viewModel.dismissSourceSheet()
+                        onPlayClick(result.translation.iframeUrl, result.season, result.episode, details.displayTitle)
+                    },
+                    onDismiss = { viewModel.dismissSourceSheet() }
+                )
+            }
+        }
+    }
+}
+
+// ─── New Centered iOS Style Layout ─────────────────────────────────────────────
+
+@Composable
+private fun CenteredDetailsLayout(
+    details: MediaDetailsDto,
+    state: DetailsUiState,
+    viewModel: DetailsViewModel,
+    watchButtonFocusRequester: FocusRequester
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Fullscreen Backdrop Image
         val backdropUrl = details.getDisplayBackdropUrl() ?: details.getDisplayPosterUrl()
         AsyncImage(
             model = backdropUrl,
@@ -99,14 +171,318 @@ fun DetailsScreen(
             contentScale = ContentScale.Crop
         )
 
-        // ─── Layer 2: Dark scrim ──────────────────────────────────────────────
+        // Multi-Stop Vertical Gradient Overlay: Fades smoothly to BackgroundDark towards bottom
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colorStops = arrayOf(
+                            0.0f to Color.Black.copy(alpha = 0.50f),
+                            0.25f to Color.Black.copy(alpha = 0.35f),
+                            0.50f to Color.Black.copy(alpha = 0.65f),
+                            0.75f to Color.Black.copy(alpha = 0.88f),
+                            1.0f to BackgroundDark
+                        )
+                    )
+                )
+        )
+
+        // Soft Radial Vignette for centered text readability
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            Color.Black.copy(alpha = 0.60f),
+                            Color.Black.copy(alpha = 0.30f),
+                            Color.Transparent
+                        ),
+                        radius = 800f
+                    )
+                )
+        )
+
+        // Centered Content Column
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.TopCenter
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .widthIn(max = 760.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp, vertical = 40.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Logo or Title (Centered)
+                val logoUrl = details.getDisplayLogoUrl()
+                if (logoUrl != null) {
+                    AsyncImage(
+                        model = logoUrl,
+                        contentDescription = details.title,
+                        modifier = Modifier
+                            .height(88.dp)
+                            .widthIn(max = 360.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                } else {
+                    Text(
+                        text = details.title ?: details.originalTitle ?: "Без названия",
+                        fontSize = 38.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White,
+                        lineHeight = 44.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+
+                // Original Title
+                val originalTitle = details.originalTitle
+                if (!originalTitle.isNullOrBlank() && originalTitle != details.title) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = originalTitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondaryDark,
+                        textAlign = TextAlign.Center
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Metadata Row (Rating, Year, Country, Duration)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    val kpRating = details.ratings?.kp
+                    if (kpRating != null && kpRating > 0) {
+                        Box(
+                            modifier = Modifier
+                                .clip(ContinuousRoundedRectangle(7.dp))
+                                .background(ratingColor(kpRating))
+                                .padding(horizontal = 7.dp, vertical = 3.dp)
+                        ) {
+                            Text(
+                                text = String.format(java.util.Locale.US, "%.1f", kpRating),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 13.5.sp,
+                                    letterSpacing = (-0.2).sp
+                                ),
+                                color = Color.White
+                            )
+                        }
+                    }
+
+                    if (details.year != null) {
+                        Text(
+                            text = "${details.year}",
+                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                            color = TextSecondaryDark
+                        )
+                    }
+
+                    if (details.duration != null && details.duration > 0) {
+                        val h = details.duration / 60
+                        val m = details.duration % 60
+                        val durText = if (h > 0) "${h} ч ${m} мин" else "${m} мин"
+                        Text(
+                            text = durText,
+                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                            color = TextSecondaryDark
+                        )
+                    }
+
+                    if (!details.countries.isNullOrEmpty()) {
+                        Text(
+                            text = details.countries.take(2).joinToString(", "),
+                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                            color = TextSecondaryDark
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // Action Buttons Row (Play/Continue + Favorite Heart)
+                val prog = state.progress
+                val hasProgress = prog != null && prog.positionSec > 10
+                val buttonText = if (hasProgress) {
+                    val posStr = String.format("%02d:%02d", prog!!.positionSec.toInt() / 60, prog.positionSec.toInt() % 60)
+                    "Продолжить с $posStr"
+                } else "Смотреть"
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    SlooshButton(
+                        text = buttonText,
+                        onClick = { viewModel.openSourceSheet() },
+                        isWhite = true,
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = null,
+                                tint = Color.Black,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        },
+                        modifier = Modifier.focusRequester(watchButtonFocusRequester)
+                    )
+
+                    var favBounce by remember { mutableStateOf(false) }
+                    val favScale by animateFloatAsState(
+                        targetValue = if (favBounce) 1.4f else 1.0f,
+                        animationSpec = spring(dampingRatio = 0.4f, stiffness = 400f),
+                        finishedListener = { favBounce = false },
+                        label = "favScale"
+                    )
+                    SlooshFocusableCard(
+                        onClick = {
+                            favBounce = true
+                            viewModel.toggleFavorite()
+                        },
+                        shape = CircleShape,
+                        modifier = Modifier.size(52.dp)
+                    ) { _ ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    if (state.isFavorite) SlooshGreen.copy(alpha = 0.18f)
+                                    else Color.White.copy(alpha = 0.12f)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (state.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = "Избранное",
+                                tint = if (state.isFavorite) SlooshGreen else Color.White.copy(alpha = 0.85f),
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .scale(favScale)
+                            )
+                        }
+                    }
+                }
+
+                // Continue Progress Indicator
+                if (prog != null && prog.progressFraction > 0.01f) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    val posSec = prog.positionSec.toInt()
+                    val durSec = prog.durationSec.toInt()
+                    val posStr = String.format("%02d:%02d", posSec / 60, posSec % 60)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = "Просмотрено $posStr",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = SlooshGreen
+                        )
+                        if (durSec > 0) {
+                            val durStr = if (durSec >= 3600)
+                                String.format("%d:%02d:%02d", durSec / 3600, (durSec % 3600) / 60, durSec % 60)
+                            else
+                                String.format("%02d:%02d", durSec / 60, durSec % 60)
+                            Text(
+                                text = " / $durStr",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextMutedDark
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    LinearProgressIndicator(
+                        progress = { prog.progressFraction },
+                        color = SlooshGreen,
+                        trackColor = Color.White.copy(alpha = 0.15f),
+                        modifier = Modifier
+                            .width(360.dp)
+                            .height(3.5.dp)
+                            .clip(ContinuousCapsule)
+                    )
+                }
+
+                // Genre Pills
+                if (!details.genres.isNullOrEmpty()) {
+                    Spacer(modifier = Modifier.height(18.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        details.genres.take(5).forEach { genre ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(ContinuousCapsule)
+                                    .background(Color.White.copy(alpha = 0.12f))
+                                    .padding(horizontal = 14.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = genre,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                    color = Color.White.copy(alpha = 0.9f)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Description
+                if (!details.description.isNullOrEmpty()) {
+                    Spacer(modifier = Modifier.height(18.dp))
+                    Text(
+                        text = details.description,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = 15.5.sp,
+                            lineHeight = 23.sp
+                        ),
+                        color = Color.White.copy(alpha = 0.78f),
+                        textAlign = TextAlign.Center,
+                        maxLines = 6,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth(0.95f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(48.dp))
+            }
+        }
+    }
+}
+
+// ─── Classic Side-Poster Layout ───────────────────────────────────────────────
+
+@Composable
+private fun SidePosterDetailsLayout(
+    details: MediaDetailsDto,
+    state: DetailsUiState,
+    viewModel: DetailsViewModel,
+    watchButtonFocusRequester: FocusRequester
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        val backdropUrl = details.getDisplayBackdropUrl() ?: details.getDisplayPosterUrl()
+        AsyncImage(
+            model = backdropUrl,
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop
+        )
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = 0.45f))
         )
 
-        // ─── Layer 3: Left-side gradient ─────────────────────────────────────
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -121,7 +497,6 @@ fun DetailsScreen(
                 )
         )
 
-        // ─── Layer 4: Clear Crisp Poster (right side) ─────────────────────────
         val posterUrl = details.getDisplayPosterUrl()
         if (posterUrl != null) {
             Box(
@@ -141,7 +516,6 @@ fun DetailsScreen(
             }
         }
 
-        // ─── Main Content Column ──────────────────────────────────────────────
         Column(
             modifier = Modifier
                 .fillMaxHeight()
@@ -149,8 +523,6 @@ fun DetailsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(start = 80.dp, top = 48.dp, end = 32.dp, bottom = 48.dp)
         ) {
-
-            // Logo or Title
             val logoUrl = details.getDisplayLogoUrl()
             if (logoUrl != null) {
                 AsyncImage(
@@ -173,7 +545,6 @@ fun DetailsScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // ─── Metadata Row ─────────────────────────────────────────────────
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -228,7 +599,6 @@ fun DetailsScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // ─── Genre Pills ──────────────────────────────────────────────────
             if (!details.genres.isNullOrEmpty()) {
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -252,7 +622,6 @@ fun DetailsScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // ─── Description ──────────────────────────────────────────────────
             if (!details.description.isNullOrEmpty()) {
                 Text(
                     text = details.description,
@@ -260,12 +629,11 @@ fun DetailsScreen(
                     color = Color.White.copy(alpha = 0.72f),
                     lineHeight = 22.sp,
                     maxLines = 6,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(28.dp))
             }
 
-            // ─── Continue progress bar ────────────────────────────────────────
             val prog = state.progress
             if (prog != null && prog.progressFraction > 0.01f) {
                 val posSec = prog.positionSec.toInt()
@@ -304,12 +672,10 @@ fun DetailsScreen(
                 Spacer(modifier = Modifier.height(20.dp))
             }
 
-            // ─── Action Buttons Row ───────────────────────────────────────────
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // «Смотреть» — opens source/episode/voiceover picker
                 val hasProgress = prog != null && prog.positionSec > 10
                 val buttonText = if (hasProgress) {
                     val posStr = String.format("%02d:%02d", prog!!.positionSec.toInt() / 60, prog.positionSec.toInt() % 60)
@@ -331,7 +697,6 @@ fun DetailsScreen(
                     modifier = Modifier.focusRequester(watchButtonFocusRequester)
                 )
 
-                // Favorite heart button with bounce animation
                 var favBounce by remember { mutableStateOf(false) }
                 val favScale by animateFloatAsState(
                     targetValue = if (favBounce) 1.4f else 1.0f,
@@ -370,42 +735,6 @@ fun DetailsScreen(
 
             Spacer(modifier = Modifier.height(48.dp))
         }
-
-        // ─── Source Selection Sheet ───────────────────────────────────────────
-        when {
-            state.showSourceSheet && state.isFetchingSources -> {
-                SourceSelectionLoadingDialog(
-                    title = details.title ?: details.originalTitle ?: "",
-                    onDismiss = { viewModel.dismissSourceSheet() }
-                )
-            }
-            state.showSourceSheet && state.allohaData != null -> {
-                val alloha = state.allohaData!!
-                val savedVoiceover = kpId?.let { viewModel.allohaRepository.getLastVoiceover(it) }
-                val globalLastVoiceover = viewModel.allohaRepository.getLastTranslation()
-                val lastSeason = kpId?.let { viewModel.allohaRepository.getLastSeason(it) }
-                val lastEpisode = kpId?.let { viewModel.allohaRepository.getLastEpisode(it) }
-
-                SourceSelectionDialog(
-                    allohaData = alloha,
-                    kpId = kpId,
-                    savedVoiceover = savedVoiceover,
-                    globalLastVoiceover = globalLastVoiceover,
-                    lastSeason = lastSeason ?: state.progress?.season,
-                    lastEpisode = lastEpisode ?: state.progress?.episode,
-                    onSelect = { result ->
-                        // Save last-played preferences
-                        if (kpId != null) {
-                            viewModel.allohaRepository.saveLastVoiceover(kpId, result.translation.name)
-                            viewModel.allohaRepository.saveLastPlayed(kpId, result.season, result.episode)
-                        }
-                        viewModel.allohaRepository.saveLastTranslation(result.translation.name)
-                        viewModel.dismissSourceSheet()
-                        onPlayClick(result.translation.iframeUrl, result.season, result.episode, details.displayTitle)
-                    },
-                    onDismiss = { viewModel.dismissSourceSheet() }
-                )
-            }
-        }
     }
 }
+

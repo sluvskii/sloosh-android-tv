@@ -33,12 +33,14 @@ import kotlinx.coroutines.launch
 fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
-    var isHighPosterQuality by remember { mutableStateOf(true) }
-    var isAutoplayEnabled by remember { mutableStateOf(true) }
-    var statusMessage by remember { mutableStateOf<String?>(null) }
-
     val context = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val appSettings = remember { com.sloosh.tv.data.repository.AppSettings(context) }
+
+    var detailsStyle by remember { mutableStateOf(appSettings.detailsStyle) }
+    var isHighPosterQuality by remember { mutableStateOf(appSettings.isHighPosterQuality) }
+    var isAutoplayEnabled by remember { mutableStateOf(appSettings.isAutoplayEnabled) }
+    var statusMessage by remember { mutableStateOf<String?>(null) }
 
     var isCheckingUpdates by remember { mutableStateOf(false) }
     var updateInfoForDialog by remember { mutableStateOf<com.sloosh.tv.data.update.AppUpdateInfo?>(null) }
@@ -79,6 +81,44 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth(0.72f)
             ) {
 
+                // ─── Section: Внешний вид ─────────────────────────────
+                item {
+                    SectionHeader("Внешний вид")
+                }
+
+                item {
+                    SettingCard(
+                        icon = Icons.Default.Star,
+                        title = "Стиль экрана фильма",
+                        description = if (detailsStyle == com.sloosh.tv.data.repository.DetailsScreenStyle.CENTERED)
+                            "По центру (iOS-стиль с плавным затуханием обложки)"
+                        else
+                            "С постером сбоку (Классический стиль)",
+                        action = {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SlooshButton(
+                                    text = "По центру",
+                                    isPrimary = detailsStyle == com.sloosh.tv.data.repository.DetailsScreenStyle.CENTERED,
+                                    onClick = {
+                                        detailsStyle = com.sloosh.tv.data.repository.DetailsScreenStyle.CENTERED
+                                        appSettings.detailsStyle = com.sloosh.tv.data.repository.DetailsScreenStyle.CENTERED
+                                        statusMessage = "✓ Стиль экрана фильма изменён"
+                                    }
+                                )
+                                SlooshButton(
+                                    text = "С постером",
+                                    isPrimary = detailsStyle == com.sloosh.tv.data.repository.DetailsScreenStyle.SIDE_POSTER,
+                                    onClick = {
+                                        detailsStyle = com.sloosh.tv.data.repository.DetailsScreenStyle.SIDE_POSTER
+                                        appSettings.detailsStyle = com.sloosh.tv.data.repository.DetailsScreenStyle.SIDE_POSTER
+                                        statusMessage = "✓ Стиль экрана фильма изменён"
+                                    }
+                                )
+                            }
+                        }
+                    )
+                }
+
                 // ─── Section: Воспроизведение ─────────────────────────
                 item {
                     SectionHeader("Воспроизведение")
@@ -92,7 +132,10 @@ fun SettingsScreen(
                         action = {
                             ToggleButton(
                                 enabled = isAutoplayEnabled,
-                                onToggle = { isAutoplayEnabled = it }
+                                onToggle = {
+                                    isAutoplayEnabled = it
+                                    appSettings.isAutoplayEnabled = it
+                                }
                             )
                         }
                     )
@@ -113,12 +156,18 @@ fun SettingsScreen(
                                 SlooshButton(
                                     text = "Высокое",
                                     isPrimary = isHighPosterQuality,
-                                    onClick = { isHighPosterQuality = true }
+                                    onClick = {
+                                        isHighPosterQuality = true
+                                        appSettings.isHighPosterQuality = true
+                                    }
                                 )
                                 SlooshButton(
                                     text = "Низкое",
                                     isPrimary = !isHighPosterQuality,
-                                    onClick = { isHighPosterQuality = false }
+                                    onClick = {
+                                        isHighPosterQuality = false
+                                        appSettings.isHighPosterQuality = false
+                                    }
                                 )
                             }
                         }
