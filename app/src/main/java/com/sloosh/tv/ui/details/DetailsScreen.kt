@@ -168,58 +168,62 @@ private fun SidePosterDetailsLayout(
 
     Box(modifier = Modifier.fillMaxSize()) {
         val backdropUrl = details.getDisplayBackdropUrl() ?: details.getDisplayPosterUrl()
-        AsyncImage(
-            model = backdropUrl,
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop
-        )
-
+        
+        // Right-shifted backdrop hero artwork
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.45f))
-        )
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.CenterEnd
+        ) {
+            AsyncImage(
+                model = backdropUrl,
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(0.82f),
+                alignment = Alignment.Center,
+                contentScale = ContentScale.Crop
+            )
+        }
 
+        // Horizontal gradient: Solid on the left for text readability -> fades smoothly to transparent on the right
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.horizontalGradient(
                         colorStops = arrayOf(
-                            0.0f to Color.Black.copy(alpha = 0.92f),
-                            0.45f to Color.Black.copy(alpha = 0.70f),
-                            0.65f to Color.Transparent
+                            0.0f to BackgroundDark,
+                            0.38f to BackgroundDark,
+                            0.55f to BackgroundDark.copy(alpha = 0.85f),
+                            0.72f to BackgroundDark.copy(alpha = 0.35f),
+                            1.0f to Color.Transparent
                         )
                     )
                 )
         )
 
-        val posterUrl = details.getDisplayPosterUrl()
-        if (posterUrl != null) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 56.dp)
-                    .fillMaxHeight(0.75f)
-                    .aspectRatio(2f / 3f)
-                    .clip(ContinuousRoundedRectangle(20.dp))
-            ) {
-                AsyncImage(
-                    model = posterUrl,
-                    contentDescription = details.title,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
+        // Soft Top and Bottom edge gradients for seamless TV blending
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colorStops = arrayOf(
+                            0.0f to BackgroundDark.copy(alpha = 0.35f),
+                            0.18f to Color.Transparent,
+                            0.75f to Color.Transparent,
+                            1.0f to BackgroundDark.copy(alpha = 0.80f)
+                        )
+                    )
                 )
-            }
-        }
+        )
 
         Column(
             modifier = Modifier
                 .fillMaxHeight()
-                .fillMaxWidth(0.62f)
+                .fillMaxWidth(0.56f)
                 .verticalScroll(scrollState)
-                .padding(start = 56.dp, top = 36.dp, end = 32.dp, bottom = 48.dp)
+                .padding(start = 56.dp, top = 36.dp, end = 24.dp, bottom = 48.dp)
         ) {
             // ─── Top Back Button ──────────────────────────────────────────────
             if (onBackClick != null) {
