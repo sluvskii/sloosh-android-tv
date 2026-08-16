@@ -9,7 +9,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.drawable.toBitmap
-import coil.ImageLoader
+import coil.Coil
+import coil.request.CachePolicy
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import coil.size.Size
@@ -19,56 +20,69 @@ import kotlinx.coroutines.withContext
 
 /**
  * Asynchronously extracts the true mathematical average color of the backdrop image (matching iOS CIAreaAverage).
- * It preserves the exact atmospheric tone of the scene (e.g. dark slate/steel city for Spider-Man)
- * and adjusts lightness into a deep, luxurious dark theme range for perfect text readability.
+ * Uses Coil's shared singleton ImageLoader with disk & memory cache, and supports instant fallback
+ * if the primary high-res backdrop fails or is unavailable.
  */
 @Composable
 fun rememberAdaptiveAmbientColor(
-    imageUrl: String?,
+    primaryUrl: String?,
+    fallbackUrl: String? = null,
     defaultColor: Color = BackgroundDark
 ): State<Color> {
     val context = LocalContext.current
-    var extractedColor by remember(imageUrl) { mutableStateOf(defaultColor) }
+    var extractedColor by remember(primaryUrl, fallbackUrl) { mutableStateOf(defaultColor) }
 
-    LaunchedEffect(imageUrl) {
-        if (imageUrl.isNullOrEmpty()) {
-            extractedColor = defaultColor
-            return@LaunchedEffect
-        }
-
+    LaunchedEffect(primaryUrl, fallbackUrl) {
         val color = withContext(Dispatchers.IO) {
-            extractAverageBackdropColor(context, imageUrl, defaultColor)
+            // 1. Try primary URL (small thumbnail / high-res backdrop)
+            if (!primaryUrl.isNullOrEmpty()) {
+                val primaryColor = extractAverageBackdropColor(context, primaryUrl)
+                if (primaryColor != null) {
+                    return@withContext primaryColor
+                }
+            }
+            // 2. Fallback to poster URL if backdrop is missing / 404
+            if (!fallbackUrl.isNullOrEmpty()) {
+                val fallbackExtracted = extractAverageBackdropColor(context, fallbackUrl)
+                if (fallbackExtracted != null) {
+                    return@withContext fallbackExtracted
+                }
+            }
+            defaultColor
         }
         extractedColor = color
     }
 
     return animateColorAsState(
         targetValue = extractedColor,
-        animationSpec = tween(durationMillis = 600),
+        animationSpec = tween(durationMillis = 500),
         label = "ambientColorAnimation"
     )
 }
 
 /**
- * Computes average RGB across all pixels in the image (equivalent to iOS CIAreaAverage filter).
+ * Computes average RGB across all pixels in the downsampled image (equivalent to iOS CIAreaAverage filter).
  */
 private suspend fun extractAverageBackdropColor(
     context: Context,
-    imageUrl: String,
-    fallback: Color
-): Color {
+    imageUrl: String
+): Color? {
     return try {
-        val loader = ImageLoader(context)
+        val loader = Coil.imageLoader(context)
         val request = ImageRequest.Builder(context)
             .data(imageUrl)
             .size(Size(32, 32))
             .allowHardware(false)
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .diskCachePolicy(CachePolicy.ENABLED)
             .build()
 
         val result = loader.execute(request)
         if (result is SuccessResult) {
             val bitmap = result.drawable.toBitmap(32, 32, Bitmap.Config.ARGB_8888)
             val totalPixels = bitmap.width * bitmap.height
+            if (totalPixels <= 0) return null
+
             val pixels = IntArray(totalPixels)
             bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
 
@@ -89,16 +103,16 @@ private suspend fun extractAverageBackdropColor(
             val hsl = FloatArray(3)
             ColorUtils.RGBToHSL(avgR, avgG, avgB, hsl)
 
-            // Adjust lightness to a deep dark level for movie TV interface (0.07..0.12)
+            // Adjust lightness into a deep, luxurious dark theme range for TV (0.06..0.11)
             hsl[2] = hsl[2].coerceIn(0.06f, 0.11f)
             hsl[1] = (hsl[1] * 0.90f).coerceIn(0.12f, 0.70f)
 
             val adjustedRgb = ColorUtils.HSLToColor(hsl)
             Color(adjustedRgb)
         } else {
-            fallback
+            null
         }
     } catch (e: Exception) {
-        fallback
+        null
     }
 }

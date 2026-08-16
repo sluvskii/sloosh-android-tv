@@ -168,8 +168,14 @@ private fun SidePosterDetailsLayout(
     var isExpanded by remember { mutableStateOf(false) }
     var canExpand by remember(details.description) { mutableStateOf(false) }
 
-    val backdropUrl = details.getDisplayBackdropUrl() ?: details.getDisplayPosterUrl()
-    val ambientColor by rememberAdaptiveAmbientColor(imageUrl = backdropUrl)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val posterUrl = details.getDisplayPosterUrl()
+    val previewBackdropUrl = details.getPreviewBackdropUrl()
+    val backdropUrl = details.getDisplayBackdropUrl() ?: posterUrl
+    val ambientColor by rememberAdaptiveAmbientColor(
+        primaryUrl = previewBackdropUrl ?: backdropUrl,
+        fallbackUrl = posterUrl
+    )
 
     Box(
         modifier = Modifier
@@ -198,8 +204,16 @@ private fun SidePosterDetailsLayout(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.CenterEnd
         ) {
+            val imageRequest = remember(backdropUrl, posterUrl) {
+                coil.request.ImageRequest.Builder(context)
+                    .data(backdropUrl)
+                    .fallback(posterUrl?.let { android.net.Uri.parse(it) })
+                    .error(posterUrl?.let { android.net.Uri.parse(it) })
+                    .crossfade(300)
+                    .build()
+            }
             AsyncImage(
-                model = backdropUrl,
+                model = imageRequest,
                 contentDescription = null,
                 modifier = Modifier
                     .fillMaxHeight()
