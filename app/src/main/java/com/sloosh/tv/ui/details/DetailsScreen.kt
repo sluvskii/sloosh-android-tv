@@ -51,6 +51,7 @@ import com.sloosh.tv.data.api.MediaDetailsDto
 import com.sloosh.tv.ui.components.SlooshButton
 import com.sloosh.tv.ui.components.SlooshFocusableCard
 import com.sloosh.tv.ui.theme.*
+import com.sloosh.tv.ui.util.rememberAdaptiveAmbientColor
 import kotlinx.coroutines.launch
 
 @Composable
@@ -166,13 +167,46 @@ private fun SidePosterDetailsLayout(
     val moreButtonFocusRequester = remember { FocusRequester() }
     var isExpanded by remember { mutableStateOf(false) }
 
+    val posterUrl = details.getDisplayPosterUrl() ?: details.getDisplayBackdropUrl()
+    val backdropUrl = details.getDisplayBackdropUrl() ?: details.getDisplayPosterUrl()
+    val ambientColor by rememberAdaptiveAmbientColor(imageUrl = posterUrl)
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(BackgroundDark)
     ) {
-        val backdropUrl = details.getDisplayBackdropUrl() ?: details.getDisplayPosterUrl()
-        
+        // Dynamic adaptive ambient glow (inspired by iOS / Apple TV)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            ambientColor.copy(alpha = 0.85f),
+                            ambientColor.copy(alpha = 0.40f),
+                            Color.Transparent
+                        ),
+                        center = Offset(250f, 320f),
+                        radius = 1200f
+                    )
+                )
+        )
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.horizontalGradient(
+                        colorStops = arrayOf(
+                            0.0f to ambientColor.copy(alpha = 0.45f),
+                            0.35f to ambientColor.copy(alpha = 0.18f),
+                            0.70f to Color.Transparent
+                        )
+                    )
+                )
+        )
+
         // Native aspect-ratio backdrop shifted to the right, with genuine alpha fade on its left edge
         Box(
             modifier = Modifier.fillMaxSize(),

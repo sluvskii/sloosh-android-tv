@@ -97,5 +97,8 @@ dependencies {
     // Coil Image Loading
     implementation(libs.coil.compose)
 
+    // Palette Color Extraction
+    implementation(libs.androidx.palette)
+
     debugImplementation(libs.androidx.ui.tooling)
 }
