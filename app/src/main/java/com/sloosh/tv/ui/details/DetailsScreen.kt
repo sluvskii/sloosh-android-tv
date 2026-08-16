@@ -564,7 +564,7 @@ private fun SidePosterDetailsLayout(
                     Text(
                         text = "Просмотрено $posStr",
                         style = MaterialTheme.typography.labelSmall,
-                        color = SlooshGreen
+                        color = Color.White.copy(alpha = 0.90f)
                     )
                     if (durSec > 0) {
                         val durStr = if (durSec >= 3600)
@@ -580,8 +580,8 @@ private fun SidePosterDetailsLayout(
                 }
                 LinearProgressIndicator(
                     progress = { prog.progressFraction },
-                    color = SlooshGreen,
-                    trackColor = Color.White.copy(alpha = 0.15f),
+                    color = Color.White,
+                    trackColor = Color.White.copy(alpha = 0.18f),
                     modifier = Modifier
                         .fillMaxWidth(0.9f)
                         .height(3.dp)
