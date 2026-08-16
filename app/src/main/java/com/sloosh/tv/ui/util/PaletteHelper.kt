@@ -6,11 +6,9 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.drawable.toBitmap
-import androidx.palette.graphics.Palette
 import coil.ImageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
@@ -20,9 +18,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Asynchronously extracts an adaptive, cinematic ambient color from an image URL (poster or backdrop).
- * The color is tuned for maximum readability (deep luminosity and balanced saturation)
- * and smoothly animated using [animateColorAsState].
+ * Asynchronously extracts the true mathematical average color of the backdrop image (matching iOS CIAreaAverage).
+ * It preserves the exact atmospheric tone of the scene (e.g. dark slate/steel city for Spider-Man)
+ * and adjusts lightness into a deep, luxurious dark theme range for perfect text readability.
  */
 @Composable
 fun rememberAdaptiveAmbientColor(
@@ -39,22 +37,22 @@ fun rememberAdaptiveAmbientColor(
         }
 
         val color = withContext(Dispatchers.IO) {
-            extractAmbientColor(context, imageUrl, defaultColor)
+            extractAverageBackdropColor(context, imageUrl, defaultColor)
         }
         extractedColor = color
     }
 
     return animateColorAsState(
         targetValue = extractedColor,
-        animationSpec = tween(durationMillis = 650),
+        animationSpec = tween(durationMillis = 600),
         label = "ambientColorAnimation"
     )
 }
 
 /**
- * Decodes a tiny 96x96 thumbnail of the image and runs Palette on it off the main thread.
+ * Computes average RGB across all pixels in the image (equivalent to iOS CIAreaAverage filter).
  */
-private suspend fun extractAmbientColor(
+private suspend fun extractAverageBackdropColor(
     context: Context,
     imageUrl: String,
     fallback: Color
@@ -63,36 +61,40 @@ private suspend fun extractAmbientColor(
         val loader = ImageLoader(context)
         val request = ImageRequest.Builder(context)
             .data(imageUrl)
-            .size(Size(96, 96))
+            .size(Size(32, 32))
             .allowHardware(false)
             .build()
 
         val result = loader.execute(request)
         if (result is SuccessResult) {
-            val bitmap = result.drawable.toBitmap(96, 96, Bitmap.Config.ARGB_8888)
-            val palette = Palette.from(bitmap).maximumColorCount(16).generate()
+            val bitmap = result.drawable.toBitmap(32, 32, Bitmap.Config.ARGB_8888)
+            val totalPixels = bitmap.width * bitmap.height
+            val pixels = IntArray(totalPixels)
+            bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
 
-            // Prioritize vibrant and rich swatches
-            val swatch = palette.darkVibrantSwatch
-                ?: palette.vibrantSwatch
-                ?: palette.darkMutedSwatch
-                ?: palette.mutedSwatch
-                ?: palette.dominantSwatch
+            var totalR = 0L
+            var totalG = 0L
+            var totalB = 0L
 
-            if (swatch != null) {
-                val hsl = FloatArray(3)
-                ColorUtils.colorToHSL(swatch.rgb, hsl)
-
-                // Tune for deep, luxurious iOS/tvOS-style ambient tone:
-                // Keep the original hue, soften saturation slightly, constrain lightness to deep rich range (0.07..0.15)
-                hsl[1] = (hsl[1] * 0.85f).coerceIn(0.25f, 0.85f)
-                hsl[2] = hsl[2].coerceIn(0.08f, 0.16f)
-
-                val adjustedRgb = ColorUtils.HSLToColor(hsl)
-                Color(adjustedRgb)
-            } else {
-                fallback
+            for (pixel in pixels) {
+                totalR += (pixel shr 16) and 0xFF
+                totalG += (pixel shr 8) and 0xFF
+                totalB += pixel and 0xFF
             }
+
+            val avgR = (totalR / totalPixels).toInt()
+            val avgG = (totalG / totalPixels).toInt()
+            val avgB = (totalB / totalPixels).toInt()
+
+            val hsl = FloatArray(3)
+            ColorUtils.RGBToHSL(avgR, avgG, avgB, hsl)
+
+            // Adjust lightness to a deep dark level for movie TV interface (0.07..0.12)
+            hsl[2] = hsl[2].coerceIn(0.06f, 0.11f)
+            hsl[1] = (hsl[1] * 0.90f).coerceIn(0.12f, 0.70f)
+
+            val adjustedRgb = ColorUtils.HSLToColor(hsl)
+            Color(adjustedRgb)
         } else {
             fallback
         }

@@ -167,41 +167,24 @@ private fun SidePosterDetailsLayout(
     val moreButtonFocusRequester = remember { FocusRequester() }
     var isExpanded by remember { mutableStateOf(false) }
 
-    val posterUrl = details.getDisplayPosterUrl() ?: details.getDisplayBackdropUrl()
     val backdropUrl = details.getDisplayBackdropUrl() ?: details.getDisplayPosterUrl()
-    val ambientColor by rememberAdaptiveAmbientColor(imageUrl = posterUrl)
+    val ambientColor by rememberAdaptiveAmbientColor(imageUrl = backdropUrl)
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(BackgroundDark)
+            .background(ambientColor)
     ) {
-        // Dynamic adaptive ambient glow (inspired by iOS / Apple TV)
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            ambientColor.copy(alpha = 0.85f),
-                            ambientColor.copy(alpha = 0.40f),
-                            Color.Transparent
-                        ),
-                        center = Offset(250f, 320f),
-                        radius = 1200f
-                    )
-                )
-        )
-
+        // Subtle depth gradient
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.horizontalGradient(
                         colorStops = arrayOf(
-                            0.0f to ambientColor.copy(alpha = 0.45f),
-                            0.35f to ambientColor.copy(alpha = 0.18f),
-                            0.70f to Color.Transparent
+                            0.0f to ambientColor,
+                            0.35f to ambientColor.copy(alpha = 0.85f),
+                            0.65f to Color.Transparent
                         )
                     )
                 )
