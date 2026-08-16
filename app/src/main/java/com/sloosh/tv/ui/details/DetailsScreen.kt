@@ -182,19 +182,18 @@ private fun CenteredDetailsLayout(
             contentScale = ContentScale.Crop
         )
 
-        // Multi-Stop Vertical Gradient Overlay: Fades smoothly and deeply to solid BackgroundDark towards bottom
+        // Multi-Stop Vertical Gradient Overlay: Soft and smooth transition to BackgroundDark
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
                         colorStops = arrayOf(
-                            0.0f to Color.Black.copy(alpha = 0.40f),
-                            0.15f to Color.Black.copy(alpha = 0.20f),
-                            0.30f to Color.Black.copy(alpha = 0.55f),
-                            0.48f to Color.Black.copy(alpha = 0.85f),
-                            0.65f to BackgroundDark.copy(alpha = 0.98f),
-                            0.80f to BackgroundDark,
+                            0.0f to Color.Black.copy(alpha = 0.25f),
+                            0.20f to Color.Transparent,
+                            0.42f to Color.Black.copy(alpha = 0.35f),
+                            0.62f to Color.Black.copy(alpha = 0.70f),
+                            0.85f to BackgroundDark.copy(alpha = 0.95f),
                             1.0f to BackgroundDark
                         )
                     )
@@ -208,8 +207,8 @@ private fun CenteredDetailsLayout(
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            Color.Black.copy(alpha = 0.65f),
-                            Color.Black.copy(alpha = 0.35f),
+                            Color.Black.copy(alpha = 0.40f),
+                            Color.Black.copy(alpha = 0.15f),
                             Color.Transparent
                         ),
                         radius = 850f
