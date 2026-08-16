@@ -373,10 +373,10 @@ private fun SidePosterDetailsLayout(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // Description (3 lines max with true alpha fade on line 3)
+            // Description (4 lines max with true alpha fade on line 4)
             if (!details.description.isNullOrEmpty()) {
                 val desc = details.description
-                val canExpand = desc.length > 140
+                val canExpand = desc.length > 180
 
                 Box(
                     modifier = Modifier
@@ -394,7 +394,7 @@ private fun SidePosterDetailsLayout(
                                 ),
                                 color = Color.White.copy(alpha = 0.72f),
                                 textAlign = TextAlign.Start,
-                                maxLines = 3,
+                                maxLines = 4,
                                 overflow = TextOverflow.Clip,
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -615,7 +615,7 @@ private fun SidePosterDetailsLayout(
                                 keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP
                             ) {
                                 try {
-                                    if (!details.description.isNullOrEmpty() && details.description.length > 140) {
+                                    if (!details.description.isNullOrEmpty() && details.description.length > 180) {
                                         moreButtonFocusRequester.requestFocus()
                                         true
                                     } else if (onBackClick != null) {
@@ -649,7 +649,7 @@ private fun SidePosterDetailsLayout(
                                 keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP
                             ) {
                                 try {
-                                    if (!details.description.isNullOrEmpty() && details.description.length > 140) {
+                                    if (!details.description.isNullOrEmpty() && details.description.length > 180) {
                                         moreButtonFocusRequester.requestFocus()
                                         true
                                     } else if (onBackClick != null) {
