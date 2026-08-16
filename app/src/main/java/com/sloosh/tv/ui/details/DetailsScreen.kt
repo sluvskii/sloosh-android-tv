@@ -171,17 +171,19 @@ private fun CenteredDetailsLayout(
             contentScale = ContentScale.Crop
         )
 
-        // Multi-Stop Vertical Gradient Overlay: Fades smoothly to BackgroundDark towards bottom
+        // Multi-Stop Vertical Gradient Overlay: Fades smoothly and deeply to solid BackgroundDark towards bottom
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
                         colorStops = arrayOf(
-                            0.0f to Color.Black.copy(alpha = 0.35f),
-                            0.20f to Color.Black.copy(alpha = 0.25f),
-                            0.45f to Color.Black.copy(alpha = 0.55f),
-                            0.70f to Color.Black.copy(alpha = 0.85f),
+                            0.0f to Color.Black.copy(alpha = 0.40f),
+                            0.15f to Color.Black.copy(alpha = 0.20f),
+                            0.30f to Color.Black.copy(alpha = 0.55f),
+                            0.48f to Color.Black.copy(alpha = 0.85f),
+                            0.65f to BackgroundDark.copy(alpha = 0.98f),
+                            0.80f to BackgroundDark,
                             1.0f to BackgroundDark
                         )
                     )
@@ -195,11 +197,11 @@ private fun CenteredDetailsLayout(
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            Color.Black.copy(alpha = 0.55f),
-                            Color.Black.copy(alpha = 0.25f),
+                            Color.Black.copy(alpha = 0.65f),
+                            Color.Black.copy(alpha = 0.35f),
                             Color.Transparent
                         ),
-                        radius = 800f
+                        radius = 850f
                     )
                 )
         )
@@ -214,11 +216,11 @@ private fun CenteredDetailsLayout(
                     .fillMaxHeight()
                     .widthIn(max = 760.dp)
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 24.dp, vertical = 32.dp),
+                    .padding(horizontal = 24.dp, vertical = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // Generous top spacing to lower all elements down
-                Spacer(modifier = Modifier.height(72.dp))
+                Spacer(modifier = Modifier.height(130.dp))
 
                 // 1. Logo or Title (Centered)
                 val logoUrl = details.getDisplayLogoUrl()
