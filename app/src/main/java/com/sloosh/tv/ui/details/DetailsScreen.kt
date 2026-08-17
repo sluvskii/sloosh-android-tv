@@ -418,6 +418,7 @@ private fun SidePosterDetailsLayout(
                             onClick = { isExpanded = !isExpanded },
                             shape = ContinuousCapsule,
                             modifier = Modifier
+                                .wrapContentSize()
                                 .focusRequester(moreButtonFocusRequester)
                                 .onPreviewKeyEvent { keyEvent ->
                                     if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
@@ -447,8 +448,9 @@ private fun SidePosterDetailsLayout(
                         ) { isFocused ->
                             Box(
                                 modifier = Modifier
+                                    .clip(ContinuousCapsule)
                                     .background(
-                                        if (isFocused) Color.White.copy(alpha = 0.30f)
+                                        if (isFocused) Color.White.copy(alpha = 0.28f)
                                         else Color.White.copy(alpha = 0.12f)
                                     )
                                     .padding(horizontal = 14.dp, vertical = 5.dp),

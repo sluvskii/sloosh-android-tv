@@ -99,32 +99,30 @@ fun SlooshFocusableCard(
         )
     ) {
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .drawWithContent {
-                    drawContent()
-                    if (isFocused) {
-                        val outline = shape.createOutline(size, layoutDirection, this)
+            modifier = Modifier.drawWithContent {
+                drawContent()
+                if (isFocused) {
+                    val outline = shape.createOutline(size, layoutDirection, this)
 
-                        // 1. Soft glowing bloom pass with BlendMode.Plus adapted to EXACT shape
-                        drawOutlineStroke(
-                            outline = outline,
-                            brush = beamBrush,
-                            style = Stroke(width = 3.5.dp.toPx()),
-                            blendMode = BlendMode.Plus,
-                            alpha = 0.35f
-                        )
+                    // 1. Soft glowing bloom pass with BlendMode.Plus adapted to EXACT shape
+                    drawOutlineStroke(
+                        outline = outline,
+                        brush = beamBrush,
+                        style = Stroke(width = 3.5.dp.toPx()),
+                        blendMode = BlendMode.Plus,
+                        alpha = 0.35f
+                    )
 
-                        // 2. Focused core light beam with BlendMode.Plus adapted to EXACT shape
-                        drawOutlineStroke(
-                            outline = outline,
-                            brush = beamBrush,
-                            style = Stroke(width = 1.6.dp.toPx()),
-                            blendMode = BlendMode.Plus,
-                            alpha = 0.60f
-                        )
-                    }
+                    // 2. Focused core light beam with BlendMode.Plus adapted to EXACT shape
+                    drawOutlineStroke(
+                        outline = outline,
+                        brush = beamBrush,
+                        style = Stroke(width = 1.6.dp.toPx()),
+                        blendMode = BlendMode.Plus,
+                        alpha = 0.60f
+                    )
                 }
+            }
         ) {
             content(isFocused)
         }
