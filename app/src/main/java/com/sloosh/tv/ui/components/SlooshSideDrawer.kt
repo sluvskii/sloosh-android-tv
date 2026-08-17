@@ -1,22 +1,25 @@
 package com.sloosh.tv.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -28,7 +31,6 @@ import androidx.tv.material3.NavigationDrawerItem
 import androidx.tv.material3.NavigationDrawerItemDefaults
 import androidx.tv.material3.NavigationDrawerScope
 import androidx.tv.material3.Text
-import com.kyant.capsule.ContinuousCapsule
 
 enum class NavSection {
     HOME, SEARCH, CONTINUE, FAVORITES, SETTINGS
@@ -61,7 +63,7 @@ fun NavigationDrawerScope.SlooshSideDrawer(
                 onClick = { onSectionSelected(NavSection.HOME) }
             )
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             DrawerNavItem(
                 icon = Icons.Default.Search,
@@ -71,7 +73,7 @@ fun NavigationDrawerScope.SlooshSideDrawer(
                 onClick = { onSectionSelected(NavSection.SEARCH) }
             )
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             DrawerNavItem(
                 icon = Icons.Default.Schedule,
@@ -81,7 +83,7 @@ fun NavigationDrawerScope.SlooshSideDrawer(
                 onClick = { onSectionSelected(NavSection.CONTINUE) }
             )
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             DrawerNavItem(
                 icon = Icons.Default.Favorite,
@@ -91,7 +93,7 @@ fun NavigationDrawerScope.SlooshSideDrawer(
                 onClick = { onSectionSelected(NavSection.FAVORITES) }
             )
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             DrawerNavItem(
                 icon = Icons.Default.Settings,
@@ -112,31 +114,55 @@ private fun NavigationDrawerScope.DrawerNavItem(
     isClosed: Boolean,
     onClick: () -> Unit
 ) {
+    var isFocused by remember { mutableStateOf(false) }
+    val isActive = isSelected || isFocused
+
+    val animatedScale by animateFloatAsState(
+        targetValue = if (isActive) 1.15f else 1.0f,
+        animationSpec = tween(durationMillis = 180),
+        label = "drawerItemScale"
+    )
+
+    val animatedAlpha by animateFloatAsState(
+        targetValue = if (isActive) 1.0f else 0.40f,
+        animationSpec = tween(durationMillis = 180),
+        label = "drawerItemAlpha"
+    )
+
     NavigationDrawerItem(
         selected = isSelected,
         onClick = onClick,
+        modifier = Modifier.onFocusChanged { isFocused = it.isFocused },
         leadingContent = {
             Box(
-                modifier = Modifier.size(44.dp),
+                modifier = Modifier
+                    .size(44.dp)
+                    .graphicsLayer {
+                        scaleX = animatedScale
+                        scaleY = animatedScale
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = label,
+                    tint = Color.White.copy(alpha = animatedAlpha),
                     modifier = Modifier.size(24.dp)
                 )
             }
         },
         colors = NavigationDrawerItemDefaults.colors(
-            containerColor = Color.White.copy(alpha = 0.08f),
-            contentColor = Color.White.copy(alpha = 0.75f),
-            focusedContainerColor = Color.White,
-            focusedContentColor = Color.Black,
-            selectedContainerColor = Color.White.copy(alpha = 0.18f),
-            selectedContentColor = Color.White
+            containerColor = Color.Transparent,
+            contentColor = Color.White.copy(alpha = 0.40f),
+            focusedContainerColor = Color.Transparent,
+            focusedContentColor = Color.White,
+            selectedContainerColor = Color.Transparent,
+            selectedContentColor = Color.White,
+            focusedSelectedContainerColor = Color.Transparent,
+            focusedSelectedContentColor = Color.White
         ),
         shape = NavigationDrawerItemDefaults.shape(
-            shape = if (isClosed) CircleShape else ContinuousCapsule
+            shape = RectangleShape
         ),
         scale = NavigationDrawerItemDefaults.scale(focusedScale = 1.0f)
     ) {
@@ -148,10 +174,17 @@ private fun NavigationDrawerScope.DrawerNavItem(
             Text(
                 text = label,
                 style = MaterialTheme.typography.bodyMedium.copy(
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 15.sp
+                    fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Medium,
+                    fontSize = if (isActive) 16.sp else 15.sp
                 ),
-                modifier = Modifier.padding(start = 8.dp, end = 16.dp),
+                color = Color.White.copy(alpha = animatedAlpha),
+                modifier = Modifier
+                    .padding(start = 10.dp, end = 16.dp)
+                    .graphicsLayer {
+                        scaleX = if (isActive) 1.05f else 1.0f
+                        scaleY = if (isActive) 1.05f else 1.0f
+                        transformOrigin = TransformOrigin(0f, 0.5f)
+                    },
                 maxLines = 1
             )
         }
