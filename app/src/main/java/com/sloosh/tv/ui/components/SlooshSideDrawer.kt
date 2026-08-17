@@ -49,7 +49,7 @@ fun NavigationDrawerScope.SlooshSideDrawer(
         modifier = modifier
             .fillMaxHeight()
             .width(if (isClosed) 68.dp else 168.dp)
-            .padding(vertical = 24.dp, start = 12.dp, end = 4.dp)
+            .padding(start = 12.dp, top = 24.dp, end = 4.dp, bottom = 24.dp)
     ) {
         Column(
             modifier = Modifier
