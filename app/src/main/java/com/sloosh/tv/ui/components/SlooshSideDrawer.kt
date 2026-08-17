@@ -5,7 +5,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
@@ -33,8 +32,6 @@ import androidx.tv.material3.NavigationDrawerItemDefaults
 import androidx.tv.material3.NavigationDrawerScope
 import androidx.tv.material3.Text
 
-import com.sloosh.tv.ui.theme.BackgroundDark
-
 enum class NavSection {
     HOME, SEARCH, CONTINUE, FAVORITES, SETTINGS
 }
@@ -51,12 +48,13 @@ fun NavigationDrawerScope.SlooshSideDrawer(
     Box(
         modifier = modifier
             .fillMaxHeight()
-            .width(if (isClosed) 68.dp else 176.dp)
-            .background(if (isClosed) Color.Transparent else BackgroundDark.copy(alpha = 0.95f))
-            .padding(vertical = 24.dp, horizontal = 12.dp)
+            .width(if (isClosed) 68.dp else 168.dp)
+            .padding(vertical = 24.dp, start = 12.dp, end = 4.dp)
     ) {
         Column(
-            modifier = Modifier.fillMaxHeight(),
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.Start
         ) {
@@ -121,7 +119,7 @@ private fun NavigationDrawerScope.DrawerNavItem(
 ) {
     var isFocused by remember { mutableStateOf(false) }
 
-    // Differentiated states: Focused (1.0) vs Selected-unfocused (0.70) vs Inactive (0.32)
+    // Differentiated states: Focused (1.0) vs Selected-unfocused (0.68) vs Inactive (0.32)
     val targetAlpha = when {
         isFocused -> 1.0f
         isSelected -> 0.68f
@@ -149,6 +147,7 @@ private fun NavigationDrawerScope.DrawerNavItem(
         selected = isSelected,
         onClick = onClick,
         modifier = Modifier
+            .fillMaxWidth()
             .height(38.dp)
             .onFocusChanged { isFocused = it.isFocused },
         leadingContent = {
@@ -197,11 +196,11 @@ private fun NavigationDrawerScope.DrawerNavItem(
                         isSelected -> FontWeight.SemiBold
                         else -> FontWeight.Normal
                     },
-                    fontSize = if (isFocused) 15.5.sp else 14.5.sp
+                    fontSize = if (isFocused) 15.sp else 14.sp
                 ),
                 color = Color.White.copy(alpha = animatedAlpha),
                 modifier = Modifier
-                    .padding(start = 6.dp, end = 12.dp)
+                    .padding(start = 6.dp, end = 8.dp)
                     .graphicsLayer {
                         scaleX = if (isFocused) 1.04f else 1.0f
                         scaleY = if (isFocused) 1.04f else 1.0f

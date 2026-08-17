@@ -17,7 +17,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import androidx.tv.material3.ModalNavigationDrawer
+import androidx.tv.material3.NavigationDrawer
 import com.sloosh.tv.ui.components.NavSection
 import com.sloosh.tv.ui.components.SlooshSideDrawer
 import com.sloosh.tv.ui.continue_watching.ContinueScreen
@@ -75,9 +75,9 @@ class MainActivity : ComponentActivity() {
                         .fillMaxSize()
                         .background(BackgroundDark)
                 ) {
-                    // Native ModalNavigationDrawer Layer
+                    // Native NavigationDrawer Layer
                     if (showDrawer) {
-                        ModalNavigationDrawer(
+                        NavigationDrawer(
                             drawerContent = { drawerValue ->
                                 SlooshSideDrawer(
                                     selectedSection = selectedSection,
