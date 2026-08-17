@@ -158,16 +158,16 @@ fun HomeScreen(
             Box(
                 modifier = Modifier
                     .clip(ContinuousCapsule)
-                    .background(Color(0xFF141416).copy(alpha = 0.82f))
+                    .background(Color(0xFF141416).copy(alpha = 0.85f))
                     .border(
                         width = 1.dp,
                         color = Color.White.copy(alpha = 0.12f),
                         shape = ContinuousCapsule
                     )
-                    .padding(4.dp)
+                    .padding(3.dp)
             ) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(0.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     HomeCategory.values().forEach { cat ->
@@ -179,7 +179,7 @@ fun HomeScreen(
                                 coroutineScope.launch { gridState.scrollToItem(0) }
                             },
                             shape = ContinuousCapsule,
-                            focusedScale = 1.0f,
+                            focusedScale = 1.04f,
                             modifier = Modifier
                                 .wrapContentSize()
                                 .onPreviewKeyEvent { keyEvent ->
@@ -196,14 +196,14 @@ fun HomeScreen(
                                 }
                         ) { isFocused ->
                             val bgColor = when {
-                                isSelected -> Color.White
-                                isFocused -> Color.White.copy(alpha = 0.20f)
+                                isFocused -> Color.White
+                                isSelected -> Color.White.copy(alpha = 0.22f)
                                 else -> Color.Transparent
                             }
                             val textColor = when {
-                                isSelected -> Color.Black
-                                isFocused -> Color.White
-                                else -> Color.White.copy(alpha = 0.70f)
+                                isFocused -> Color.Black
+                                isSelected -> Color.White
+                                else -> Color.White.copy(alpha = 0.55f)
                             }
 
                             Box(
@@ -216,7 +216,7 @@ fun HomeScreen(
                                 Text(
                                     text = cat.title,
                                     style = MaterialTheme.typography.titleSmall.copy(
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        fontWeight = if (isSelected || isFocused) FontWeight.Bold else FontWeight.Medium,
                                         fontSize = 14.sp
                                     ),
                                     color = textColor
