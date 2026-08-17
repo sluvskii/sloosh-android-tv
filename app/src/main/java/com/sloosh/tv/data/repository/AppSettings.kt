@@ -31,4 +31,10 @@ class AppSettings(context: Context) {
         set(value) {
             prefs.edit().putBoolean("autoplay_enabled", value).apply()
         }
+
+    var gridColumns: Int
+        get() = prefs.getInt("grid_columns", 5).coerceIn(5, 6)
+        set(value) {
+            prefs.edit().putInt("grid_columns", value).apply()
+        }
 }

@@ -160,10 +160,16 @@ fun ProfileScreen(
                     }
                 }
             } else {
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val appSettings = remember { com.sloosh.tv.data.repository.AppSettings(context) }
+                val gridColumns = appSettings.gridColumns
+                val isCompact = gridColumns >= 6
+                val gridSpacing = if (isCompact) 12.dp else 16.dp
+
                 TvLazyVerticalGrid(
-                    columns = TvGridCells.Fixed(5),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    columns = TvGridCells.Fixed(gridColumns),
+                    horizontalArrangement = Arrangement.spacedBy(gridSpacing),
+                    verticalArrangement = Arrangement.spacedBy(gridSpacing),
                     contentPadding = PaddingValues(bottom = 60.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
@@ -172,6 +178,7 @@ fun ProfileScreen(
                         MediaCard(
                             item = item,
                             onClick = { onMediaSelected(item.identifier) },
+                            compact = isCompact,
                             onFocus = {}
                         )
                     }

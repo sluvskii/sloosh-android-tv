@@ -244,6 +244,12 @@ fun SearchScreen(
 
                 // Results grid
                 else -> {
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    val appSettings = remember { com.sloosh.tv.data.repository.AppSettings(context) }
+                    val gridColumns = appSettings.gridColumns
+                    val isCompact = gridColumns >= 6
+                    val gridSpacing = if (isCompact) 12.dp else 16.dp
+
                     Text(
                         text = "Результаты: ${state.results.size}",
                         style = MaterialTheme.typography.labelMedium,
@@ -251,9 +257,9 @@ fun SearchScreen(
                         modifier = Modifier.padding(bottom = 14.dp)
                     )
                     TvLazyVerticalGrid(
-                        columns = TvGridCells.Fixed(5),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        columns = TvGridCells.Fixed(gridColumns),
+                        horizontalArrangement = Arrangement.spacedBy(gridSpacing),
+                        verticalArrangement = Arrangement.spacedBy(gridSpacing),
                         contentPadding = PaddingValues(bottom = 80.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
@@ -262,6 +268,7 @@ fun SearchScreen(
                             MediaCard(
                                 item = item,
                                 onClick = { onMediaSelected(item.identifier) },
+                                compact = isCompact,
                                 onFocus = {}
                             )
                         }

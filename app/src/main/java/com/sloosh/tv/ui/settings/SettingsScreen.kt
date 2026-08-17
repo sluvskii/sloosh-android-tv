@@ -39,6 +39,7 @@ fun SettingsScreen(
 
     var isHighPosterQuality by remember { mutableStateOf(appSettings.isHighPosterQuality) }
     var isAutoplayEnabled by remember { mutableStateOf(appSettings.isAutoplayEnabled) }
+    var gridColumns by remember { mutableStateOf(appSettings.gridColumns) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
 
     var isCheckingUpdates by remember { mutableStateOf(false) }
@@ -128,6 +129,34 @@ fun SettingsScreen(
                                     onClick = {
                                         isHighPosterQuality = false
                                         appSettings.isHighPosterQuality = false
+                                    }
+                                )
+                            }
+                        }
+                    )
+                }
+
+                item {
+                    SettingCard(
+                        icon = Icons.Default.Star,
+                        title = "Количество карточек в ряду",
+                        description = if (gridColumns == 6) "6 карточек в ряду (компактная сетка)" else "5 карточек в ряду (стандартная крупная сетка)",
+                        action = {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SlooshButton(
+                                    text = "5 карточек",
+                                    isPrimary = gridColumns == 5,
+                                    onClick = {
+                                        gridColumns = 5
+                                        appSettings.gridColumns = 5
+                                    }
+                                )
+                                SlooshButton(
+                                    text = "6 карточек",
+                                    isPrimary = gridColumns == 6,
+                                    onClick = {
+                                        gridColumns = 6
+                                        appSettings.gridColumns = 6
                                     }
                                 )
                             }

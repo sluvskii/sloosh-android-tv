@@ -70,6 +70,12 @@ fun HomeScreen(
     ) {
 
         // Fullscreen Edge-to-Edge Native TV Poster Grid (Cards scroll seamlessly underneath floating sticky bar)
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val appSettings = remember { com.sloosh.tv.data.repository.AppSettings(context) }
+        val gridColumns = appSettings.gridColumns
+        val isCompact = gridColumns >= 6
+        val gridSpacing = if (isCompact) 12.dp else 16.dp
+
         if (state.isLoading) {
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -80,9 +86,9 @@ fun HomeScreen(
         } else {
             androidx.tv.foundation.lazy.grid.TvLazyVerticalGrid(
                 state = gridState,
-                columns = androidx.tv.foundation.lazy.grid.TvGridCells.Fixed(5),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                columns = androidx.tv.foundation.lazy.grid.TvGridCells.Fixed(gridColumns),
+                horizontalArrangement = Arrangement.spacedBy(gridSpacing),
+                verticalArrangement = Arrangement.spacedBy(gridSpacing),
                 contentPadding = PaddingValues(start = 4.dp, top = 88.dp, end = 16.dp, bottom = 40.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
@@ -102,12 +108,13 @@ fun HomeScreen(
                     MediaCard(
                         item = item,
                         onClick = { onMediaSelected(item.identifier) },
+                        compact = isCompact,
                         modifier = cardModifier
                     )
                 }
 
                 if (state.isLoadingMore) {
-                    item(span = { androidx.tv.foundation.lazy.grid.TvGridItemSpan(5) }) {
+                    item(span = { androidx.tv.foundation.lazy.grid.TvGridItemSpan(gridColumns) }) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -163,6 +170,7 @@ fun MediaCard(
     item: MediaDto,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
     onFocus: (() -> Unit)? = null
 ) {
     var isCardFocused by remember { mutableStateOf(false) }
@@ -186,10 +194,12 @@ fun MediaCard(
     )
 
     val animatedTextOffsetY by androidx.compose.animation.core.animateDpAsState(
-        targetValue = if (isCardFocused) 6.dp else 0.dp,
+        targetValue = if (isCardFocused) (if (compact) 4.5.dp else 6.dp) else 0.dp,
         animationSpec = androidx.compose.animation.core.tween(durationMillis = 180),
         label = "mediaTextOffset"
     )
+
+    val cardCornerRadius = if (compact) 14.dp else 16.dp
 
     Column(modifier = Modifier.fillMaxWidth()) {
         // ─── Poster (True 2:3 aspect ratio, no top/bottom cropping) ─────
@@ -198,7 +208,7 @@ fun MediaCard(
             modifier = modifier
                 .fillMaxWidth()
                 .aspectRatio(2f / 3f),
-            shape = ContinuousRoundedRectangle(16.dp),
+            shape = ContinuousRoundedRectangle(cardCornerRadius),
             focusedScale = 1.08f
         ) { cardFocused ->
             LaunchedEffect(cardFocused) {
@@ -213,21 +223,27 @@ fun MediaCard(
                     contentScale = ContentScale.Crop
                 )
 
-                // Adaptive rating badge top-left (iOS style: Green >= 7.0, Gray 5.0-7.0, Red < 5.0)
+                // Adaptive rating badge top-left (proportional to compact mode)
                 if (item.rating != null && item.rating > 0) {
+                    val badgeRadius = if (compact) 6.dp else 7.dp
+                    val badgePaddingHorizontal = if (compact) 5.dp else 6.5.dp
+                    val badgePaddingVertical = if (compact) 2.dp else 2.5.dp
+                    val badgeFontSize = if (compact) 12.sp else 13.5.sp
+                    val badgeMargin = if (compact) 6.dp else 8.dp
+
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopStart)
-                            .padding(8.dp)
-                            .clip(ContinuousRoundedRectangle(7.dp))
+                            .padding(badgeMargin)
+                            .clip(ContinuousRoundedRectangle(badgeRadius))
                             .background(ratingColor(item.rating))
-                            .padding(horizontal = 6.5.dp, vertical = 2.5.dp)
+                            .padding(horizontal = badgePaddingHorizontal, vertical = badgePaddingVertical)
                     ) {
                         Text(
                             text = String.format(java.util.Locale.US, "%.1f", item.rating),
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontWeight = FontWeight.ExtraBold,
-                                fontSize = 13.5.sp,
+                                fontSize = badgeFontSize,
                                 letterSpacing = (-0.2).sp
                             ),
                             color = Color.White
@@ -238,6 +254,11 @@ fun MediaCard(
         }
 
         // ─── Title + Meta BELOW (scales, offsets, and highlights in sync) ────────
+        val topSpacer = if (compact) 5.5.dp else 7.dp
+        val titleSize = if (compact) 13.5.sp else 15.sp
+        val titleLineHeight = if (compact) 17.sp else 19.sp
+        val metaSize = if (compact) 11.5.sp else 12.5.sp
+
         Column(
             modifier = Modifier
                 .offset(y = animatedTextOffsetY)
@@ -247,13 +268,13 @@ fun MediaCard(
                     transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
                 }
         ) {
-            Spacer(modifier = Modifier.height(7.dp))
+            Spacer(modifier = Modifier.height(topSpacer))
             Text(
                 text = item.displayTitle,
                 style = MaterialTheme.typography.bodyMedium.copy(
                     fontWeight = if (isCardFocused) FontWeight.Bold else FontWeight.SemiBold,
-                    fontSize = 15.sp,
-                    lineHeight = 19.sp
+                    fontSize = titleSize,
+                    lineHeight = titleLineHeight
                 ),
                 color = animatedTitleColor,
                 maxLines = 1,
@@ -267,7 +288,7 @@ fun MediaCard(
                 Text(
                     text = metaText,
                     style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 12.5.sp,
+                        fontSize = metaSize,
                         fontWeight = FontWeight.Normal
                     ),
                     color = animatedMetaColor,
@@ -279,5 +300,3 @@ fun MediaCard(
         }
     }
 }
-
-
