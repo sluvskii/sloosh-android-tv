@@ -27,19 +27,19 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Build Debug APK
-        run: gradle assembleDebug --stacktrace
+      - name: Build Release APK
+        run: gradle assembleRelease --stacktrace
 
       - name: Prepare Release Artifact
         run: |
           mkdir -p release-output
-          cp app/build/outputs/apk/debug/app-debug.apk release-output/sloosh-tv-debug.apk
+          cp app/build/outputs/apk/release/app-release.apk release-output/sloosh-tv-release.apk
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: sloosh-tv-debug.apk
-          path: release-output/sloosh-tv-debug.apk
+          name: sloosh-tv-release.apk
+          path: release-output/sloosh-tv-release.apk
           if-no-files-found: error
 
       - name: Publish GitHub Release (Latest)
@@ -49,13 +49,13 @@ jobs:
           tag_name: latest
           name: "Sloosh Android TV (Latest Release)"
           body: |
-            🚀 **Автоматическая сборка Sloosh для Android TV**
+            🚀 **Автоматическая релизная сборка Sloosh для Android TV**
             
-            - Готовый файл `sloosh-tv-debug.apk` прикреплен ниже.
+            - Готовый файл `sloosh-tv-release.apk` прикреплен ниже.
             - Коммит: `${{ github.event.head_commit.message }}`
           draft: false
           prerelease: false
           make_latest: "true"
-          files: release-output/sloosh-tv-debug.apk
+          files: release-output/sloosh-tv-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
