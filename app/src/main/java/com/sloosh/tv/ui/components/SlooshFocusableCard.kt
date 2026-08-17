@@ -12,7 +12,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
@@ -26,16 +25,13 @@ import androidx.tv.material3.Border
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
 import com.kyant.capsule.ContinuousRoundedRectangle
-import kotlin.math.abs
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.min
+import kotlin.math.sin
 
 /**
- * Universal Focusable Card with uniform-perimeter symmetric light beam contour (thin-thick-thin).
- * - Symmetrical cosine profile: fades smoothly from 0 at the tail, peaks in the center, and fades to 0 at the front.
- * - Uniform physical velocity along any shape perimeter via PathMeasure.
- * - Single continuous path stroke (zero dots or seam artifacts).
+ * Universal Focusable Card with true physical perimeter light beam contour.
+ * - 100% path-distance based intensity (zero angle distortion or non-linear speed changes).
+ * - Perfectly symmetric thin-thick-thin optical pulse via sin(t * PI).
+ * - Seamless Butt joins for uninterrupted ribbon stroke with zero overlapping dots.
  * - Smooth Fade-In and Fade-Out on focus transition.
  */
 @Composable
@@ -56,7 +52,7 @@ fun SlooshFocusableCard(
         label = "beamFocusAlpha"
     )
 
-    // Uniform perimeter progress 0f..1f (continuous constant speed)
+    // Constant physical velocity perimeter progress 0f..1f
     val infiniteTransition = rememberInfiniteTransition(label = "borderBeamAnimation")
     val beamProgress by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -89,7 +85,7 @@ fun SlooshFocusableCard(
     ) {
         val pathMeasure = remember { PathMeasure() }
         val sourcePath = remember { Path() }
-        val cometPath = remember { Path() }
+        val segmentPath = remember { Path() }
 
         Box(
             modifier = Modifier.drawWithContent {
@@ -110,57 +106,49 @@ fun SlooshFocusableCard(
                     val totalLength = pathMeasure.length
 
                     if (totalLength > 0f) {
-                        val beamFraction = 0.32f // Symmetrical beam length is ~32% of total perimeter
+                        val beamFraction = 0.32f // Symmetrical pulse is ~32% of total perimeter
                         val beamLen = totalLength * beamFraction
                         val halfLen = beamLen / 2f
                         val centerDist = beamProgress * totalLength
                         val startDist = centerDist - halfLen
-                        val endDist = centerDist + halfLen
 
-                        // Extract ONE single continuous beam path segment (zero chops, zero dots)
-                        cometPath.reset()
-                        extractLoopSegment(pathMeasure, totalLength, startDist, endDist, cometPath)
+                        // Subdivide the beam into 20 seamless slices along the perimeter path
+                        val subSteps = 20
+                        val stepLen = beamLen / subSteps
+                        val strokeWidthPx = 1.9.dp.toPx()
 
-                        // Calculate center position and angle for symmetric luminous gradient
-                        val normalizedCenter = ((centerDist % totalLength) + totalLength) % totalLength
-                        val centerPos = pathMeasure.getPosition(normalizedCenter)
-                        val centerX = size.width / 2f
-                        val centerY = size.height / 2f
-                        val centerAngle = (Math.toDegrees(
-                            atan2((centerPos.y - centerY).toDouble(), (centerPos.x - centerX).toDouble())
-                        ).toFloat() + 360f) % 360f
+                        for (i in 0 until subSteps) {
+                            val subStart = startDist + i * stepLen
+                            val subEnd = startDist + (i + 1) * stepLen
 
-                        val sampleCount = 28
-                        val beamArcDeg = 65f // Half-arc width around the center
-                        val stops = Array(sampleCount + 1) { i ->
-                            val fraction = i.toFloat() / sampleCount.toFloat()
-                            val angle = fraction * 360f
-                            val diff = abs(angle - centerAngle)
-                            val dist = min(diff, 360f - diff)
+                            // Normalized position along beam [0..1]
+                            val t = (i + 0.5f) / subSteps.toFloat()
 
-                            val intensity = if (dist < beamArcDeg) {
-                                val norm = dist / beamArcDeg
-                                cos(norm * (Math.PI / 2.0)).toFloat().coerceIn(0f, 1f)
-                            } else 0f
+                            // Perfectly symmetric sine bell curve (0 at start -> 1.0 in center -> 0 at end)
+                            val intensity = sin(t * Math.PI).toFloat().coerceIn(0f, 1f)
+                            val stepAlpha = (intensity * intensity * 0.90f * focusAlpha).coerceIn(0f, 1f)
 
-                            // Symmetric fade: 0 at start -> 0.90 in center -> 0 at end (thin-thick-thin profile)
-                            val alpha = (intensity * intensity * 0.90f * focusAlpha).coerceIn(0f, 1f)
-                            fraction to Color.White.copy(alpha = alpha)
+                            // Use Round cap strictly on the outer tips, Butt cap on internal segments (zero dots/overlaps)
+                            val cap = when (i) {
+                                0, subSteps - 1 -> StrokeCap.Round
+                                else -> StrokeCap.Butt
+                            }
+
+                            segmentPath.reset()
+                            extractLoopSegment(pathMeasure, totalLength, subStart, subEnd, segmentPath)
+
+                            drawPath(
+                                path = segmentPath,
+                                color = Color.White,
+                                alpha = stepAlpha,
+                                style = Stroke(
+                                    width = strokeWidthPx,
+                                    cap = cap,
+                                    join = StrokeJoin.Round
+                                ),
+                                blendMode = BlendMode.Plus
+                            )
                         }
-
-                        val brush = Brush.sweepGradient(*stops)
-
-                        // Symmetrical beam: thin at edges, bright and substantial in the center
-                        drawPath(
-                            path = cometPath,
-                            brush = brush,
-                            style = Stroke(
-                                width = 2.0.dp.toPx(),
-                                cap = StrokeCap.Round,
-                                join = StrokeJoin.Round
-                            ),
-                            blendMode = BlendMode.Plus
-                        )
                     }
                 }
             }
