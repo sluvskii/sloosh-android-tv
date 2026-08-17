@@ -67,6 +67,7 @@ fun HomeScreen(
     val gridState = rememberTvLazyGridState()
     val coroutineScope = rememberCoroutineScope()
     val firstCardFocusRequester = remember { FocusRequester() }
+    val categoryFocusRequesters = remember { Array(HomeCategory.values().size) { FocusRequester() } }
 
     Box(
         modifier = modifier.fillMaxSize()
@@ -104,8 +105,21 @@ fun HomeScreen(
                         }
                     }
 
-                    val cardModifier = if (index == 0) {
-                        Modifier.focusRequester(firstCardFocusRequester)
+                    val cardModifier = if (index < gridColumns) {
+                        Modifier
+                            .then(if (index == 0) Modifier.focusRequester(firstCardFocusRequester) else Modifier)
+                            .onPreviewKeyEvent { keyEvent ->
+                                if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                    keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP
+                                ) {
+                                    try {
+                                        categoryFocusRequesters[state.selectedCategory.ordinal].requestFocus()
+                                        true
+                                    } catch (e: Exception) {
+                                        false
+                                    }
+                                } else false
+                            }
                     } else Modifier
 
                     MediaCard(
@@ -150,30 +164,15 @@ fun HomeScreen(
         )
 
         // Floating Sticky Segmented Category Capsule Bar with Physics-Based Sliding Pill
-        var tabPositions by remember { mutableStateOf(mapOf<HomeCategory, Pair<androidx.compose.ui.unit.Dp, androidx.compose.ui.unit.Dp>>()) }
-        val density = LocalDensity.current
-
-        val currentTarget = tabPositions[state.selectedCategory]
-        val targetOffset = currentTarget?.first ?: 0.dp
-        val targetWidth = currentTarget?.second ?: 0.dp
-
-        // Physics-based spring animation with tactile weight, mass & natural settling
-        val animatedPillOffset by androidx.compose.animation.core.animateDpAsState(
-            targetValue = targetOffset,
+        val categories = HomeCategory.values()
+        val pillCount = categories.size
+        val animatedIndex by androidx.compose.animation.core.animateFloatAsState(
+            targetValue = state.selectedCategory.ordinal.toFloat(),
             animationSpec = androidx.compose.animation.core.spring(
-                dampingRatio = 0.74f,
+                dampingRatio = 0.76f,
                 stiffness = 380f
             ),
-            label = "tabPillOffset"
-        )
-
-        val animatedPillWidth by androidx.compose.animation.core.animateDpAsState(
-            targetValue = targetWidth,
-            animationSpec = androidx.compose.animation.core.spring(
-                dampingRatio = 0.74f,
-                stiffness = 380f
-            ),
-            label = "tabPillWidth"
+            label = "tabPillIndex"
         )
 
         Box(
@@ -183,11 +182,11 @@ fun HomeScreen(
                 .padding(start = 4.dp, top = 20.dp, end = 16.dp, bottom = 24.dp),
             contentAlignment = Alignment.Center
         ) {
-            // Unified outer capsule container
-            Box(
+            BoxWithConstraints(
                 modifier = Modifier
+                    .width(460.dp)
                     .clip(ContinuousCapsule)
-                    .background(Color(0xFF141416).copy(alpha = 0.84f))
+                    .background(Color(0xFF141416).copy(alpha = 0.85f))
                     .border(
                         width = 1.dp,
                         color = Color.White.copy(alpha = 0.12f),
@@ -195,58 +194,80 @@ fun HomeScreen(
                     )
                     .padding(3.5.dp)
             ) {
-                // 1. Sliding White Capsule Pill (Inertia spring physics)
-                if (targetWidth > 0.dp) {
-                    Box(
-                        modifier = Modifier
-                            .offset(x = animatedPillOffset)
-                            .width(animatedPillWidth)
-                            .height(34.dp)
-                            .clip(ContinuousCapsule)
-                            .background(Color.White)
-                    )
-                }
+                val pillWidth = maxWidth / pillCount
+
+                // 1. Sliding White Capsule Pill with Spring Inertia
+                Box(
+                    modifier = Modifier
+                        .offset(x = pillWidth * animatedIndex)
+                        .width(pillWidth)
+                        .height(36.dp)
+                        .clip(ContinuousCapsule)
+                        .background(Color.White)
+                )
 
                 // 2. Interactive Category Tabs (Instant switch on Left/Right arrow focus)
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(0.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    HomeCategory.values().forEach { cat ->
+                    categories.forEachIndexed { index, cat ->
                         val isSelected = state.selectedCategory == cat
 
                         Box(
                             modifier = Modifier
-                                .onGloballyPositioned { coords ->
-                                    with(density) {
-                                        val x = coords.positionInParent().x.toDp()
-                                        val w = coords.size.width.toDp()
-                                        if (tabPositions[cat]?.first != x || tabPositions[cat]?.second != w) {
-                                            tabPositions = tabPositions + (cat to Pair(x, w))
-                                        }
-                                    }
-                                }
+                                .weight(1f)
+                                .height(36.dp)
                                 .clip(ContinuousCapsule)
-                                .focusable()
+                                .focusRequester(categoryFocusRequesters[index])
                                 .onFocusChanged { focusState ->
                                     if (focusState.isFocused && state.selectedCategory != cat) {
                                         viewModel.selectCategory(cat)
                                         coroutineScope.launch { gridState.scrollToItem(0) }
                                     }
                                 }
+                                .clickable(
+                                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                    indication = null
+                                ) {
+                                    viewModel.selectCategory(cat)
+                                    coroutineScope.launch { gridState.scrollToItem(0) }
+                                }
                                 .onPreviewKeyEvent { keyEvent ->
-                                    if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
-                                        keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN
-                                    ) {
-                                        try {
-                                            firstCardFocusRequester.requestFocus()
-                                            true
-                                        } catch (e: Exception) {
-                                            false
+                                    if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                                        when (keyEvent.nativeKeyEvent.keyCode) {
+                                            android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                                try {
+                                                    firstCardFocusRequester.requestFocus()
+                                                    true
+                                                } catch (e: Exception) {
+                                                    false
+                                                }
+                                            }
+                                            android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
+                                                if (index > 0) {
+                                                    try {
+                                                        categoryFocusRequesters[index - 1].requestFocus()
+                                                        true
+                                                    } catch (e: Exception) {
+                                                        false
+                                                    }
+                                                } else false
+                                            }
+                                            android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                                                if (index < pillCount - 1) {
+                                                    try {
+                                                        categoryFocusRequesters[index + 1].requestFocus()
+                                                        true
+                                                    } catch (e: Exception) {
+                                                        false
+                                                    }
+                                                } else false
+                                            }
+                                            else -> false
                                         }
                                     } else false
-                                }
-                                .padding(horizontal = 18.dp, vertical = 7.dp),
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             val textColor by androidx.compose.animation.animateColorAsState(
