@@ -93,7 +93,7 @@ fun HomeScreen(
                 columns = androidx.tv.foundation.lazy.grid.TvGridCells.Fixed(gridColumns),
                 horizontalArrangement = Arrangement.spacedBy(gridSpacing),
                 verticalArrangement = Arrangement.spacedBy(gridSpacing),
-                contentPadding = PaddingValues(start = 4.dp, top = 70.dp, end = 16.dp, bottom = 40.dp),
+                contentPadding = PaddingValues(start = 4.dp, top = 82.dp, end = 16.dp, bottom = 40.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
                 // Poster Items
@@ -219,7 +219,7 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
-                .padding(start = 4.dp, top = 20.dp, end = 16.dp, bottom = 24.dp),
+                .padding(start = 4.dp, top = 10.dp, end = 16.dp, bottom = 20.dp),
             contentAlignment = Alignment.Center
         ) {
             Box(
