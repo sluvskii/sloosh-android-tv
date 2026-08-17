@@ -12,6 +12,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
@@ -25,11 +26,15 @@ import androidx.tv.material3.Border
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
 import com.kyant.capsule.ContinuousRoundedRectangle
+import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.min
 
 /**
  * Universal Focusable Card with uniform-perimeter crisp light beam contour.
  * - Uniform physical velocity along any shape perimeter via PathMeasure.
- * - Single razor-sharp stroke layer (no blurry double haze).
+ * - Single continuous path stroke (zero dots or seam artifacts).
  * - Smooth Fade-In and Fade-Out on focus transition.
  */
 @Composable
@@ -83,7 +88,7 @@ fun SlooshFocusableCard(
     ) {
         val pathMeasure = remember { PathMeasure() }
         val sourcePath = remember { Path() }
-        val segmentPath = remember { Path() }
+        val cometPath = remember { Path() }
 
         Box(
             modifier = Modifier.drawWithContent {
@@ -104,36 +109,54 @@ fun SlooshFocusableCard(
                     val totalLength = pathMeasure.length
 
                     if (totalLength > 0f) {
-                        val beamFraction = 0.28f // Comet length is ~28% of total perimeter
+                        val beamFraction = 0.30f // Comet length is ~30% of total perimeter
                         val beamLen = totalLength * beamFraction
                         val headDist = beamProgress * totalLength
                         val tailDist = headDist - beamLen
 
-                        val subSteps = 6
-                        val stepLen = beamLen / subSteps
-                        val strokeStyle = Stroke(
-                            width = 1.8.dp.toPx(),
-                            cap = StrokeCap.Round,
-                            join = StrokeJoin.Round
-                        )
+                        // Extract ONE single continuous comet path segment (zero chops, zero dots)
+                        cometPath.reset()
+                        extractLoopSegment(pathMeasure, totalLength, tailDist, headDist, cometPath)
 
-                        for (i in 0 until subSteps) {
-                            val subStart = tailDist + i * stepLen
-                            val subEnd = tailDist + (i + 1) * stepLen
-                            val progressRatio = (i + 1).toFloat() / subSteps.toFloat()
-                            val stepAlpha = (progressRatio * progressRatio * 0.85f * focusAlpha).coerceIn(0f, 1f)
+                        // Calculate head position and angle for smooth luminous sweep gradient
+                        val normalizedHead = ((headDist % totalLength) + totalLength) % totalLength
+                        val headPos = pathMeasure.getPosition(normalizedHead)
+                        val centerX = size.width / 2f
+                        val centerY = size.height / 2f
+                        val headAngle = (Math.toDegrees(
+                            atan2((headPos.y - centerY).toDouble(), (headPos.x - centerX).toDouble())
+                        ).toFloat() + 360f) % 360f
 
-                            segmentPath.reset()
-                            extractLoopSegment(pathMeasure, totalLength, subStart, subEnd, segmentPath)
+                        val sampleCount = 24
+                        val beamArcDeg = 110f
+                        val stops = Array(sampleCount + 1) { i ->
+                            val fraction = i.toFloat() / sampleCount.toFloat()
+                            val angle = fraction * 360f
+                            val diff = abs(angle - headAngle)
+                            val dist = min(diff, 360f - diff)
 
-                            drawPath(
-                                path = segmentPath,
-                                color = Color.White,
-                                alpha = stepAlpha,
-                                style = strokeStyle,
-                                blendMode = BlendMode.Plus
-                            )
+                            val intensity = if (dist < beamArcDeg) {
+                                val norm = dist / beamArcDeg
+                                cos(norm * (Math.PI / 2.0)).toFloat().coerceIn(0f, 1f)
+                            } else 0f
+
+                            val alpha = (intensity * intensity * 0.85f * focusAlpha).coerceIn(0f, 1f)
+                            fraction to Color.White.copy(alpha = alpha)
                         }
+
+                        val brush = Brush.sweepGradient(*stops)
+
+                        // SINGLE drawPath call: ZERO intermediate dots, ZERO seams, 100% solid and fluid
+                        drawPath(
+                            path = cometPath,
+                            brush = brush,
+                            style = Stroke(
+                                width = 1.8.dp.toPx(),
+                                cap = StrokeCap.Round,
+                                join = StrokeJoin.Round
+                            ),
+                            blendMode = BlendMode.Plus
+                        )
                     }
                 }
             }
@@ -144,7 +167,7 @@ fun SlooshFocusableCard(
 }
 
 /**
- * Extracts a segment from a closed looping path with length wrapping.
+ * Extracts a segment from a closed looping path with length wrapping into a single destination path.
  */
 private fun extractLoopSegment(
     pathMeasure: PathMeasure,
