@@ -35,10 +35,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
-import com.sloosh.tv.data.api.MediaDto
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import com.sloosh.tv.ui.components.*
 import com.sloosh.tv.ui.theme.*
 
@@ -146,7 +148,33 @@ fun HomeScreen(
                 )
         )
 
-        // Floating Sticky Segmented Category Capsule Bar
+        // Floating Sticky Segmented Category Capsule Bar with Physics-Based Sliding Pill
+        var tabPositions by remember { mutableStateOf(mapOf<HomeCategory, Pair<androidx.compose.ui.unit.Dp, androidx.compose.ui.unit.Dp>>()) }
+        val density = LocalDensity.current
+
+        val currentTarget = tabPositions[state.selectedCategory]
+        val targetOffset = currentTarget?.first ?: 0.dp
+        val targetWidth = currentTarget?.second ?: 0.dp
+
+        // Physics-based spring animation with tactile weight, mass & natural settling
+        val animatedPillOffset by androidx.compose.animation.core.animateDpAsState(
+            targetValue = targetOffset,
+            animationSpec = androidx.compose.animation.core.spring(
+                dampingRatio = 0.74f,
+                stiffness = 380f
+            ),
+            label = "tabPillOffset"
+        )
+
+        val animatedPillWidth by androidx.compose.animation.core.animateDpAsState(
+            targetValue = targetWidth,
+            animationSpec = androidx.compose.animation.core.spring(
+                dampingRatio = 0.74f,
+                stiffness = 380f
+            ),
+            label = "tabPillWidth"
+        )
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -158,14 +186,27 @@ fun HomeScreen(
             Box(
                 modifier = Modifier
                     .clip(ContinuousCapsule)
-                    .background(Color(0xFF141416).copy(alpha = 0.82f))
+                    .background(Color(0xFF141416).copy(alpha = 0.84f))
                     .border(
                         width = 1.dp,
                         color = Color.White.copy(alpha = 0.12f),
                         shape = ContinuousCapsule
                     )
-                    .padding(3.dp)
+                    .padding(3.5.dp)
             ) {
+                // 1. Sliding White Capsule Pill (Inertia spring physics)
+                if (targetWidth > 0.dp) {
+                    Box(
+                        modifier = Modifier
+                            .offset(x = animatedPillOffset)
+                            .width(animatedPillWidth)
+                            .height(34.dp)
+                            .clip(ContinuousCapsule)
+                            .background(Color.White)
+                    )
+                }
+
+                // 2. Interactive Category Tabs (Instant switch on Left/Right arrow focus)
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(0.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -173,15 +214,25 @@ fun HomeScreen(
                     HomeCategory.values().forEach { cat ->
                         val isSelected = state.selectedCategory == cat
 
-                        SlooshFocusableCard(
-                            onClick = {
-                                viewModel.selectCategory(cat)
-                                coroutineScope.launch { gridState.scrollToItem(0) }
-                            },
-                            shape = ContinuousCapsule,
-                            focusedScale = 1.05f,
+                        Box(
                             modifier = Modifier
-                                .wrapContentSize()
+                                .onGloballyPositioned { coords ->
+                                    with(density) {
+                                        val x = coords.positionInParent().x.toDp()
+                                        val w = coords.size.width.toDp()
+                                        if (tabPositions[cat]?.first != x || tabPositions[cat]?.second != w) {
+                                            tabPositions = tabPositions + (cat to Pair(x, w))
+                                        }
+                                    }
+                                }
+                                .clip(ContinuousCapsule)
+                                .focusable()
+                                .onFocusChanged { focusState ->
+                                    if (focusState.isFocused && state.selectedCategory != cat) {
+                                        viewModel.selectCategory(cat)
+                                        coroutineScope.launch { gridState.scrollToItem(0) }
+                                    }
+                                }
                                 .onPreviewKeyEvent { keyEvent ->
                                     if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
                                         keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN
@@ -194,39 +245,23 @@ fun HomeScreen(
                                         }
                                     } else false
                                 }
-                        ) { isFocused ->
-                            val bgColor = when {
-                                isSelected -> Color.White
-                                isFocused -> Color.White.copy(alpha = 0.22f)
-                                else -> Color.Transparent
-                            }
-                            val textColor = when {
-                                isSelected -> Color.Black
-                                isFocused -> Color.White
-                                else -> Color.White.copy(alpha = 0.70f)
-                            }
+                                .padding(horizontal = 18.dp, vertical = 7.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            val textColor by androidx.compose.animation.animateColorAsState(
+                                targetValue = if (isSelected) Color.Black else Color.White.copy(alpha = 0.65f),
+                                animationSpec = androidx.compose.animation.core.tween(durationMillis = 160),
+                                label = "tabTextColor"
+                            )
 
-                            val borderModifier = if (isSelected && isFocused) {
-                                Modifier.border(1.5.dp, Color.Black.copy(alpha = 0.35f), ContinuousCapsule)
-                            } else Modifier
-
-                            Box(
-                                modifier = Modifier
-                                    .clip(ContinuousCapsule)
-                                    .background(bgColor)
-                                    .then(borderModifier)
-                                    .padding(horizontal = 18.dp, vertical = 7.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = cat.title,
-                                    style = MaterialTheme.typography.titleSmall.copy(
-                                        fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
-                                        fontSize = 14.sp
-                                    ),
-                                    color = textColor
-                                )
-                            }
+                            Text(
+                                text = cat.title,
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 14.sp
+                                ),
+                                color = textColor
+                            )
                         }
                     }
                 }
