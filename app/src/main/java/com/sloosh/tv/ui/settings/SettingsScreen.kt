@@ -61,7 +61,7 @@ fun SettingsScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 4.dp, top = 32.dp, end = 24.dp, bottom = 24.dp)
+                .padding(start = 4.dp, top = 32.dp, end = 16.dp, bottom = 24.dp)
         ) {
 
             // ─── Header ──────────────────────────────────────────────
