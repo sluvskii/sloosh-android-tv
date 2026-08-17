@@ -32,6 +32,8 @@ import androidx.tv.material3.NavigationDrawerItemDefaults
 import androidx.tv.material3.NavigationDrawerScope
 import androidx.tv.material3.Text
 
+import com.sloosh.tv.ui.theme.BackgroundDark
+
 enum class NavSection {
     HOME, SEARCH, CONTINUE, FAVORITES, SETTINGS
 }
@@ -48,6 +50,8 @@ fun NavigationDrawerScope.SlooshSideDrawer(
     Box(
         modifier = modifier
             .fillMaxHeight()
+            .width(if (isClosed) 68.dp else 176.dp)
+            .background(if (isClosed) Color.Transparent else BackgroundDark.copy(alpha = 0.95f))
             .padding(vertical = 24.dp, horizontal = 12.dp)
     ) {
         Column(
