@@ -146,7 +146,7 @@ fun HomeScreen(
                 )
         )
 
-        // Floating Sticky Category Bar (centered horizontally relative to the poster grid)
+        // Floating Sticky Segmented Category Capsule Bar
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -154,32 +154,76 @@ fun HomeScreen(
                 .padding(start = 4.dp, top = 20.dp, end = 16.dp, bottom = 24.dp),
             contentAlignment = Alignment.Center
         ) {
-            // Category Tabs centered
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                HomeCategory.values().forEach { cat ->
-                    SlooshButton(
-                        text = cat.title,
-                        isPrimary = state.selectedCategory == cat,
-                        onClick = {
-                            viewModel.selectCategory(cat)
-                            coroutineScope.launch { gridState.scrollToItem(0) }
-                        },
-                        modifier = Modifier
-                            .onPreviewKeyEvent { keyEvent ->
-                                if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
-                                    keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN) {
-                                    try {
-                                        firstCardFocusRequester.requestFocus()
-                                        true
-                                    } catch (e: Exception) {
-                                        false
-                                    }
-                                } else false
-                            }
+            // Unified outer capsule container
+            Box(
+                modifier = Modifier
+                    .clip(ContinuousCapsule)
+                    .background(Color(0xFF141416).copy(alpha = 0.82f))
+                    .border(
+                        width = 1.dp,
+                        color = Color.White.copy(alpha = 0.12f),
+                        shape = ContinuousCapsule
                     )
+                    .padding(4.dp)
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    HomeCategory.values().forEach { cat ->
+                        val isSelected = state.selectedCategory == cat
+
+                        SlooshFocusableCard(
+                            onClick = {
+                                viewModel.selectCategory(cat)
+                                coroutineScope.launch { gridState.scrollToItem(0) }
+                            },
+                            shape = ContinuousCapsule,
+                            focusedScale = 1.0f,
+                            modifier = Modifier
+                                .wrapContentSize()
+                                .onPreviewKeyEvent { keyEvent ->
+                                    if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                        keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN
+                                    ) {
+                                        try {
+                                            firstCardFocusRequester.requestFocus()
+                                            true
+                                        } catch (e: Exception) {
+                                            false
+                                        }
+                                    } else false
+                                }
+                        ) { isFocused ->
+                            val bgColor = when {
+                                isSelected -> Color.White
+                                isFocused -> Color.White.copy(alpha = 0.20f)
+                                else -> Color.Transparent
+                            }
+                            val textColor = when {
+                                isSelected -> Color.Black
+                                isFocused -> Color.White
+                                else -> Color.White.copy(alpha = 0.70f)
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .clip(ContinuousCapsule)
+                                    .background(bgColor)
+                                    .padding(horizontal = 16.dp, vertical = 7.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = cat.title,
+                                    style = MaterialTheme.typography.titleSmall.copy(
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        fontSize = 14.sp
+                                    ),
+                                    color = textColor
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
