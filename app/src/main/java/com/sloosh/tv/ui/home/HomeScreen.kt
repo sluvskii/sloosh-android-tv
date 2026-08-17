@@ -35,6 +35,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import com.sloosh.tv.data.api.MediaDto
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
@@ -260,8 +261,8 @@ fun MediaCard(
                 modifier = Modifier.padding(horizontal = 2.dp)
             )
             Spacer(modifier = Modifier.height(2.dp))
-            val genreText = item.genres?.firstOrNull()?.name
-            val metaText = listOfNotNull(item.yearString.ifEmpty { null }, genreText).joinToString(" • ")
+            val genreText: String? = item.genres?.firstOrNull()?.name
+            val metaText: String = listOfNotNull(item.yearString.ifEmpty { null }, genreText).joinToString(" • ")
             if (metaText.isNotEmpty()) {
                 Text(
                     text = metaText,
