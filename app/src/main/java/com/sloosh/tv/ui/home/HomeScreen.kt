@@ -203,12 +203,12 @@ fun MediaCard(
 
     Column(modifier = Modifier.fillMaxWidth()) {
         // ─── Poster (True 2:3 aspect ratio, no top/bottom cropping) ─────
-        SlooshPosterCard(
+        SlooshFocusableCard(
             onClick = onClick,
             modifier = modifier
                 .fillMaxWidth()
                 .aspectRatio(2f / 3f),
-            cornerRadius = cardCornerRadius,
+            shape = ContinuousRoundedRectangle(cardCornerRadius),
             focusedScale = 1.08f
         ) { cardFocused ->
             LaunchedEffect(cardFocused) {

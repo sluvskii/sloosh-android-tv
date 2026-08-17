@@ -12,13 +12,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.graphics.drawscope.drawOutline
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Border
 import androidx.tv.material3.Card
@@ -28,8 +27,8 @@ import kotlin.math.abs
 import kotlin.math.min
 
 /**
- * Universal TV Focusable Card for buttons, action pills, round icons, and controls.
- * Respects any Shape (CircleShape, ContinuousCapsule, Rectangles) cleanly without any rogue border drawing.
+ * Universal Focusable Card with shape-adaptive plus-lighter rotating light beam contour.
+ * Dynamically conforms to ANY Shape (CircleShape, ContinuousCapsule, ContinuousRoundedRectangle).
  */
 @Composable
 fun SlooshFocusableCard(
@@ -41,43 +40,6 @@ fun SlooshFocusableCard(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
-
-    Card(
-        onClick = onClick,
-        modifier = modifier,
-        interactionSource = interactionSource,
-        shape = CardDefaults.shape(shape = shape),
-        colors = CardDefaults.colors(
-            containerColor = Color.Transparent,
-            focusedContainerColor = Color.Transparent
-        ),
-        scale = CardDefaults.scale(focusedScale = focusedScale),
-        glow = CardDefaults.glow(glow = androidx.tv.material3.Glow.None),
-        border = CardDefaults.border(
-            border = Border(border = BorderStroke(0.dp, Color.Transparent), shape = shape),
-            focusedBorder = Border(border = BorderStroke(0.dp, Color.Transparent), shape = shape)
-        )
-    ) {
-        Box {
-            content(isFocused)
-        }
-    }
-}
-
-/**
- * Specialized Poster Card for movie grid items with rotating additive light beam contour.
- */
-@Composable
-fun SlooshPosterCard(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    cornerRadius: Dp = 16.dp,
-    focusedScale: Float = 1.08f,
-    content: @Composable BoxScope.(isFocused: Boolean) -> Unit
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isFocused by interactionSource.collectIsFocusedAsState()
-    val shape = ContinuousRoundedRectangle(cornerRadius)
 
     // Smooth continuous rotating border beam with 360 seamless interpolation
     val infiniteTransition = rememberInfiniteTransition(label = "borderBeamAnimation")
@@ -105,7 +67,7 @@ fun SlooshPosterCard(
                 (1f - norm * norm).coerceIn(0f, 1f)
             } else 0f
 
-            // Softened alpha curve so additive plus-lighter shines through the poster without white clipping
+            // Softened alpha curve for natural additive plus-lighter sheen
             val alpha = (intensity * intensity * 0.55f).coerceIn(0f, 1f)
             fraction to Color.White.copy(alpha = alpha)
         }
@@ -125,10 +87,7 @@ fun SlooshPosterCard(
         scale = CardDefaults.scale(focusedScale = focusedScale),
         glow = CardDefaults.glow(
             glow = androidx.tv.material3.Glow.None,
-            focusedGlow = androidx.tv.material3.Glow(
-                elevation = 16.dp,
-                elevationColor = Color.Black.copy(alpha = 0.65f)
-            )
+            focusedGlow = androidx.tv.material3.Glow.None
         ),
         border = CardDefaults.border(
             border = Border(border = BorderStroke(0.dp, Color.Transparent), shape = shape),
@@ -141,23 +100,22 @@ fun SlooshPosterCard(
                 .drawWithContent {
                     drawContent()
                     if (isFocused) {
-                        val radiusPx = cornerRadius.toPx()
-                        val roundCorner = CornerRadius(radiusPx, radiusPx)
+                        val outline = shape.createOutline(size, layoutDirection, this)
 
-                        // 1. Soft glowing bloom with BlendMode.Plus (additive light sheen)
-                        drawRoundRect(
+                        // 1. Soft glowing bloom pass with BlendMode.Plus adapted to EXACT shape
+                        drawOutline(
+                            outline = outline,
                             brush = beamBrush,
-                            cornerRadius = roundCorner,
-                            style = Stroke(width = 4.5.dp.toPx()),
+                            style = Stroke(width = 3.5.dp.toPx()),
                             blendMode = BlendMode.Plus,
                             alpha = 0.35f
                         )
 
-                        // 2. Focused core light beam with BlendMode.Plus
-                        drawRoundRect(
+                        // 2. Focused core light beam with BlendMode.Plus adapted to EXACT shape
+                        drawOutline(
+                            outline = outline,
                             brush = beamBrush,
-                            cornerRadius = roundCorner,
-                            style = Stroke(width = 1.8.dp.toPx()),
+                            style = Stroke(width = 1.6.dp.toPx()),
                             blendMode = BlendMode.Plus,
                             alpha = 0.60f
                         )
