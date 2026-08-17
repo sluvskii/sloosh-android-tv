@@ -204,16 +204,8 @@ private fun SidePosterDetailsLayout(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.CenterEnd
         ) {
-            val imageRequest = remember(backdropUrl, posterUrl) {
-                coil.request.ImageRequest.Builder(context)
-                    .data(backdropUrl)
-                    .fallback(posterUrl?.let { android.net.Uri.parse(it) })
-                    .error(posterUrl?.let { android.net.Uri.parse(it) })
-                    .crossfade(300)
-                    .build()
-            }
             AsyncImage(
-                model = imageRequest,
+                model = backdropUrl,
                 contentDescription = null,
                 modifier = Modifier
                     .fillMaxHeight()
