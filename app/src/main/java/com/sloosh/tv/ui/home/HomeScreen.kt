@@ -178,6 +178,18 @@ fun MediaCard(
         label = "mediaMetaColor"
     )
 
+    val animatedTextScale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (isCardFocused) 1.04f else 1.0f,
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 180),
+        label = "mediaTextScale"
+    )
+
+    val animatedTextOffsetY by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (isCardFocused) 6.dp else 0.dp,
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 180),
+        label = "mediaTextOffset"
+    )
+
     Column(modifier = Modifier.fillMaxWidth()) {
         // ─── Poster (True 2:3 aspect ratio, no top/bottom cropping) ─────
         SlooshFocusableCard(
@@ -185,7 +197,8 @@ fun MediaCard(
             modifier = modifier
                 .fillMaxWidth()
                 .aspectRatio(2f / 3f),
-            shape = ContinuousRoundedRectangle(16.dp)
+            shape = ContinuousRoundedRectangle(16.dp),
+            focusedScale = 1.08f
         ) { cardFocused ->
             LaunchedEffect(cardFocused) {
                 isCardFocused = cardFocused
@@ -223,35 +236,45 @@ fun MediaCard(
             }
         }
 
-        // ─── Title + Meta BELOW (pure text without box, reacts smoothly to focus) ────────
-        Spacer(modifier = Modifier.height(7.dp))
-        Text(
-            text = item.displayTitle,
-            style = MaterialTheme.typography.bodyMedium.copy(
-                fontWeight = if (isCardFocused) FontWeight.Bold else FontWeight.SemiBold,
-                fontSize = 15.sp,
-                lineHeight = 19.sp
-            ),
-            color = animatedTitleColor,
-            maxLines = 1,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 2.dp)
-        )
-        Spacer(modifier = Modifier.height(2.dp))
-        val genreText = item.genres?.firstOrNull()?.name
-        val metaText = listOfNotNull(item.yearString.ifEmpty { null }, genreText).joinToString(" • ")
-        if (metaText.isNotEmpty()) {
+        // ─── Title + Meta BELOW (scales, offsets, and highlights in sync) ────────
+        Column(
+            modifier = Modifier
+                .offset(y = animatedTextOffsetY)
+                .graphicsLayer {
+                    scaleX = animatedTextScale
+                    scaleY = animatedTextScale
+                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+                }
+        ) {
+            Spacer(modifier = Modifier.height(7.dp))
             Text(
-                text = metaText,
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 12.5.sp,
-                    fontWeight = FontWeight.Normal
+                text = item.displayTitle,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontWeight = if (isCardFocused) FontWeight.Bold else FontWeight.SemiBold,
+                    fontSize = 15.sp,
+                    lineHeight = 19.sp
                 ),
-                color = animatedMetaColor,
+                color = animatedTitleColor,
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 2.dp)
             )
+            Spacer(modifier = Modifier.height(2.dp))
+            val genreText = item.genres?.firstOrNull()?.name
+            val metaText = listOfNotNull(item.yearString.ifEmpty { null }, genreText).joinToString(" • ")
+            if (metaText.isNotEmpty()) {
+                Text(
+                    text = metaText,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Normal
+                    ),
+                    color = animatedMetaColor,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 2.dp)
+                )
+            }
         }
     }
 }

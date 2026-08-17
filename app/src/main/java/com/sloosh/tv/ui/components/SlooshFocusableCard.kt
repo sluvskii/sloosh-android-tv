@@ -25,7 +25,7 @@ fun SlooshFocusableCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     shape: Shape = ContinuousRoundedRectangle(18.dp),
-    focusedScale: Float = 1.05f,
+    focusedScale: Float = 1.08f,
     content: @Composable BoxScope.(isFocused: Boolean) -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
