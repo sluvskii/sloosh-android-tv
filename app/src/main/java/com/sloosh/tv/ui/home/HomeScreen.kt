@@ -81,7 +81,7 @@ fun HomeScreen(
                 state = gridState,
                 columns = androidx.tv.foundation.lazy.grid.TvGridCells.Fixed(5),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
                 contentPadding = PaddingValues(start = 24.dp, top = 88.dp, end = 24.dp, bottom = 40.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
@@ -211,7 +211,7 @@ fun MediaCard(
         }
 
         // ─── Title + Meta BELOW (does NOT scale or take focus) ────────
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(7.dp))
         Text(
             text = item.displayTitle,
             style = MaterialTheme.typography.bodyMedium.copy(
@@ -224,7 +224,7 @@ fun MediaCard(
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             modifier = Modifier.padding(horizontal = 2.dp)
         )
-        Spacer(modifier = Modifier.height(3.dp))
+        Spacer(modifier = Modifier.height(2.dp))
         val genreText = item.genres?.firstOrNull()?.name
         val metaText = listOfNotNull(item.yearString.ifEmpty { null }, genreText).joinToString(" • ")
         if (metaText.isNotEmpty()) {

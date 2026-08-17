@@ -163,7 +163,7 @@ fun ProfileScreen(
                 TvLazyVerticalGrid(
                     columns = TvGridCells.Fixed(5),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
                     contentPadding = PaddingValues(bottom = 60.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
