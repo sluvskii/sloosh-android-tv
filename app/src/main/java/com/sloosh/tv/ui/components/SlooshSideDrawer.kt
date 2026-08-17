@@ -48,7 +48,7 @@ fun NavigationDrawerScope.SlooshSideDrawer(
     Box(
         modifier = modifier
             .fillMaxHeight()
-            .padding(vertical = 32.dp, horizontal = 12.dp)
+            .padding(vertical = 24.dp, horizontal = 12.dp)
     ) {
         Column(
             modifier = Modifier.fillMaxHeight(),
@@ -63,7 +63,7 @@ fun NavigationDrawerScope.SlooshSideDrawer(
                 onClick = { onSectionSelected(NavSection.HOME) }
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             DrawerNavItem(
                 icon = Icons.Default.Search,
@@ -73,7 +73,7 @@ fun NavigationDrawerScope.SlooshSideDrawer(
                 onClick = { onSectionSelected(NavSection.SEARCH) }
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             DrawerNavItem(
                 icon = Icons.Default.Schedule,
@@ -83,7 +83,7 @@ fun NavigationDrawerScope.SlooshSideDrawer(
                 onClick = { onSectionSelected(NavSection.CONTINUE) }
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             DrawerNavItem(
                 icon = Icons.Default.Favorite,
@@ -93,7 +93,7 @@ fun NavigationDrawerScope.SlooshSideDrawer(
                 onClick = { onSectionSelected(NavSection.FAVORITES) }
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             DrawerNavItem(
                 icon = Icons.Default.Settings,
@@ -115,28 +115,41 @@ private fun NavigationDrawerScope.DrawerNavItem(
     onClick: () -> Unit
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    val isActive = isSelected || isFocused
+
+    // Differentiated states: Focused (1.0) vs Selected-unfocused (0.70) vs Inactive (0.32)
+    val targetAlpha = when {
+        isFocused -> 1.0f
+        isSelected -> 0.68f
+        else -> 0.32f
+    }
+
+    val targetScale = when {
+        isFocused -> 1.14f
+        else -> 1.0f
+    }
 
     val animatedScale by animateFloatAsState(
-        targetValue = if (isActive) 1.15f else 1.0f,
-        animationSpec = tween(durationMillis = 180),
+        targetValue = targetScale,
+        animationSpec = tween(durationMillis = 160),
         label = "drawerItemScale"
     )
 
     val animatedAlpha by animateFloatAsState(
-        targetValue = if (isActive) 1.0f else 0.40f,
-        animationSpec = tween(durationMillis = 180),
+        targetValue = targetAlpha,
+        animationSpec = tween(durationMillis = 160),
         label = "drawerItemAlpha"
     )
 
     NavigationDrawerItem(
         selected = isSelected,
         onClick = onClick,
-        modifier = Modifier.onFocusChanged { isFocused = it.isFocused },
+        modifier = Modifier
+            .height(38.dp)
+            .onFocusChanged { isFocused = it.isFocused },
         leadingContent = {
             Box(
                 modifier = Modifier
-                    .size(44.dp)
+                    .size(38.dp)
                     .graphicsLayer {
                         scaleX = animatedScale
                         scaleY = animatedScale
@@ -147,17 +160,17 @@ private fun NavigationDrawerScope.DrawerNavItem(
                     imageVector = icon,
                     contentDescription = label,
                     tint = Color.White.copy(alpha = animatedAlpha),
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(22.dp)
                 )
             }
         },
         colors = NavigationDrawerItemDefaults.colors(
             containerColor = Color.Transparent,
-            contentColor = Color.White.copy(alpha = 0.40f),
+            contentColor = Color.White.copy(alpha = 0.32f),
             focusedContainerColor = Color.Transparent,
             focusedContentColor = Color.White,
             selectedContainerColor = Color.Transparent,
-            selectedContentColor = Color.White,
+            selectedContentColor = Color.White.copy(alpha = 0.68f),
             focusedSelectedContainerColor = Color.Transparent,
             focusedSelectedContentColor = Color.White
         ),
@@ -168,21 +181,25 @@ private fun NavigationDrawerScope.DrawerNavItem(
     ) {
         AnimatedVisibility(
             visible = !isClosed,
-            enter = fadeIn(animationSpec = tween(150)),
-            exit = fadeOut(animationSpec = tween(100))
+            enter = fadeIn(animationSpec = tween(140)),
+            exit = fadeOut(animationSpec = tween(90))
         ) {
             Text(
                 text = label,
                 style = MaterialTheme.typography.bodyMedium.copy(
-                    fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Medium,
-                    fontSize = if (isActive) 16.sp else 15.sp
+                    fontWeight = when {
+                        isFocused -> FontWeight.Bold
+                        isSelected -> FontWeight.SemiBold
+                        else -> FontWeight.Normal
+                    },
+                    fontSize = if (isFocused) 15.5.sp else 14.5.sp
                 ),
                 color = Color.White.copy(alpha = animatedAlpha),
                 modifier = Modifier
-                    .padding(start = 10.dp, end = 16.dp)
+                    .padding(start = 6.dp, end = 12.dp)
                     .graphicsLayer {
-                        scaleX = if (isActive) 1.05f else 1.0f
-                        scaleY = if (isActive) 1.05f else 1.0f
+                        scaleX = if (isFocused) 1.04f else 1.0f
+                        scaleY = if (isFocused) 1.04f else 1.0f
                         transformOrigin = TransformOrigin(0f, 0.5f)
                     },
                 maxLines = 1
