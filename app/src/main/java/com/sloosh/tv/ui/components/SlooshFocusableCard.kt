@@ -10,7 +10,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -31,30 +30,34 @@ fun SlooshFocusableCard(
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
 
-    // Smooth continuous shimmering light reflection across the border when focused
-    val infiniteTransition = rememberInfiniteTransition(label = "borderShimmer")
-    val shimmerOffset by infiniteTransition.animateFloat(
+    // Smooth continuous rotating border beam (aura comet circling around the card perimeter)
+    val infiniteTransition = rememberInfiniteTransition(label = "borderBeamAnimation")
+    val rotationAngle by infiniteTransition.animateFloat(
         initialValue = 0f,
-        targetValue = 1000f,
+        targetValue = 360f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2600, easing = LinearEasing),
+            animation = tween(durationMillis = 3000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "shimmerProgress"
+        label = "beamRotation"
     )
 
-    val shimmeringBrush = remember(shimmerOffset) {
-        Brush.linearGradient(
-            colors = listOf(
-                Color.White.copy(alpha = 0.95f),
-                Color.White.copy(alpha = 0.25f),
-                Color.White.copy(alpha = 0.85f),
-                Color.White.copy(alpha = 0.20f),
-                Color.White.copy(alpha = 0.95f)
-            ),
-            start = Offset(shimmerOffset, 0f),
-            end = Offset(shimmerOffset + 400f, 600f)
+    val beamBrush = remember(rotationAngle) {
+        val shift = (rotationAngle / 360f) % 1f
+        val rawStops = listOf(
+            0.00f to Color.Transparent,
+            0.45f to Color.Transparent,
+            0.65f to Color.White.copy(alpha = 0.20f),
+            0.80f to Color.White.copy(alpha = 0.65f),
+            0.92f to Color.White,
+            0.98f to Color.White.copy(alpha = 0.70f),
+            1.00f to Color.Transparent
         )
+        val shifted = rawStops.map { (stop, color) ->
+            ((stop + shift) % 1.0f) to color
+        }.sortedBy { it.first }
+
+        Brush.sweepGradient(*shifted.toTypedArray())
     }
 
     Card(
@@ -69,12 +72,15 @@ fun SlooshFocusableCard(
         scale = CardDefaults.scale(focusedScale = focusedScale),
         glow = CardDefaults.glow(
             glow = androidx.tv.material3.Glow.None,
-            focusedGlow = androidx.tv.material3.Glow(elevation = 16.dp, elevationColor = Color.Black.copy(alpha = 0.70f))
+            focusedGlow = androidx.tv.material3.Glow(
+                elevation = 18.dp,
+                elevationColor = Color.White.copy(alpha = 0.22f)
+            )
         ),
         border = CardDefaults.border(
             border = Border(border = BorderStroke(0.dp, Color.Transparent), shape = shape),
             focusedBorder = Border(
-                border = BorderStroke(2.dp, shimmeringBrush),
+                border = BorderStroke(2.5.dp, beamBrush),
                 shape = shape
             )
         )
