@@ -237,14 +237,20 @@ fun MediaCard(
                             .padding(badgeMargin)
                             .clip(ContinuousRoundedRectangle(badgeRadius))
                             .background(ratingColor(item.rating))
-                            .padding(horizontal = badgePaddingHorizontal, vertical = badgePaddingVertical)
+                            .padding(horizontal = badgePaddingHorizontal, vertical = badgePaddingVertical),
+                        contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = String.format(java.util.Locale.US, "%.1f", item.rating),
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = badgeFontSize,
-                                letterSpacing = (-0.2).sp
+                                letterSpacing = (-0.2).sp,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                    includeFontPadding = false
+                                ),
+                                lineHeight = badgeFontSize
                             ),
                             color = Color.White
                         )
