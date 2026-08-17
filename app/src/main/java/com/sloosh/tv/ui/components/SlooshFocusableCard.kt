@@ -42,8 +42,8 @@ fun SlooshFocusableCard(
         ),
         scale = CardDefaults.scale(focusedScale = focusedScale),
         glow = CardDefaults.glow(
-            glow = androidx.tv.material3.Glow(elevation = 0.dp, glowColor = Color.Transparent),
-            focusedGlow = androidx.tv.material3.Glow(elevation = 14.dp, glowColor = Color.Black.copy(alpha = 0.65f))
+            glow = androidx.tv.material3.Glow.None,
+            focusedGlow = androidx.tv.material3.Glow(elevation = 14.dp, elevationColor = Color.Black.copy(alpha = 0.65f))
         ),
         border = CardDefaults.border(
             border = Border(border = BorderStroke(0.dp, Color.Transparent), shape = shape),
