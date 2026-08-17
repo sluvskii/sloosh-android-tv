@@ -18,6 +18,8 @@ import androidx.tv.material3.Border
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
 import com.kyant.capsule.ContinuousRoundedRectangle
+import kotlin.math.abs
+import kotlin.math.min
 
 @Composable
 fun SlooshFocusableCard(
@@ -30,34 +32,38 @@ fun SlooshFocusableCard(
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
 
-    // Smooth continuous rotating border beam (aura comet circling around the card perimeter)
+    // Smooth continuous rotating border beam without any seam or boundary artifact
     val infiniteTransition = rememberInfiniteTransition(label = "borderBeamAnimation")
     val rotationAngle by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 3000, easing = LinearEasing),
+            animation = tween(durationMillis = 2800, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "beamRotation"
     )
 
     val beamBrush = remember(rotationAngle) {
-        val shift = (rotationAngle / 360f) % 1f
-        val rawStops = listOf(
-            0.00f to Color.Transparent,
-            0.45f to Color.Transparent,
-            0.65f to Color.White.copy(alpha = 0.20f),
-            0.80f to Color.White.copy(alpha = 0.65f),
-            0.92f to Color.White,
-            0.98f to Color.White.copy(alpha = 0.70f),
-            1.00f to Color.Transparent
-        )
-        val shifted = rawStops.map { (stop, color) ->
-            ((stop + shift) % 1.0f) to color
-        }.sortedBy { it.first }
+        val sampleCount = 24
+        val beamArc = 85f // Angular width of the light comet
+        val stops = Array(sampleCount + 1) { i ->
+            val fraction = i.toFloat() / sampleCount.toFloat()
+            val angle = fraction * 360f
+            val diff = abs(angle - rotationAngle)
+            val dist = min(diff, 360f - diff)
 
-        Brush.sweepGradient(*shifted.toTypedArray())
+            val intensity = if (dist < beamArc) {
+                val norm = dist / beamArc
+                (1f - norm * norm).coerceIn(0f, 1f)
+            } else 0f
+
+            // Base subtle background stroke (0.12f) + bright glowing beam (up to 0.95f)
+            val alpha = (0.10f + intensity * 0.85f).coerceIn(0f, 1f)
+            fraction to Color.White.copy(alpha = alpha)
+        }
+
+        Brush.sweepGradient(*stops)
     }
 
     Card(
@@ -73,14 +79,14 @@ fun SlooshFocusableCard(
         glow = CardDefaults.glow(
             glow = androidx.tv.material3.Glow.None,
             focusedGlow = androidx.tv.material3.Glow(
-                elevation = 18.dp,
-                elevationColor = Color.White.copy(alpha = 0.22f)
+                elevation = 16.dp,
+                elevationColor = Color.Black.copy(alpha = 0.65f)
             )
         ),
         border = CardDefaults.border(
             border = Border(border = BorderStroke(0.dp, Color.Transparent), shape = shape),
             focusedBorder = Border(
-                border = BorderStroke(2.5.dp, beamBrush),
+                border = BorderStroke(1.5.dp, beamBrush),
                 shape = shape
             )
         )
