@@ -128,6 +128,24 @@ fun HomeScreen(
             }
         }
 
+        // Soft cinematic top depth gradient scrim
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(115.dp)
+                .align(Alignment.TopCenter)
+                .background(
+                    Brush.verticalGradient(
+                        colorStops = arrayOf(
+                            0.00f to Color(0xFF09090A).copy(alpha = 0.88f),
+                            0.40f to Color(0xFF09090A).copy(alpha = 0.58f),
+                            0.72f to Color(0xFF09090A).copy(alpha = 0.20f),
+                            1.00f to Color.Transparent
+                        )
+                    )
+                )
+        )
+
         // Floating Sticky Category Bar
         Box(
             modifier = Modifier
