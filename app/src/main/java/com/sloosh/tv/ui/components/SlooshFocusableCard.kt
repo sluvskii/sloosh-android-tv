@@ -12,12 +12,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.drawOutline
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Border
 import androidx.tv.material3.Card
@@ -103,7 +107,7 @@ fun SlooshFocusableCard(
                         val outline = shape.createOutline(size, layoutDirection, this)
 
                         // 1. Soft glowing bloom pass with BlendMode.Plus adapted to EXACT shape
-                        drawOutline(
+                        drawOutlineStroke(
                             outline = outline,
                             brush = beamBrush,
                             style = Stroke(width = 3.5.dp.toPx()),
@@ -112,7 +116,7 @@ fun SlooshFocusableCard(
                         )
 
                         // 2. Focused core light beam with BlendMode.Plus adapted to EXACT shape
-                        drawOutline(
+                        drawOutlineStroke(
                             outline = outline,
                             brush = beamBrush,
                             style = Stroke(width = 1.6.dp.toPx()),
@@ -123,6 +127,48 @@ fun SlooshFocusableCard(
                 }
         ) {
             content(isFocused)
+        }
+    }
+}
+
+private fun DrawScope.drawOutlineStroke(
+    outline: Outline,
+    brush: Brush,
+    style: Stroke,
+    blendMode: BlendMode,
+    alpha: Float
+) {
+    when (outline) {
+        is Outline.Rectangle -> {
+            drawRect(
+                brush = brush,
+                topLeft = Offset(outline.rect.left, outline.rect.top),
+                size = Size(outline.rect.width, outline.rect.height),
+                style = style,
+                blendMode = blendMode,
+                alpha = alpha
+            )
+        }
+        is Outline.Rounded -> {
+            val rr = outline.roundRect
+            drawRoundRect(
+                brush = brush,
+                topLeft = Offset(rr.left, rr.top),
+                size = Size(rr.width, rr.height),
+                cornerRadius = CornerRadius(rr.topLeftCornerRadius.x, rr.topLeftCornerRadius.y),
+                style = style,
+                blendMode = blendMode,
+                alpha = alpha
+            )
+        }
+        is Outline.Generic -> {
+            drawPath(
+                path = outline.path,
+                brush = brush,
+                style = style,
+                blendMode = blendMode,
+                alpha = alpha
+            )
         }
     }
 }
