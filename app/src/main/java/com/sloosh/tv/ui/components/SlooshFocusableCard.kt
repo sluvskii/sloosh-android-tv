@@ -6,18 +6,13 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Border
 import androidx.tv.material3.Card
@@ -37,13 +32,13 @@ fun SlooshFocusableCard(
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
 
-    // Smooth continuous rotating border beam without any seam or boundary artifact
+    // Smooth continuous rotating border beam (pure glowing comet on transparent background)
     val infiniteTransition = rememberInfiniteTransition(label = "borderBeamAnimation")
     val rotationAngle by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2800, easing = LinearEasing),
+            animation = tween(durationMillis = 2600, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "beamRotation"
@@ -51,7 +46,7 @@ fun SlooshFocusableCard(
 
     val beamBrush = remember(rotationAngle) {
         val sampleCount = 24
-        val beamArc = 85f // Angular width of the light comet
+        val beamArc = 90f // Angular width of the glowing light beam
         val stops = Array(sampleCount + 1) { i ->
             val fraction = i.toFloat() / sampleCount.toFloat()
             val angle = fraction * 360f
@@ -63,8 +58,8 @@ fun SlooshFocusableCard(
                 (1f - norm * norm).coerceIn(0f, 1f)
             } else 0f
 
-            // Base subtle background stroke + bright glowing beam
-            val alpha = (0.08f + intensity * 0.90f).coerceIn(0f, 1f)
+            // Zero base alpha (100% transparent when beam is elsewhere) -> peak 100% pure white at the beam head
+            val alpha = (intensity * intensity * 1.0f).coerceIn(0f, 1f)
             fraction to Color.White.copy(alpha = alpha)
         }
 
@@ -91,37 +86,12 @@ fun SlooshFocusableCard(
         border = CardDefaults.border(
             border = Border(border = BorderStroke(0.dp, Color.Transparent), shape = shape),
             focusedBorder = Border(
-                border = BorderStroke(1.5.dp, beamBrush),
+                border = BorderStroke(2.dp, beamBrush),
                 shape = shape
             )
         )
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .drawWithContent {
-                    drawContent()
-                    if (isFocused) {
-                        val radiusPx = 16.dp.toPx()
-                        // 1. Soft glowing bloom overlay (blended onto poster with BlendMode.Screen)
-                        drawRoundRect(
-                            brush = beamBrush,
-                            cornerRadius = CornerRadius(radiusPx, radiusPx),
-                            style = Stroke(width = 4.5.dp.toPx()),
-                            blendMode = BlendMode.Screen,
-                            alpha = 0.45f
-                        )
-                        // 2. Focused optical core illumination
-                        drawRoundRect(
-                            brush = beamBrush,
-                            cornerRadius = CornerRadius(radiusPx, radiusPx),
-                            style = Stroke(width = 1.5.dp.toPx()),
-                            blendMode = BlendMode.Screen,
-                            alpha = 0.85f
-                        )
-                    }
-                }
-        ) {
+        Box {
             content(isFocused)
         }
     }
