@@ -35,9 +35,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
-import com.sloosh.tv.data.api.MediaDto
-import com.sloosh.tv.data.db.ProgressEntity
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.TransformOrigin
 import com.sloosh.tv.ui.components.*
 import com.sloosh.tv.ui.theme.*
 
