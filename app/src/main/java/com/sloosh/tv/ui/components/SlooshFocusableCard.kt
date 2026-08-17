@@ -32,7 +32,8 @@ import kotlin.math.cos
 import kotlin.math.min
 
 /**
- * Universal Focusable Card with uniform-perimeter crisp light beam contour.
+ * Universal Focusable Card with uniform-perimeter symmetric light beam contour (thin-thick-thin).
+ * - Symmetrical cosine profile: fades smoothly from 0 at the tail, peaks in the center, and fades to 0 at the front.
  * - Uniform physical velocity along any shape perimeter via PathMeasure.
  * - Single continuous path stroke (zero dots or seam artifacts).
  * - Smooth Fade-In and Fade-Out on focus transition.
@@ -109,30 +110,32 @@ fun SlooshFocusableCard(
                     val totalLength = pathMeasure.length
 
                     if (totalLength > 0f) {
-                        val beamFraction = 0.30f // Comet length is ~30% of total perimeter
+                        val beamFraction = 0.32f // Symmetrical beam length is ~32% of total perimeter
                         val beamLen = totalLength * beamFraction
-                        val headDist = beamProgress * totalLength
-                        val tailDist = headDist - beamLen
+                        val halfLen = beamLen / 2f
+                        val centerDist = beamProgress * totalLength
+                        val startDist = centerDist - halfLen
+                        val endDist = centerDist + halfLen
 
-                        // Extract ONE single continuous comet path segment (zero chops, zero dots)
+                        // Extract ONE single continuous beam path segment (zero chops, zero dots)
                         cometPath.reset()
-                        extractLoopSegment(pathMeasure, totalLength, tailDist, headDist, cometPath)
+                        extractLoopSegment(pathMeasure, totalLength, startDist, endDist, cometPath)
 
-                        // Calculate head position and angle for smooth luminous sweep gradient
-                        val normalizedHead = ((headDist % totalLength) + totalLength) % totalLength
-                        val headPos = pathMeasure.getPosition(normalizedHead)
+                        // Calculate center position and angle for symmetric luminous gradient
+                        val normalizedCenter = ((centerDist % totalLength) + totalLength) % totalLength
+                        val centerPos = pathMeasure.getPosition(normalizedCenter)
                         val centerX = size.width / 2f
                         val centerY = size.height / 2f
-                        val headAngle = (Math.toDegrees(
-                            atan2((headPos.y - centerY).toDouble(), (headPos.x - centerX).toDouble())
+                        val centerAngle = (Math.toDegrees(
+                            atan2((centerPos.y - centerY).toDouble(), (centerPos.x - centerX).toDouble())
                         ).toFloat() + 360f) % 360f
 
-                        val sampleCount = 24
-                        val beamArcDeg = 110f
+                        val sampleCount = 28
+                        val beamArcDeg = 65f // Half-arc width around the center
                         val stops = Array(sampleCount + 1) { i ->
                             val fraction = i.toFloat() / sampleCount.toFloat()
                             val angle = fraction * 360f
-                            val diff = abs(angle - headAngle)
+                            val diff = abs(angle - centerAngle)
                             val dist = min(diff, 360f - diff)
 
                             val intensity = if (dist < beamArcDeg) {
@@ -140,18 +143,19 @@ fun SlooshFocusableCard(
                                 cos(norm * (Math.PI / 2.0)).toFloat().coerceIn(0f, 1f)
                             } else 0f
 
-                            val alpha = (intensity * intensity * 0.85f * focusAlpha).coerceIn(0f, 1f)
+                            // Symmetric fade: 0 at start -> 0.90 in center -> 0 at end (thin-thick-thin profile)
+                            val alpha = (intensity * intensity * 0.90f * focusAlpha).coerceIn(0f, 1f)
                             fraction to Color.White.copy(alpha = alpha)
                         }
 
                         val brush = Brush.sweepGradient(*stops)
 
-                        // SINGLE drawPath call: ZERO intermediate dots, ZERO seams, 100% solid and fluid
+                        // Symmetrical beam: thin at edges, bright and substantial in the center
                         drawPath(
                             path = cometPath,
                             brush = brush,
                             style = Stroke(
-                                width = 1.8.dp.toPx(),
+                                width = 2.0.dp.toPx(),
                                 cap = StrokeCap.Round,
                                 join = StrokeJoin.Round
                             ),
