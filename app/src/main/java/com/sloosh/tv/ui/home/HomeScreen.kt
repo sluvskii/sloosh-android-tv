@@ -146,15 +146,19 @@ fun HomeScreen(
                 )
         )
 
-        // Floating Sticky Category Bar
+        // Floating Sticky Category Bar (centered horizontally relative to the poster grid)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
-                .padding(start = 4.dp, top = 20.dp, end = 16.dp, bottom = 24.dp)
+                .padding(start = 4.dp, top = 20.dp, end = 16.dp, bottom = 24.dp),
+            contentAlignment = Alignment.Center
         ) {
-            // Category Tabs only
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            // Category Tabs centered
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 HomeCategory.values().forEach { cat ->
                     SlooshButton(
                         text = cat.title,
