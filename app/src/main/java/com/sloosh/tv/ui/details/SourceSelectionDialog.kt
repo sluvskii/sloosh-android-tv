@@ -36,6 +36,7 @@ import com.kyant.capsule.ContinuousRoundedRectangle
 import com.sloosh.tv.data.api.AllohaApiResult
 import com.sloosh.tv.data.api.AllohaTranslation
 import com.sloosh.tv.data.repository.allohaTranslationNamesMatch
+import com.sloosh.tv.ui.components.SlooshFocusableCard
 
 // ─── Data class for dialog result ────────────────────────────────────────────
 
@@ -494,44 +495,43 @@ private fun SelectorChip(
         else -> 0.35f
     }
 
-    val containerColor = if (isSelected) Color.White else Color.White.copy(alpha = 0.08f)
-    val contentColor = if (isSelected) Color.Black else Color.White.copy(alpha = contentAlpha)
-    val focusedContainerColor = if (isSelected) Color.White else Color.White.copy(alpha = 0.22f)
-    val focusedContentColor = if (isSelected) Color.Black else Color.White
-
-    Button(
+    SlooshFocusableCard(
         onClick = onClick,
-        shape = ButtonDefaults.shape(shape = shape),
-        colors = ButtonDefaults.colors(
-            containerColor = containerColor,
-            contentColor = contentColor,
-            focusedContainerColor = focusedContainerColor,
-            focusedContentColor = focusedContentColor
-        ),
-        scale = ButtonDefaults.scale(focusedScale = 1.05f),
-        border = ButtonDefaults.border(
-            border = Border(
-                border = BorderStroke(1.dp, if (isSelected) Color.White else Color.White.copy(alpha = 0.08f)),
-                shape = shape
-            ),
-            focusedBorder = Border(
-                border = BorderStroke(2.dp, Color.White),
-                shape = shape
+        shape = shape,
+        focusedScale = 1.05f
+    ) { isFocused ->
+        val bgColor = when {
+            isFocused && isSelected -> Color.White
+            isFocused -> Color.White.copy(alpha = 0.22f)
+            isSelected -> Color.White
+            else -> Color.White.copy(alpha = 0.08f)
+        }
+        val textColor = when {
+            isSelected -> Color.Black
+            isFocused -> Color.White
+            else -> Color.White.copy(alpha = contentAlpha)
+        }
+
+        Box(
+            modifier = Modifier
+                .clip(shape)
+                .background(bgColor)
+                .padding(horizontal = 18.dp, vertical = 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                    fontSize = 14.sp
+                ),
+                color = textColor
             )
-        ),
-        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium.copy(
-                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                fontSize = 14.sp
-            )
-        )
+        }
     }
 }
 
-// ─── Play button using TV Button ──────────────────────────────────────────────
+// ─── Play button using SlooshFocusableCard ────────────────────────────────────
 
 @Composable
 private fun PlayButton(
@@ -541,46 +541,42 @@ private fun PlayButton(
 ) {
     val shape = ContinuousCapsule
 
-    Button(
+    SlooshFocusableCard(
         onClick = onClick,
-        enabled = isReadyToPlay,
+        shape = shape,
+        focusedScale = 1.03f,
         modifier = Modifier
             .fillMaxWidth()
-            .height(52.dp)
-            .focusRequester(focusRequester),
-        shape = ButtonDefaults.shape(shape = shape),
-        colors = ButtonDefaults.colors(
-            containerColor = Color.White,
-            contentColor = Color.Black,
-            focusedContainerColor = Color.White,
-            focusedContentColor = Color.Black,
-            disabledContainerColor = Color.White.copy(alpha = 0.25f),
-            disabledContentColor = Color.Black.copy(alpha = 0.40f)
-        ),
-        scale = ButtonDefaults.scale(focusedScale = 1.03f),
-        border = ButtonDefaults.border(
-            border = Border(border = BorderStroke(1.dp, Color.Transparent), shape = shape),
-            focusedBorder = Border(border = BorderStroke(2.5.dp, Color.White), shape = shape)
-        )
-    ) {
-        Row(
-            modifier = Modifier.fillMaxSize(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
+            .focusRequester(focusRequester)
+    ) { isFocused ->
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+                .clip(shape)
+                .background(if (isReadyToPlay) Color.White else Color.White.copy(alpha = 0.25f)),
+            contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = Icons.Default.PlayArrow,
-                contentDescription = null,
-                modifier = Modifier.size(22.dp)
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = "Смотреть",
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 17.sp
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    tint = if (isReadyToPlay) Color.Black else Color.Black.copy(alpha = 0.40f),
+                    modifier = Modifier.size(22.dp)
                 )
-            )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Смотреть",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp
+                    ),
+                    color = if (isReadyToPlay) Color.Black else Color.Black.copy(alpha = 0.40f)
+                )
+            }
         }
     }
 }

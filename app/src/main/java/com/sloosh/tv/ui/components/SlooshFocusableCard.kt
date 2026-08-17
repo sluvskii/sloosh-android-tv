@@ -6,7 +6,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -28,6 +27,7 @@ import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
 import com.kyant.capsule.ContinuousRoundedRectangle
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.min
 
 /**
@@ -51,15 +51,15 @@ fun SlooshFocusableCard(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2600, easing = LinearEasing),
+            animation = tween(durationMillis = 2400, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "beamRotation"
     )
 
     val beamBrush = remember(rotationAngle) {
-        val sampleCount = 24
-        val beamArc = 95f // Angular width of the glowing light beam
+        val sampleCount = 28
+        val beamArc = 105f // Smooth silky comet beam width
         val stops = Array(sampleCount + 1) { i ->
             val fraction = i.toFloat() / sampleCount.toFloat()
             val angle = fraction * 360f
@@ -68,11 +68,11 @@ fun SlooshFocusableCard(
 
             val intensity = if (dist < beamArc) {
                 val norm = dist / beamArc
-                (1f - norm * norm).coerceIn(0f, 1f)
+                cos(norm * (Math.PI / 2.0)).toFloat().coerceIn(0f, 1f)
             } else 0f
 
-            // Softened alpha curve for natural additive plus-lighter sheen
-            val alpha = (intensity * intensity * 0.55f).coerceIn(0f, 1f)
+            // Softened alpha curve with luminous pearl silver core
+            val alpha = (intensity * intensity * 0.60f).coerceIn(0f, 1f)
             fraction to Color.White.copy(alpha = alpha)
         }
 
@@ -108,9 +108,9 @@ fun SlooshFocusableCard(
                     drawOutlineStroke(
                         outline = outline,
                         brush = beamBrush,
-                        style = Stroke(width = 3.5.dp.toPx()),
+                        style = Stroke(width = 3.6.dp.toPx()),
                         blendMode = BlendMode.Plus,
-                        alpha = 0.35f
+                        alpha = 0.36f
                     )
 
                     // 2. Focused core light beam with BlendMode.Plus adapted to EXACT shape
@@ -119,7 +119,7 @@ fun SlooshFocusableCard(
                         brush = beamBrush,
                         style = Stroke(width = 1.6.dp.toPx()),
                         blendMode = BlendMode.Plus,
-                        alpha = 0.60f
+                        alpha = 0.68f
                     )
                 }
             }
