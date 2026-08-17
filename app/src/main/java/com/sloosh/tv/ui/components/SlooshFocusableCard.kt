@@ -115,7 +115,7 @@ fun SlooshFocusableCard(
                         // Subdivide the beam into 20 seamless slices along the perimeter path
                         val subSteps = 20
                         val stepLen = beamLen / subSteps
-                        val strokeWidthPx = 1.9.dp.toPx()
+                        val strokeWidthPx = 1.5.dp.toPx()
 
                         for (i in 0 until subSteps) {
                             val subStart = startDist + i * stepLen
@@ -126,7 +126,7 @@ fun SlooshFocusableCard(
 
                             // Perfectly symmetric sine bell curve (0 at start -> 1.0 in center -> 0 at end)
                             val intensity = sin(t * Math.PI).toFloat().coerceIn(0f, 1f)
-                            val stepAlpha = (intensity * intensity * 0.90f * focusAlpha).coerceIn(0f, 1f)
+                            val stepAlpha = (intensity * intensity * 0.50f * focusAlpha).coerceIn(0f, 1f)
 
                             // Use Round cap strictly on the outer tips, Butt cap on internal segments (zero dots/overlaps)
                             val cap = when (i) {
