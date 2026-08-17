@@ -51,7 +51,7 @@ fun SlooshFocusableCard(
 
     val beamBrush = remember(rotationAngle) {
         val sampleCount = 24
-        val beamArc = 90f // Angular width of the glowing light beam
+        val beamArc = 95f // Angular width of the glowing light beam
         val stops = Array(sampleCount + 1) { i ->
             val fraction = i.toFloat() / sampleCount.toFloat()
             val angle = fraction * 360f
@@ -63,8 +63,8 @@ fun SlooshFocusableCard(
                 (1f - norm * norm).coerceIn(0f, 1f)
             } else 0f
 
-            // Zero base alpha -> pure additive intensity on the beam
-            val alpha = (intensity * intensity * 1.0f).coerceIn(0f, 1f)
+            // Softened alpha curve so additive plus-lighter shines through the poster without white clipping
+            val alpha = (intensity * intensity * 0.55f).coerceIn(0f, 1f)
             fraction to Color.White.copy(alpha = alpha)
         }
 
@@ -102,13 +102,13 @@ fun SlooshFocusableCard(
                         val radiusPx = 16.dp.toPx()
                         val cornerRadius = CornerRadius(radiusPx, radiusPx)
 
-                        // 1. Soft glowing bloom with BlendMode.Plus (additive / plus-lighter overlay)
+                        // 1. Soft glowing bloom with BlendMode.Plus (additive light sheen)
                         drawRoundRect(
                             brush = beamBrush,
                             cornerRadius = cornerRadius,
-                            style = Stroke(width = 4.dp.toPx()),
+                            style = Stroke(width = 4.5.dp.toPx()),
                             blendMode = BlendMode.Plus,
-                            alpha = 0.55f
+                            alpha = 0.35f
                         )
 
                         // 2. Focused core light beam with BlendMode.Plus
@@ -117,7 +117,7 @@ fun SlooshFocusableCard(
                             cornerRadius = cornerRadius,
                             style = Stroke(width = 1.8.dp.toPx()),
                             blendMode = BlendMode.Plus,
-                            alpha = 0.95f
+                            alpha = 0.60f
                         )
                     }
                 }
