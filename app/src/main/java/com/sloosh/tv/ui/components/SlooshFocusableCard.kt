@@ -43,11 +43,11 @@ fun SlooshFocusableCard(
         scale = CardDefaults.scale(focusedScale = focusedScale),
         glow = CardDefaults.glow(
             glow = androidx.tv.material3.Glow.None,
-            focusedGlow = androidx.tv.material3.Glow(elevation = 14.dp, elevationColor = Color.Black.copy(alpha = 0.65f))
+            focusedGlow = androidx.tv.material3.Glow(elevation = 16.dp, elevationColor = Color.Black.copy(alpha = 0.70f))
         ),
         border = CardDefaults.border(
             border = Border(border = BorderStroke(0.dp, Color.Transparent), shape = shape),
-            focusedBorder = Border(border = BorderStroke(2.5.dp, Color.White), shape = shape)
+            focusedBorder = Border(border = BorderStroke(0.dp, Color.Transparent), shape = shape)
         )
     ) {
         Box {

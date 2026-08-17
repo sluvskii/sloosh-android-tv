@@ -164,6 +164,20 @@ fun MediaCard(
     modifier: Modifier = Modifier,
     onFocus: (() -> Unit)? = null
 ) {
+    var isCardFocused by remember { mutableStateOf(false) }
+
+    val animatedTitleColor by androidx.compose.animation.animateColorAsState(
+        targetValue = if (isCardFocused) Color.White else Color.White.copy(alpha = 0.85f),
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 180),
+        label = "mediaTitleColor"
+    )
+
+    val animatedMetaColor by androidx.compose.animation.animateColorAsState(
+        targetValue = if (isCardFocused) Color.White.copy(alpha = 0.70f) else Color.White.copy(alpha = 0.48f),
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 180),
+        label = "mediaMetaColor"
+    )
+
     Column(modifier = Modifier.fillMaxWidth()) {
         // ─── Poster (True 2:3 aspect ratio, no top/bottom cropping) ─────
         SlooshFocusableCard(
@@ -173,10 +187,9 @@ fun MediaCard(
                 .aspectRatio(2f / 3f),
             shape = ContinuousRoundedRectangle(16.dp)
         ) { cardFocused ->
-            if (onFocus != null) {
-                LaunchedEffect(cardFocused) {
-                    if (cardFocused) onFocus()
-                }
+            LaunchedEffect(cardFocused) {
+                isCardFocused = cardFocused
+                if (cardFocused && onFocus != null) onFocus()
             }
             Box(modifier = Modifier.fillMaxSize()) {
                 AsyncImage(
@@ -210,16 +223,16 @@ fun MediaCard(
             }
         }
 
-        // ─── Title + Meta BELOW (does NOT scale or take focus) ────────
+        // ─── Title + Meta BELOW (pure text without box, reacts smoothly to focus) ────────
         Spacer(modifier = Modifier.height(7.dp))
         Text(
             text = item.displayTitle,
             style = MaterialTheme.typography.bodyMedium.copy(
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = if (isCardFocused) FontWeight.Bold else FontWeight.SemiBold,
                 fontSize = 15.sp,
                 lineHeight = 19.sp
             ),
-            color = Color.White.copy(alpha = 0.95f),
+            color = animatedTitleColor,
             maxLines = 1,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             modifier = Modifier.padding(horizontal = 2.dp)
@@ -234,7 +247,7 @@ fun MediaCard(
                     fontSize = 12.5.sp,
                     fontWeight = FontWeight.Normal
                 ),
-                color = Color.White.copy(alpha = 0.52f),
+                color = animatedMetaColor,
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 2.dp)
