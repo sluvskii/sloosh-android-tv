@@ -158,7 +158,7 @@ fun HomeScreen(
             Box(
                 modifier = Modifier
                     .clip(ContinuousCapsule)
-                    .background(Color(0xFF141416).copy(alpha = 0.85f))
+                    .background(Color(0xFF141416).copy(alpha = 0.82f))
                     .border(
                         width = 1.dp,
                         color = Color.White.copy(alpha = 0.12f),
@@ -179,7 +179,7 @@ fun HomeScreen(
                                 coroutineScope.launch { gridState.scrollToItem(0) }
                             },
                             shape = ContinuousCapsule,
-                            focusedScale = 1.04f,
+                            focusedScale = 1.05f,
                             modifier = Modifier
                                 .wrapContentSize()
                                 .onPreviewKeyEvent { keyEvent ->
@@ -196,27 +196,32 @@ fun HomeScreen(
                                 }
                         ) { isFocused ->
                             val bgColor = when {
-                                isFocused -> Color.White
-                                isSelected -> Color.White.copy(alpha = 0.22f)
+                                isSelected -> Color.White
+                                isFocused -> Color.White.copy(alpha = 0.22f)
                                 else -> Color.Transparent
                             }
                             val textColor = when {
-                                isFocused -> Color.Black
-                                isSelected -> Color.White
-                                else -> Color.White.copy(alpha = 0.55f)
+                                isSelected -> Color.Black
+                                isFocused -> Color.White
+                                else -> Color.White.copy(alpha = 0.70f)
                             }
+
+                            val borderModifier = if (isSelected && isFocused) {
+                                Modifier.border(1.5.dp, Color.Black.copy(alpha = 0.35f), ContinuousCapsule)
+                            } else Modifier
 
                             Box(
                                 modifier = Modifier
                                     .clip(ContinuousCapsule)
                                     .background(bgColor)
-                                    .padding(horizontal = 16.dp, vertical = 7.dp),
+                                    .then(borderModifier)
+                                    .padding(horizontal = 18.dp, vertical = 7.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = cat.title,
                                     style = MaterialTheme.typography.titleSmall.copy(
-                                        fontWeight = if (isSelected || isFocused) FontWeight.Bold else FontWeight.Medium,
+                                        fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
                                         fontSize = 14.sp
                                     ),
                                     color = textColor
