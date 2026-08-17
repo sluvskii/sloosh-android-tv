@@ -36,14 +36,14 @@ fun SlooshButton(
     ) { isFocused ->
         val bgColor = when {
             isFocused && isSolidWhite -> Color.White
-            isFocused -> Color.White.copy(alpha = 0.22f)
+            isFocused -> Color.White.copy(alpha = 0.28f)
             isSolidWhite -> Color.White
-            else -> Color.White.copy(alpha = 0.09f)
+            else -> Color.White.copy(alpha = 0.16f)
         }
         val textColor = when {
             isSolidWhite -> Color.Black
             isFocused -> Color.White
-            else -> Color.White.copy(alpha = 0.85f)
+            else -> Color.White.copy(alpha = 0.90f)
         }
 
         Box(
