@@ -6,13 +6,18 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Border
 import androidx.tv.material3.Card
@@ -32,7 +37,7 @@ fun SlooshFocusableCard(
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
 
-    // Smooth continuous rotating border beam (pure glowing comet on transparent background)
+    // Smooth continuous rotating border beam with 360 seamless interpolation
     val infiniteTransition = rememberInfiniteTransition(label = "borderBeamAnimation")
     val rotationAngle by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -58,7 +63,7 @@ fun SlooshFocusableCard(
                 (1f - norm * norm).coerceIn(0f, 1f)
             } else 0f
 
-            // Zero base alpha (100% transparent when beam is elsewhere) -> peak 100% pure white at the beam head
+            // Zero base alpha -> pure additive intensity on the beam
             val alpha = (intensity * intensity * 1.0f).coerceIn(0f, 1f)
             fraction to Color.White.copy(alpha = alpha)
         }
@@ -85,13 +90,38 @@ fun SlooshFocusableCard(
         ),
         border = CardDefaults.border(
             border = Border(border = BorderStroke(0.dp, Color.Transparent), shape = shape),
-            focusedBorder = Border(
-                border = BorderStroke(2.dp, beamBrush),
-                shape = shape
-            )
+            focusedBorder = Border(border = BorderStroke(0.dp, Color.Transparent), shape = shape)
         )
     ) {
-        Box {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .drawWithContent {
+                    drawContent()
+                    if (isFocused) {
+                        val radiusPx = 16.dp.toPx()
+                        val cornerRadius = CornerRadius(radiusPx, radiusPx)
+
+                        // 1. Soft glowing bloom with BlendMode.Plus (additive / plus-lighter overlay)
+                        drawRoundRect(
+                            brush = beamBrush,
+                            cornerRadius = cornerRadius,
+                            style = Stroke(width = 4.dp.toPx()),
+                            blendMode = BlendMode.Plus,
+                            alpha = 0.55f
+                        )
+
+                        // 2. Focused core light beam with BlendMode.Plus
+                        drawRoundRect(
+                            brush = beamBrush,
+                            cornerRadius = cornerRadius,
+                            style = Stroke(width = 1.8.dp.toPx()),
+                            blendMode = BlendMode.Plus,
+                            alpha = 0.95f
+                        )
+                    }
+                }
+        ) {
             content(isFocused)
         }
     }
