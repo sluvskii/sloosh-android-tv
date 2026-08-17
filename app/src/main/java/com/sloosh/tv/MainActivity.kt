@@ -70,6 +70,14 @@ class MainActivity : ComponentActivity() {
 
                 val showDrawer = currentRoute in listOf("home", "search", "continue", "favorites", "settings")
 
+                val drawerState = androidx.tv.material3.rememberDrawerState(androidx.tv.material3.DrawerValue.Closed)
+                val isDrawerOpen = drawerState.currentValue == androidx.tv.material3.DrawerValue.Open
+                val scrimAlpha by androidx.compose.animation.core.animateFloatAsState(
+                    targetValue = if (isDrawerOpen) 0.40f else 0.0f,
+                    animationSpec = androidx.compose.animation.core.tween(durationMillis = 200),
+                    label = "drawerScrim"
+                )
+
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -78,6 +86,7 @@ class MainActivity : ComponentActivity() {
                     // Native NavigationDrawer Layer
                     if (showDrawer) {
                         NavigationDrawer(
+                            drawerState = drawerState,
                             drawerContent = { drawerValue ->
                                 SlooshSideDrawer(
                                     selectedSection = selectedSection,
@@ -101,7 +110,16 @@ class MainActivity : ComponentActivity() {
                             },
                             modifier = Modifier.fillMaxSize()
                         ) {
-                            AppNavHost(navController = navController)
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                AppNavHost(navController = navController)
+                                if (scrimAlpha > 0.01f) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(Color.Black.copy(alpha = scrimAlpha))
+                                    )
+                                }
+                            }
                         }
                     } else {
                         AppNavHost(navController = navController)

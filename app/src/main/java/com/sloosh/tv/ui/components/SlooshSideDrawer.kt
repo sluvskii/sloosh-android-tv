@@ -48,13 +48,10 @@ fun NavigationDrawerScope.SlooshSideDrawer(
     Box(
         modifier = modifier
             .fillMaxHeight()
-            .width(if (isClosed) 68.dp else 168.dp)
-            .padding(start = 12.dp, top = 24.dp, end = 4.dp, bottom = 24.dp)
+            .padding(vertical = 24.dp, horizontal = 12.dp)
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxHeight()
-                .fillMaxWidth(),
+            modifier = Modifier.fillMaxHeight(),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.Start
         ) {
@@ -119,7 +116,7 @@ private fun NavigationDrawerScope.DrawerNavItem(
 ) {
     var isFocused by remember { mutableStateOf(false) }
 
-    // Differentiated states: Focused (1.0) vs Selected-unfocused (0.68) vs Inactive (0.32)
+    // Differentiated states: Focused (1.0) vs Selected-unfocused (0.70) vs Inactive (0.32)
     val targetAlpha = when {
         isFocused -> 1.0f
         isSelected -> 0.68f
@@ -147,7 +144,6 @@ private fun NavigationDrawerScope.DrawerNavItem(
         selected = isSelected,
         onClick = onClick,
         modifier = Modifier
-            .fillMaxWidth()
             .height(38.dp)
             .onFocusChanged { isFocused = it.isFocused },
         leadingContent = {
@@ -196,11 +192,11 @@ private fun NavigationDrawerScope.DrawerNavItem(
                         isSelected -> FontWeight.SemiBold
                         else -> FontWeight.Normal
                     },
-                    fontSize = if (isFocused) 15.sp else 14.sp
+                    fontSize = if (isFocused) 15.5.sp else 14.5.sp
                 ),
                 color = Color.White.copy(alpha = animatedAlpha),
                 modifier = Modifier
-                    .padding(start = 6.dp, end = 8.dp)
+                    .padding(start = 6.dp, end = 12.dp)
                     .graphicsLayer {
                         scaleX = if (isFocused) 1.04f else 1.0f
                         scaleY = if (isFocused) 1.04f else 1.0f
