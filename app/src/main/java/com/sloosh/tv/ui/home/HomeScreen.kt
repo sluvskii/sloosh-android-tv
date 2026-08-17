@@ -163,16 +163,56 @@ fun HomeScreen(
                 )
         )
 
-        // Floating Sticky Segmented Category Capsule Bar with Physics-Based Sliding Pill
+        // Floating Sticky Segmented Category Capsule Bar with Adaptive Text-Width Sliding Pill
         val categories = HomeCategory.values()
-        val pillCount = categories.size
-        val animatedIndex by androidx.compose.animation.core.animateFloatAsState(
-            targetValue = state.selectedCategory.ordinal.toFloat(),
+        val density = LocalDensity.current
+        val textMeasurer = androidx.compose.ui.text.rememberTextMeasurer()
+        val tabTextStyle = MaterialTheme.typography.titleSmall.copy(
+            fontWeight = FontWeight.Bold,
+            fontSize = 14.sp
+        )
+
+        // Measure natural widths for each category tab + 36.dp (18.dp horizontal padding on each side)
+        val tabWidths = remember(density) {
+            categories.map { cat ->
+                with(density) {
+                    val measuredTextWidth = textMeasurer.measure(cat.title, tabTextStyle).size.width.toDp()
+                    measuredTextWidth + 36.dp
+                }
+            }
+        }
+
+        // Calculate exact cumulative x-offsets for each tab
+        val tabOffsets = remember(tabWidths) {
+            val offsets = mutableListOf<androidx.compose.ui.unit.Dp>()
+            var currentX = 0.dp
+            tabWidths.forEach { w ->
+                offsets.add(currentX)
+                currentX += w
+            }
+            offsets
+        }
+
+        val targetOffset = tabOffsets.getOrElse(state.selectedCategory.ordinal) { 0.dp }
+        val targetWidth = tabWidths.getOrElse(state.selectedCategory.ordinal) { 0.dp }
+
+        // Physical spring animation with mass, velocity and natural settle for BOTH offset and width
+        val animatedPillOffset by androidx.compose.animation.core.animateDpAsState(
+            targetValue = targetOffset,
             animationSpec = androidx.compose.animation.core.spring(
-                dampingRatio = 0.76f,
+                dampingRatio = 0.74f,
                 stiffness = 380f
             ),
-            label = "tabPillIndex"
+            label = "tabPillOffset"
+        )
+
+        val animatedPillWidth by androidx.compose.animation.core.animateDpAsState(
+            targetValue = targetWidth,
+            animationSpec = androidx.compose.animation.core.spring(
+                dampingRatio = 0.74f,
+                stiffness = 380f
+            ),
+            label = "tabPillWidth"
         )
 
         Box(
@@ -182,9 +222,8 @@ fun HomeScreen(
                 .padding(start = 4.dp, top = 20.dp, end = 16.dp, bottom = 24.dp),
             contentAlignment = Alignment.Center
         ) {
-            BoxWithConstraints(
+            Box(
                 modifier = Modifier
-                    .width(460.dp)
                     .clip(ContinuousCapsule)
                     .background(Color(0xFF141416).copy(alpha = 0.85f))
                     .border(
@@ -194,29 +233,29 @@ fun HomeScreen(
                     )
                     .padding(3.5.dp)
             ) {
-                val pillWidth = maxWidth / pillCount
+                // 1. Sliding White Capsule Pill (Adapts width & offset with spring physics)
+                if (targetWidth > 0.dp) {
+                    Box(
+                        modifier = Modifier
+                            .offset(x = animatedPillOffset)
+                            .width(animatedPillWidth)
+                            .height(36.dp)
+                            .clip(ContinuousCapsule)
+                            .background(Color.White)
+                    )
+                }
 
-                // 1. Sliding White Capsule Pill with Spring Inertia
-                Box(
-                    modifier = Modifier
-                        .offset(x = pillWidth * animatedIndex)
-                        .width(pillWidth)
-                        .height(36.dp)
-                        .clip(ContinuousCapsule)
-                        .background(Color.White)
-                )
-
-                // 2. Interactive Category Tabs (Instant switch on Left/Right arrow focus)
+                // 2. Interactive Category Tabs (Each with its exact proportional width)
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     categories.forEachIndexed { index, cat ->
                         val isSelected = state.selectedCategory == cat
+                        val thisTabWidth = tabWidths.getOrElse(index) { 90.dp }
 
                         Box(
                             modifier = Modifier
-                                .weight(1f)
+                                .width(thisTabWidth)
                                 .height(36.dp)
                                 .clip(ContinuousCapsule)
                                 .focusRequester(categoryFocusRequesters[index])
@@ -255,7 +294,7 @@ fun HomeScreen(
                                                 } else false
                                             }
                                             android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                                                if (index < pillCount - 1) {
+                                                if (index < categories.size - 1) {
                                                     try {
                                                         categoryFocusRequesters[index + 1].requestFocus()
                                                         true
