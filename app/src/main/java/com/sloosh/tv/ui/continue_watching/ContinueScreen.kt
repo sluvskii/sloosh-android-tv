@@ -44,7 +44,7 @@ fun ContinueScreen(
         modifier = modifier
             .fillMaxSize()
             .background(BackgroundDark)
-            .padding(horizontal = 48.dp, vertical = 32.dp)
+            .padding(start = 4.dp, top = 32.dp, end = 24.dp, bottom = 32.dp)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             // Header
