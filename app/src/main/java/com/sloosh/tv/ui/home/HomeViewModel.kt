@@ -62,51 +62,50 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadData(reset: Boolean = false) {
-        if (fetchJob?.isActive == true) return
-        val currentState = _uiState.value
-        if (!reset && (!currentState.hasMorePages || currentState.isLoadingMore)) return
+        if (reset) {
+            fetchJob?.cancel()
+        } else {
+            if (fetchJob?.isActive == true) return
+            val currentState = _uiState.value
+            if (!currentState.hasMorePages || currentState.isLoadingMore) return
+        }
+
+        val targetCategory = _uiState.value.selectedCategory
+        val targetFilter = _uiState.value.selectedFilter
+        val targetPage = if (reset) 1 else _uiState.value.currentPage + 1
 
         fetchJob = viewModelScope.launch {
-            var currentPage = if (reset) 1 else currentState.currentPage + 1
             if (reset) {
-                _uiState.value = currentState.copy(isLoading = true, currentPage = 1, items = emptyList(), errorMessage = null)
+                _uiState.value = _uiState.value.copy(
+                    isLoading = true,
+                    isLoadingMore = false,
+                    currentPage = 1,
+                    items = emptyList(),
+                    errorMessage = null
+                )
             } else {
-                _uiState.value = currentState.copy(isLoadingMore = true)
+                _uiState.value = _uiState.value.copy(isLoadingMore = true)
             }
 
             try {
-                val collectedItems = mutableListOf<MediaDto>()
-                var hasMore = true
-                var attempts = 0
+                val newItems = fetchCatalogPage(
+                    category = targetCategory,
+                    filter = targetFilter,
+                    page = targetPage
+                )
 
-                // Fetch batches until we collect enough items (e.g. 10+) or no more items available
-                while (collectedItems.size < 10 && hasMore && attempts < 3) {
-                    attempts++
-                    val newItems = fetchCatalogPage(
-                        category = _uiState.value.selectedCategory,
-                        filter = _uiState.value.selectedFilter,
-                        page = currentPage
-                    )
-                    if (newItems.isEmpty()) {
-                        hasMore = false
-                    } else {
-                        collectedItems.addAll(newItems)
-                        if (collectedItems.size < 10) {
-                            currentPage++
-                        }
-                    }
-                }
-
-                val updatedList = if (reset) collectedItems else currentState.items + collectedItems
+                val currentItems = if (reset) emptyList() else _uiState.value.items
+                val updatedList = currentItems + newItems
 
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     isLoadingMore = false,
                     items = updatedList,
-                    currentPage = currentPage,
-                    hasMorePages = collectedItems.isNotEmpty()
+                    currentPage = targetPage,
+                    hasMorePages = newItems.isNotEmpty()
                 )
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     isLoadingMore = false,
@@ -134,25 +133,15 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 raw.filter { it.isMovie }
             }
             HomeCategory.SERIES -> {
-                val raw = if (filter == HomeFilter.POPULAR) {
-                    repository.getPopularMovies(page)
-                } else {
-                    repository.getTopTv(page)
-                }
-                raw.filter { it.isTvSeries && !it.isCartoon }
+                // getTopTv is a dedicated 100% TV series endpoint with all top TV shows
+                val raw = repository.getTopTv(page)
+                val filtered = raw.filter { it.isTvSeries && !it.isCartoon }
+                if (filtered.isEmpty()) raw else filtered
             }
             HomeCategory.CARTOONS -> {
-                val raw = if (filter == HomeFilter.POPULAR) {
-                    repository.getPopularMovies(page)
-                } else {
-                    repository.getTopMovies(page)
-                }
-                val filtered = raw.filter { it.isCartoon }
-                if (filtered.isEmpty()) {
-                    repository.searchMovies("мультфильм", page).filter { it.isCartoon }
-                } else {
-                    filtered
-                }
+                val raw = repository.searchMovies("мультфильм", page)
+                val filtered = raw.filter { it.isCartoon || (it.title ?: it.name ?: "").contains("мульт", ignoreCase = true) }
+                if (filtered.isEmpty()) raw else filtered
             }
         }
     }
