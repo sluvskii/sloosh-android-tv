@@ -30,11 +30,14 @@ data class HomeUiState(
     val isLoadingMore: Boolean = false,
     val selectedCategory: HomeCategory = HomeCategory.ALL,
     val selectedFilter: HomeFilter = HomeFilter.POPULAR,
-    val items: List<MediaDto> = emptyList(),
-    val currentPage: Int = 1,
-    val hasMorePages: Boolean = true,
+    val categoryItems: Map<HomeCategory, List<MediaDto>> = emptyMap(),
+    val categoryPages: Map<HomeCategory, Int> = emptyMap(),
     val errorMessage: String? = null
-)
+) {
+    val items: List<MediaDto> get() = categoryItems[selectedCategory] ?: emptyList()
+    val currentPage: Int get() = categoryPages[selectedCategory] ?: 1
+    val hasMorePages: Boolean get() = items.isNotEmpty() || isLoading
+}
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -51,39 +54,45 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectCategory(category: HomeCategory) {
         if (_uiState.value.selectedCategory == category) return
-        _uiState.value = _uiState.value.copy(selectedCategory = category)
-        loadData(reset = true)
+        val hasCachedItems = !_uiState.value.categoryItems[category].isNullOrEmpty()
+        _uiState.value = _uiState.value.copy(
+            selectedCategory = category,
+            isLoading = !hasCachedItems
+        )
+        if (!hasCachedItems) {
+            loadData(reset = true)
+        }
     }
 
     fun selectFilter(filter: HomeFilter) {
         if (_uiState.value.selectedFilter == filter) return
-        _uiState.value = _uiState.value.copy(selectedFilter = filter)
+        _uiState.value = _uiState.value.copy(
+            selectedFilter = filter,
+            categoryItems = emptyMap(),
+            categoryPages = emptyMap()
+        )
         loadData(reset = true)
     }
 
     fun loadData(reset: Boolean = false) {
+        val targetCategory = _uiState.value.selectedCategory
+        val targetFilter = _uiState.value.selectedFilter
+        val targetPage = if (reset) 1 else (_uiState.value.categoryPages[targetCategory] ?: 1) + 1
+
         if (reset) {
             fetchJob?.cancel()
         } else {
             if (fetchJob?.isActive == true) return
-            val currentState = _uiState.value
-            if (!currentState.hasMorePages || currentState.isLoadingMore) return
         }
 
-        val targetCategory = _uiState.value.selectedCategory
-        val targetFilter = _uiState.value.selectedFilter
-        val targetPage = if (reset) 1 else _uiState.value.currentPage + 1
-
         fetchJob = viewModelScope.launch {
-            if (reset) {
+            if (reset && _uiState.value.categoryItems[targetCategory].isNullOrEmpty()) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = true,
                     isLoadingMore = false,
-                    currentPage = 1,
-                    items = emptyList(),
                     errorMessage = null
                 )
-            } else {
+            } else if (!reset) {
                 _uiState.value = _uiState.value.copy(isLoadingMore = true)
             }
 
@@ -94,15 +103,15 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     page = targetPage
                 )
 
-                val currentItems = if (reset) emptyList() else _uiState.value.items
-                val updatedList = currentItems + newItems
+                val existing = if (reset) emptyList() else (_uiState.value.categoryItems[targetCategory] ?: emptyList())
+                val updatedCategoryItems = _uiState.value.categoryItems + (targetCategory to (existing + newItems))
+                val updatedCategoryPages = _uiState.value.categoryPages + (targetCategory to targetPage)
 
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     isLoadingMore = false,
-                    items = updatedList,
-                    currentPage = targetPage,
-                    hasMorePages = newItems.isNotEmpty()
+                    categoryItems = updatedCategoryItems,
+                    categoryPages = updatedCategoryPages
                 )
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e

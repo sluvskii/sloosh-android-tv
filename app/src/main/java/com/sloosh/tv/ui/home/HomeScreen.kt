@@ -1,8 +1,11 @@
 package com.sloosh.tv.ui.home
 
+import androidx.compose.animation.*
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -80,65 +83,85 @@ fun HomeScreen(
         val isCompact = gridColumns >= 6
         val gridSpacing = if (isCompact) 12.dp else 16.dp
 
-        if (state.isLoading) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(48.dp))
-            }
-        } else {
-            androidx.tv.foundation.lazy.grid.TvLazyVerticalGrid(
-                state = gridState,
-                columns = androidx.tv.foundation.lazy.grid.TvGridCells.Fixed(gridColumns),
-                horizontalArrangement = Arrangement.spacedBy(gridSpacing),
-                verticalArrangement = Arrangement.spacedBy(gridSpacing),
-                contentPadding = PaddingValues(start = 4.dp, top = 75.dp, end = 16.dp, bottom = 40.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                // Poster Items
-                items(state.items.size, key = { state.items[it].identifier }) { index ->
-                    val item = state.items[index]
-                    if (index >= state.items.size - 4 && !state.isLoadingMore && state.hasMorePages) {
-                        LaunchedEffect(index) {
-                            viewModel.loadData(reset = false)
+        AnimatedContent(
+            targetState = state.selectedCategory,
+            transitionSpec = {
+                val isForward = targetState.ordinal > initialState.ordinal
+                val direction = if (isForward) 1 else -1
+                (slideInHorizontally(
+                    initialOffsetX = { fullWidth -> (direction * fullWidth * 0.40f).toInt() },
+                    animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
+                ) + fadeIn(animationSpec = tween(durationMillis = 260))) togetherWith (slideOutHorizontally(
+                    targetOffsetX = { fullWidth -> (-direction * fullWidth * 0.40f).toInt() },
+                    animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
+                ) + fadeOut(animationSpec = tween(durationMillis = 180)))
+            },
+            label = "categoryGalleryTransition",
+            modifier = Modifier.fillMaxSize()
+        ) { category ->
+            val categoryItems = state.categoryItems[category] ?: emptyList()
+            val isCurrentLoading = state.isLoading && categoryItems.isEmpty()
+
+            if (isCurrentLoading) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(48.dp))
+                }
+            } else {
+                androidx.tv.foundation.lazy.grid.TvLazyVerticalGrid(
+                    state = gridState,
+                    columns = androidx.tv.foundation.lazy.grid.TvGridCells.Fixed(gridColumns),
+                    horizontalArrangement = Arrangement.spacedBy(gridSpacing),
+                    verticalArrangement = Arrangement.spacedBy(gridSpacing),
+                    contentPadding = PaddingValues(start = 4.dp, top = 75.dp, end = 16.dp, bottom = 40.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    // Poster Items
+                    items(categoryItems.size, key = { categoryItems[it].identifier }) { index ->
+                        val item = categoryItems[index]
+                        if (index >= categoryItems.size - 4 && !state.isLoadingMore && state.hasMorePages) {
+                            LaunchedEffect(index) {
+                                viewModel.loadData(reset = false)
+                            }
                         }
+
+                        val cardModifier = if (index < gridColumns) {
+                            Modifier
+                                .then(if (index == 0) Modifier.focusRequester(firstCardFocusRequester) else Modifier)
+                                .onPreviewKeyEvent { keyEvent ->
+                                    if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                        keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP
+                                    ) {
+                                        try {
+                                            categoryFocusRequesters[state.selectedCategory.ordinal].requestFocus()
+                                            true
+                                        } catch (e: Exception) {
+                                            false
+                                        }
+                                    } else false
+                                }
+                        } else Modifier
+
+                        MediaCard(
+                            item = item,
+                            onClick = { onMediaSelected(item.identifier) },
+                            compact = isCompact,
+                            modifier = cardModifier
+                        )
                     }
 
-                    val cardModifier = if (index < gridColumns) {
-                        Modifier
-                            .then(if (index == 0) Modifier.focusRequester(firstCardFocusRequester) else Modifier)
-                            .onPreviewKeyEvent { keyEvent ->
-                                if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
-                                    keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP
-                                ) {
-                                    try {
-                                        categoryFocusRequesters[state.selectedCategory.ordinal].requestFocus()
-                                        true
-                                    } catch (e: Exception) {
-                                        false
-                                    }
-                                } else false
+                    if (state.isLoadingMore) {
+                        item(span = { androidx.tv.foundation.lazy.grid.TvGridItemSpan(gridColumns) }) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(80.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(32.dp))
                             }
-                    } else Modifier
-
-                    MediaCard(
-                        item = item,
-                        onClick = { onMediaSelected(item.identifier) },
-                        compact = isCompact,
-                        modifier = cardModifier
-                    )
-                }
-
-                if (state.isLoadingMore) {
-                    item(span = { androidx.tv.foundation.lazy.grid.TvGridItemSpan(gridColumns) }) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(80.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(32.dp))
                         }
                     }
                 }
