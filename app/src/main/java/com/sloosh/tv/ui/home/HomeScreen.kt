@@ -62,6 +62,7 @@ import kotlinx.coroutines.launch
 import com.kyant.capsule.ContinuousCapsule
 import com.kyant.capsule.ContinuousRoundedRectangle
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
     onMediaSelected: (String) -> Unit,
