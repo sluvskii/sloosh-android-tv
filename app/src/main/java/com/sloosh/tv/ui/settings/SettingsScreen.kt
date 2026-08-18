@@ -1,33 +1,51 @@
 package com.sloosh.tv.ui.settings
 
+import androidx.compose.animation.*
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import com.kyant.capsule.ContinuousCapsule
-import com.kyant.capsule.ContinuousRoundedRectangle
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.foundation.lazy.list.TvLazyColumn
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.kyant.capsule.ContinuousCapsule
+import com.kyant.capsule.ContinuousRoundedRectangle
 import com.sloosh.tv.ui.components.SlooshButton
+import com.sloosh.tv.ui.components.SlooshFocusableCard
 import com.sloosh.tv.ui.theme.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+enum class SettingsCategory(val title: String, val icon: ImageVector) {
+    PLAYBACK("Воспроизведение", Icons.Default.PlayArrow),
+    APPEARANCE("Интерфейс", Icons.Default.GridView),
+    DATA("Данные и хранилище", Icons.Default.DeleteOutline),
+    ABOUT("О приложении", Icons.Default.Info)
+}
 
 @Composable
 fun SettingsScreen(
@@ -37,6 +55,7 @@ fun SettingsScreen(
     val coroutineScope = rememberCoroutineScope()
     val appSettings = remember { com.sloosh.tv.data.repository.AppSettings(context) }
 
+    var selectedCategory by remember { mutableStateOf(SettingsCategory.PLAYBACK) }
     var isHighPosterQuality by remember { mutableStateOf(appSettings.isHighPosterQuality) }
     var isAutoplayEnabled by remember { mutableStateOf(appSettings.isAutoplayEnabled) }
     var gridColumns by remember { mutableStateOf(appSettings.gridColumns) }
@@ -46,7 +65,10 @@ fun SettingsScreen(
     var updateInfoForDialog by remember { mutableStateOf<com.sloosh.tv.data.update.AppUpdateInfo?>(null) }
     val updateManager = remember { com.sloosh.tv.data.update.UpdateManager(context) }
 
-    // Auto-clear status message after 3 seconds
+    val categoryFocusRequesters = remember { Array(SettingsCategory.values().size) { FocusRequester() } }
+    val firstActionFocusRequester = remember { FocusRequester() }
+
+    // Auto-clear status message
     LaunchedEffect(statusMessage) {
         if (statusMessage != null) {
             delay(3500)
@@ -62,259 +84,410 @@ fun SettingsScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 4.dp, top = 32.dp, end = 16.dp, bottom = 24.dp)
+                .padding(start = 24.dp, top = 32.dp, end = 32.dp, bottom = 24.dp)
         ) {
-
             // ─── Header ──────────────────────────────────────────────
-            Text(
-                text = "Настройки",
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-
-            Spacer(modifier = Modifier.height(28.dp))
-
-            TvLazyColumn(
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(bottom = 80.dp),
-                modifier = Modifier.fillMaxWidth(0.72f)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier.padding(start = 4.dp, bottom = 28.dp)
             ) {
-
-                // ─── Section: Воспроизведение ─────────────────────────
-                item {
-                    SectionHeader("Воспроизведение")
-                }
-
-                item {
-                    SettingCard(
-                        icon = Icons.Default.PlayArrow,
-                        title = "Автопереход к серии",
-                        description = "Автоматически переключать на следующую серию после окончания",
-                        action = {
-                            ToggleButton(
-                                enabled = isAutoplayEnabled,
-                                onToggle = {
-                                    isAutoplayEnabled = it
-                                    appSettings.isAutoplayEnabled = it
-                                }
-                            )
-                        }
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(ContinuousCapsule)
+                        .background(Color.White.copy(alpha = 0.08f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
                     )
                 }
+                Text(
+                    text = "Настройки",
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    letterSpacing = (-0.4).sp
+                )
+            }
 
-                // ─── Section: Изображения ─────────────────────────────
-                item {
-                    SectionHeader("Изображения")
-                }
+            // ─── Two-Pane Layout ─────────────────────────────────────
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.spacedBy(32.dp)
+            ) {
+                // ─── Left Pane: Category Navigation (30% width) ─────
+                Column(
+                    modifier = Modifier
+                        .width(280.dp)
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    SettingsCategory.values().forEachIndexed { index, cat ->
+                        val isSelected = selectedCategory == cat
+                        var isFocused by remember { mutableStateOf(false) }
 
-                item {
-                    SettingCard(
-                        icon = Icons.Default.Star,
-                        title = "Качество постеров",
-                        description = if (isHighPosterQuality) "Высокое качество (больше трафика)" else "Низкое качество (экономия трафика)",
-                        action = {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                SlooshButton(
-                                    text = "Высокое",
-                                    isPrimary = isHighPosterQuality,
-                                    onClick = {
-                                        isHighPosterQuality = true
-                                        appSettings.isHighPosterQuality = true
-                                    }
-                                )
-                                SlooshButton(
-                                    text = "Низкое",
-                                    isPrimary = !isHighPosterQuality,
-                                    onClick = {
-                                        isHighPosterQuality = false
-                                        appSettings.isHighPosterQuality = false
-                                    }
-                                )
-                            }
+                        val bgAlpha by animateFloatAsState(
+                            targetValue = when {
+                                isFocused -> 1.0f
+                                isSelected -> 0.25f
+                                else -> 0.0f
+                            },
+                            animationSpec = tween(150),
+                            label = "navBg"
+                        )
+
+                        val contentColor = when {
+                            isFocused -> Color.Black
+                            isSelected -> Color.White
+                            else -> Color.White.copy(alpha = 0.65f)
                         }
-                    )
-                }
 
-                item {
-                    SettingCard(
-                        icon = Icons.Default.Star,
-                        title = "Количество карточек в ряду",
-                        description = if (gridColumns == 6) "6 карточек в ряду (компактная сетка)" else "5 карточек в ряду (стандартная крупная сетка)",
-                        action = {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                SlooshButton(
-                                    text = "5 карточек",
-                                    isPrimary = gridColumns == 5,
-                                    onClick = {
-                                        gridColumns = 5
-                                        appSettings.gridColumns = 5
-                                    }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp)
+                                .clip(ContinuousRoundedRectangle(14.dp))
+                                .background(
+                                    if (isFocused) Color.White
+                                    else if (isSelected) Color.White.copy(alpha = 0.12f)
+                                    else Color.Transparent
                                 )
-                                SlooshButton(
-                                    text = "6 карточек",
-                                    isPrimary = gridColumns == 6,
-                                    onClick = {
-                                        gridColumns = 6
-                                        appSettings.gridColumns = 6
-                                    }
-                                )
-                            }
-                        }
-                    )
-                }
-
-                // ─── Section: Данные ──────────────────────────────────
-                item {
-                    SectionHeader("Данные и история")
-                }
-
-                item {
-                    SettingCard(
-                        icon = Icons.Default.Delete,
-                        title = "История просмотров",
-                        description = "Очистить список «Продолжить просмотр»",
-                        action = {
-                            SlooshButton(
-                                text = "Очистить",
-                                onClick = {
-                                    coroutineScope.launch {
-                                        com.sloosh.tv.data.db.AppDatabase
-                                            .getDatabase(context)
-                                            .progressDao()
-                                            .clearAllProgress()
-                                        statusMessage = "✓ История просмотров очищена"
+                                .focusRequester(categoryFocusRequesters[index])
+                                .onFocusChanged {
+                                    isFocused = it.isFocused
+                                    if (it.isFocused && selectedCategory != cat) {
+                                        selectedCategory = cat
                                     }
                                 }
-                            )
-                        }
-                    )
-                }
-
-                item {
-                    SettingCard(
-                        icon = Icons.Default.Delete,
-                        title = "Избранное",
-                        description = "Удалить все сохранённые фильмы и сериалы",
-                        action = {
-                            SlooshButton(
-                                text = "Очистить",
-                                onClick = {
-                                    coroutineScope.launch {
-                                        com.sloosh.tv.data.db.AppDatabase
-                                            .getDatabase(context)
-                                            .favoritesDao()
-                                            .clearAllFavorites()
-                                        statusMessage = "✓ Избранное очищено"
-                                    }
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) {
+                                    selectedCategory = cat
                                 }
-                            )
-                        }
-                    )
-                }
-
-                item {
-                    SettingCard(
-                        icon = Icons.Default.Delete,
-                        title = "История поиска",
-                        description = "Очистить список сохранённых запросов",
-                        action = {
-                            SlooshButton(
-                                text = "Очистить",
-                                onClick = {
-                                    coroutineScope.launch {
-                                        com.sloosh.tv.data.db.AppDatabase
-                                            .getDatabase(context)
-                                            .searchHistoryDao()
-                                            .clearAllSearchHistory()
-                                        statusMessage = "✓ История поиска очищена"
-                                    }
+                                .onPreviewKeyEvent { keyEvent ->
+                                    if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                                        when (keyEvent.nativeKeyEvent.keyCode) {
+                                            android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                                                try {
+                                                    firstActionFocusRequester.requestFocus()
+                                                    true
+                                                } catch (e: Exception) {
+                                                    false
+                                                }
+                                            }
+                                            android.view.KeyEvent.KEYCODE_DPAD_UP -> {
+                                                if (index > 0) {
+                                                    try {
+                                                        categoryFocusRequesters[index - 1].requestFocus()
+                                                        true
+                                                    } catch (e: Exception) {
+                                                        false
+                                                    }
+                                                } else false
+                                            }
+                                            android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                                if (index < SettingsCategory.values().size - 1) {
+                                                    try {
+                                                        categoryFocusRequesters[index + 1].requestFocus()
+                                                        true
+                                                    } catch (e: Exception) {
+                                                        false
+                                                    }
+                                                } else false
+                                            }
+                                            else -> false
+                                        }
+                                    } else false
                                 }
-                            )
-                        }
-                    )
-                }
-
-                // ─── Section: О приложении ────────────────────────────
-                item {
-                    SectionHeader("О приложении")
-                }
-
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(ContinuousRoundedRectangle(18.dp))
-                            .background(GlassSurfaceDark)
-                            .padding(22.dp)
-                    ) {
-                        Column {
+                                .padding(horizontal = 16.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                modifier = Modifier.fillMaxWidth()
+                                horizontalArrangement = Arrangement.spacedBy(14.dp)
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(48.dp)
-                                            .clip(ContinuousRoundedRectangle(14.dp))
-                                            .background(Color.White.copy(alpha = 0.08f)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Info,
-                                            contentDescription = null,
-                                            tint = Color.White.copy(alpha = 0.85f),
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                    }
-                                    Column {
-                                        Text(
-                                            text = "sloosh Android TV",
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White
-                                        )
-                                        Text(
-                                            text = "Версия ${com.sloosh.tv.BuildConfig.VERSION_NAME}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = TextSecondaryDark
+                                Icon(
+                                    imageVector = cat.icon,
+                                    contentDescription = null,
+                                    tint = contentColor,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    text = cat.title,
+                                    style = MaterialTheme.typography.bodyLarge.copy(
+                                        fontWeight = if (isSelected || isFocused) FontWeight.SemiBold else FontWeight.Normal,
+                                        fontSize = 15.sp
+                                    ),
+                                    color = contentColor
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // ─── Right Pane: Content Panel (70% width) ───────────
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                ) {
+                    AnimatedContent(
+                        targetState = selectedCategory,
+                        transitionSpec = {
+                            fadeIn(animationSpec = tween(200)) + scaleIn(
+                                initialScale = 0.98f,
+                                animationSpec = tween(200)
+                            ) togetherWith fadeOut(animationSpec = tween(150))
+                        },
+                        label = "settingsPaneTransition",
+                        modifier = Modifier.fillMaxSize()
+                    ) { targetCat ->
+                        TvLazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                            contentPadding = PaddingValues(bottom = 60.dp),
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            when (targetCat) {
+                                SettingsCategory.PLAYBACK -> {
+                                    item {
+                                        SettingPanelItem(
+                                            icon = Icons.Default.FastForward,
+                                            title = "Автопереход к серии",
+                                            description = "Автоматически начинать воспроизведение следующей серии после окончания текущей",
+                                            focusRequester = firstActionFocusRequester,
+                                            action = {
+                                                SegmentedToggle(
+                                                    options = listOf("Выкл", "Вкл"),
+                                                    selectedIndex = if (isAutoplayEnabled) 1 else 0,
+                                                    onSelect = {
+                                                        isAutoplayEnabled = (it == 1)
+                                                        appSettings.isAutoplayEnabled = isAutoplayEnabled
+                                                    }
+                                                )
+                                            }
                                         )
                                     }
                                 }
 
-                                SlooshButton(
-                                    text = if (isCheckingUpdates) "Проверка..." else "Проверить обновления",
-                                    isWhite = true,
-                                    onClick = {
-                                        if (!isCheckingUpdates) {
-                                            isCheckingUpdates = true
-                                            coroutineScope.launch {
-                                                val update = updateManager.checkForUpdates()
-                                                isCheckingUpdates = false
-                                                if (update != null) {
-                                                    updateInfoForDialog = update
-                                                } else {
-                                                    statusMessage = "✓ У вас установлена последняя версия (${com.sloosh.tv.BuildConfig.VERSION_NAME})"
+                                SettingsCategory.APPEARANCE -> {
+                                    item {
+                                        SettingPanelItem(
+                                            icon = Icons.Default.GridView,
+                                            title = "Сетка карточек",
+                                            description = if (gridColumns == 6) "Компактный вид — 6 постеров в ряду" else "Крупный вид — 5 постеров в ряду",
+                                            focusRequester = firstActionFocusRequester,
+                                            action = {
+                                                SegmentedToggle(
+                                                    options = listOf("5 карточек", "6 карточек"),
+                                                    selectedIndex = if (gridColumns == 6) 1 else 0,
+                                                    onSelect = {
+                                                        gridColumns = if (it == 1) 6 else 5
+                                                        appSettings.gridColumns = gridColumns
+                                                    }
+                                                )
+                                            }
+                                        )
+                                    }
+
+                                    item {
+                                        SettingPanelItem(
+                                            icon = Icons.Default.HighQuality,
+                                            title = "Качество постеров",
+                                            description = if (isHighPosterQuality) "Высокое разрешение постеров (насыщенная картинка)" else "Экономичный режим (быстрая загрузка)",
+                                            action = {
+                                                SegmentedToggle(
+                                                    options = listOf("Эконом", "Высокое"),
+                                                    selectedIndex = if (isHighPosterQuality) 1 else 0,
+                                                    onSelect = {
+                                                        isHighPosterQuality = (it == 1)
+                                                        appSettings.isHighPosterQuality = isHighPosterQuality
+                                                    }
+                                                )
+                                            }
+                                        )
+                                    }
+                                }
+
+                                SettingsCategory.DATA -> {
+                                    item {
+                                        SettingPanelItem(
+                                            icon = Icons.Default.History,
+                                            title = "История просмотров",
+                                            description = "Очистить список недосмотренных фильмов и сериалов («Продолжить»)",
+                                            focusRequester = firstActionFocusRequester,
+                                            action = {
+                                                SlooshButton(
+                                                    text = "Очистить",
+                                                    isPrimary = false,
+                                                    onClick = {
+                                                        coroutineScope.launch {
+                                                            com.sloosh.tv.data.db.AppDatabase
+                                                                .getDatabase(context)
+                                                                .progressDao()
+                                                                .clearAllProgress()
+                                                            statusMessage = "✓ История просмотров очищена"
+                                                        }
+                                                    }
+                                                )
+                                            }
+                                        )
+                                    }
+
+                                    item {
+                                        SettingPanelItem(
+                                            icon = Icons.Default.FavoriteBorder,
+                                            title = "Избранное",
+                                            description = "Удалить все сохранённые фильмы и сериалы из раздела «Избранное»",
+                                            action = {
+                                                SlooshButton(
+                                                    text = "Очистить",
+                                                    isPrimary = false,
+                                                    onClick = {
+                                                        coroutineScope.launch {
+                                                            com.sloosh.tv.data.db.AppDatabase
+                                                                .getDatabase(context)
+                                                                .favoritesDao()
+                                                                .clearAllFavorites()
+                                                            statusMessage = "✓ Избранное очищено"
+                                                        }
+                                                    }
+                                                )
+                                            }
+                                        )
+                                    }
+
+                                    item {
+                                        SettingPanelItem(
+                                            icon = Icons.Default.Search,
+                                            title = "История поиска",
+                                            description = "Удалить сохранённые поисковые запросы",
+                                            action = {
+                                                SlooshButton(
+                                                    text = "Очистить",
+                                                    isPrimary = false,
+                                                    onClick = {
+                                                        coroutineScope.launch {
+                                                            com.sloosh.tv.data.db.AppDatabase
+                                                                .getDatabase(context)
+                                                                .searchHistoryDao()
+                                                                .clearAllSearchHistory()
+                                                            statusMessage = "✓ История поиска очищена"
+                                                        }
+                                                    }
+                                                )
+                                            }
+                                        )
+                                    }
+                                }
+
+                                SettingsCategory.ABOUT -> {
+                                    item {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(ContinuousRoundedRectangle(20.dp))
+                                                .background(GlassSurfaceDark)
+                                                .border(
+                                                    width = 1.dp,
+                                                    color = Color.White.copy(alpha = 0.08f),
+                                                    shape = ContinuousRoundedRectangle(20.dp)
+                                                )
+                                                .padding(24.dp)
+                                        ) {
+                                            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                                    ) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(54.dp)
+                                                                .clip(ContinuousRoundedRectangle(16.dp))
+                                                                .background(
+                                                                    Brush.linearGradient(
+                                                                        listOf(
+                                                                            Color(0xFF2C2C2E),
+                                                                            Color(0xFF1C1C1E)
+                                                                        )
+                                                                    )
+                                                                )
+                                                                .border(
+                                                                    1.dp,
+                                                                    Color.White.copy(alpha = 0.15f),
+                                                                    ContinuousRoundedRectangle(16.dp)
+                                                                ),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Text(
+                                                                text = "S",
+                                                                fontSize = 26.sp,
+                                                                fontWeight = FontWeight.Black,
+                                                                color = Color.White
+                                                            )
+                                                        }
+                                                        Column {
+                                                            Text(
+                                                                text = "sloosh Android TV",
+                                                                style = MaterialTheme.typography.titleMedium,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = Color.White
+                                                            )
+                                                            Text(
+                                                                text = "Версия ${com.sloosh.tv.BuildConfig.VERSION_NAME}",
+                                                                style = MaterialTheme.typography.bodySmall,
+                                                                color = TextSecondaryDark
+                                                            )
+                                                        }
+                                                    }
+
+                                                    SlooshButton(
+                                                        text = if (isCheckingUpdates) "Проверка..." else "Проверить обновления",
+                                                        isWhite = true,
+                                                        onClick = {
+                                                            if (!isCheckingUpdates) {
+                                                                isCheckingUpdates = true
+                                                                coroutineScope.launch {
+                                                                    val update = updateManager.checkForUpdates()
+                                                                    isCheckingUpdates = false
+                                                                    if (update != null) {
+                                                                        updateInfoForDialog = update
+                                                                    } else {
+                                                                        statusMessage = "✓ У вас установлена последняя версия (${com.sloosh.tv.BuildConfig.VERSION_NAME})"
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    )
                                                 }
+
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .height(1.dp)
+                                                        .background(Color.White.copy(alpha = 0.08f))
+                                                )
+
+                                                Text(
+                                                    text = "Премиальный нативный клиент для Android TV с кинематографическим дизайном, поддержкой видеобалансировщика Alloha и автоматическими бесшовными обновлениями.",
+                                                    style = MaterialTheme.typography.bodySmall.copy(lineHeight = 18.sp),
+                                                    color = TextSecondaryDark
+                                                )
                                             }
                                         }
                                     }
-                                )
+                                }
                             }
-
-                            Spacer(modifier = Modifier.height(14.dp))
-
-                            Text(
-                                text = "Нативный клиент для Android TV с кинематографическим дизайном, поддержкой Alloha и автоматическими обновлениями с GitHub.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondaryDark
-                            )
                         }
                     }
                 }
@@ -339,42 +512,39 @@ fun SettingsScreen(
         }
 
         // ─── Status Message Toast ─────────────────────────────────────
-        if (statusMessage != null) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 40.dp)
-                    .clip(ContinuousCapsule)
-                    .background(Color.White)
-                    .padding(horizontal = 24.dp, vertical = 12.dp)
-            ) {
-                Text(
-                    text = statusMessage!!,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Color.Black,
-                    fontWeight = FontWeight.SemiBold
-                )
+        AnimatedVisibility(
+            visible = statusMessage != null,
+            enter = fadeIn(animationSpec = tween(200)) + slideInVertically(initialOffsetY = { it / 2 }),
+            exit = fadeOut(animationSpec = tween(200)) + slideOutVertically(targetOffsetY = { it / 2 }),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 36.dp)
+        ) {
+            if (statusMessage != null) {
+                Box(
+                    modifier = Modifier
+                        .clip(ContinuousCapsule)
+                        .background(Color.White)
+                        .padding(horizontal = 24.dp, vertical = 12.dp)
+                ) {
+                    Text(
+                        text = statusMessage!!,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = Color.Black,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun SectionHeader(title: String) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.labelLarge,
-        color = Color.White.copy(alpha = 0.70f),
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(bottom = 4.dp, top = 8.dp)
-    )
-}
-
-@Composable
-private fun SettingCard(
+private fun SettingPanelItem(
     icon: ImageVector,
     title: String,
     description: String,
+    focusRequester: FocusRequester? = null,
     action: @Composable () -> Unit
 ) {
     Box(
@@ -382,7 +552,12 @@ private fun SettingCard(
             .fillMaxWidth()
             .clip(ContinuousRoundedRectangle(18.dp))
             .background(GlassSurfaceDark)
-            .padding(20.dp)
+            .border(
+                width = 1.dp,
+                color = Color.White.copy(alpha = 0.08f),
+                shape = ContinuousRoundedRectangle(18.dp)
+            )
+            .padding(horizontal = 22.dp, vertical = 18.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -391,31 +566,31 @@ private fun SettingCard(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier.weight(1f)
             ) {
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(42.dp)
                         .clip(ContinuousRoundedRectangle(12.dp))
-                        .background(Color.White.copy(alpha = 0.07f)),
+                        .background(Color.White.copy(alpha = 0.08f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = icon,
                         contentDescription = null,
-                        tint = TextSecondaryDark,
+                        tint = Color.White.copy(alpha = 0.85f),
                         modifier = Modifier.size(20.dp)
                     )
                 }
                 Column {
                     Text(
                         text = title,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Medium,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
                         color = Color.White
                     )
-                    Spacer(modifier = Modifier.height(3.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = description,
                         style = MaterialTheme.typography.bodySmall,
@@ -424,23 +599,66 @@ private fun SettingCard(
                 }
             }
             Spacer(modifier = Modifier.width(20.dp))
-            action()
+            Box(modifier = if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier) {
+                action()
+            }
         }
     }
 }
 
 @Composable
-private fun ToggleButton(enabled: Boolean, onToggle: (Boolean) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        SlooshButton(
-            text = "Вкл",
-            isPrimary = enabled,
-            onClick = { onToggle(true) }
-        )
-        SlooshButton(
-            text = "Выкл",
-            isPrimary = !enabled,
-            onClick = { onToggle(false) }
-        )
+private fun SegmentedToggle(
+    options: List<String>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .clip(ContinuousCapsule)
+            .background(Color(0xFF141416).copy(alpha = 0.85f))
+            .border(
+                width = 1.dp,
+                color = Color.White.copy(alpha = 0.12f),
+                shape = ContinuousCapsule
+            )
+            .padding(3.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            options.forEachIndexed { index, optionText ->
+                val isSelected = selectedIndex == index
+                var isFocused by remember { mutableStateOf(false) }
+
+                Box(
+                    modifier = Modifier
+                        .clip(ContinuousCapsule)
+                        .background(
+                            if (isSelected) Color.White
+                            else if (isFocused) Color.White.copy(alpha = 0.20f)
+                            else Color.Transparent
+                        )
+                        .onFocusChanged { isFocused = it.isFocused }
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            onSelect(index)
+                        }
+                        .padding(horizontal = 16.dp, vertical = 7.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = optionText,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        ),
+                        color = if (isSelected) Color.Black else Color.White.copy(alpha = 0.85f)
+                    )
+                }
+            }
+        }
     }
 }
