@@ -55,6 +55,25 @@ data class MediaDto(
         val rawUrl = posterUrl ?: posterPath
         return normalizeImageUrl(path = rawUrl, id = originalId, isLowQuality = isLowQuality)
     }
+
+    val isTvSeries: Boolean
+        get() {
+            val typeLower = type?.lowercase()?.trim() ?: ""
+            return typeLower in listOf("tv", "series", "serial", "show")
+        }
+
+    val isCartoon: Boolean
+        get() {
+            val typeLower = type?.lowercase()?.trim() ?: ""
+            if (typeLower in listOf("cartoon", "animated", "anime")) return true
+            return genres?.any { g ->
+                val name = (g.name ?: g.id ?: "").lowercase()
+                name.contains("мульт") || name.contains("аним")
+            } == true
+        }
+
+    val isMovie: Boolean
+        get() = !isTvSeries && !isCartoon
 }
 
 data class MediaDetailsDto(

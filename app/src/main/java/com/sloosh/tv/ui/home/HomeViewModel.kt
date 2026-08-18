@@ -66,9 +66,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         val currentState = _uiState.value
         if (!reset && (!currentState.hasMorePages || currentState.isLoadingMore)) return
 
-        val nextPage = if (reset) 1 else currentState.currentPage + 1
-
         fetchJob = viewModelScope.launch {
+            var currentPage = if (reset) 1 else currentState.currentPage + 1
             if (reset) {
                 _uiState.value = currentState.copy(isLoading = true, currentPage = 1, items = emptyList(), errorMessage = null)
             } else {
@@ -76,23 +75,40 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             try {
-                val newItems = fetchCatalogPage(
-                    category = _uiState.value.selectedCategory,
-                    filter = _uiState.value.selectedFilter,
-                    page = nextPage
-                )
+                val collectedItems = mutableListOf<MediaDto>()
+                var hasMore = true
+                var attempts = 0
 
-                val updatedList = if (reset) newItems else currentState.items + newItems
+                // Fetch batches until we collect enough items (e.g. 10+) or no more items available
+                while (collectedItems.size < 10 && hasMore && attempts < 3) {
+                    attempts++
+                    val newItems = fetchCatalogPage(
+                        category = _uiState.value.selectedCategory,
+                        filter = _uiState.value.selectedFilter,
+                        page = currentPage
+                    )
+                    if (newItems.isEmpty()) {
+                        hasMore = false
+                    } else {
+                        collectedItems.addAll(newItems)
+                        if (collectedItems.size < 10) {
+                            currentPage++
+                        }
+                    }
+                }
+
+                val updatedList = if (reset) collectedItems else currentState.items + collectedItems
 
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     isLoadingMore = false,
                     items = updatedList,
-                    currentPage = nextPage,
-                    hasMorePages = newItems.isNotEmpty()
+                    currentPage = currentPage,
+                    hasMorePages = collectedItems.isNotEmpty()
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
+                    isLoading = false,
                     isLoadingMore = false,
                     errorMessage = e.localizedMessage ?: "Ошибка загрузки"
                 )
@@ -110,21 +126,20 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             HomeCategory.MOVIES -> {
-                if (filter == HomeFilter.POPULAR) {
+                val raw = if (filter == HomeFilter.POPULAR) {
                     repository.getPopularMovies(page)
                 } else {
                     repository.getTopMovies(page)
                 }
+                raw.filter { it.isMovie }
             }
             HomeCategory.SERIES -> {
-                if (filter == HomeFilter.POPULAR) {
-                    repository.getTopTv(page)
-                } else {
-                    repository.getTopTv(page)
-                }
+                val raw = repository.getTopTv(page)
+                raw.filter { it.isTvSeries && !it.isCartoon }
             }
             HomeCategory.CARTOONS -> {
-                repository.searchMovies("мультфильм", page)
+                val raw = repository.searchMovies("мультфильм", page)
+                raw.filter { it.isCartoon || (it.title ?: it.name ?: "").contains("мульт", ignoreCase = true) }
             }
         }
     }
