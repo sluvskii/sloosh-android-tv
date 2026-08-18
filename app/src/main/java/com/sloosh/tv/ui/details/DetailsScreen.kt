@@ -3,6 +3,7 @@ package com.sloosh.tv.ui.details
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -308,30 +309,17 @@ private fun SidePosterDetailsLayout(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
+            RatingsRow(
+                kp = details.ratings?.kp,
+                tmdb = details.ratings?.tmdb,
+                imdb = details.ratings?.imdb ?: details.ratings?.kp,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                val kpRating = details.ratings?.kp
-                if (kpRating != null && kpRating > 0) {
-                    Box(
-                        modifier = Modifier
-                            .clip(ContinuousRoundedRectangle(7.dp))
-                            .background(ratingColor(kpRating))
-                            .padding(horizontal = 6.5.dp, vertical = 2.5.dp)
-                    ) {
-                        Text(
-                            text = String.format(java.util.Locale.US, "%.1f", kpRating),
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 13.5.sp,
-                                letterSpacing = (-0.2).sp
-                            ),
-                            color = Color.White
-                        )
-                    }
-                }
-
                 if (details.year != null) {
                     Text(
                         text = "${details.year}",
@@ -611,4 +599,94 @@ private fun SidePosterDetailsLayout(
         }
     }
 }
+
+@Composable
+private fun RatingsRow(
+    kp: Double?,
+    tmdb: Double?,
+    imdb: Double?,
+    modifier: Modifier = Modifier
+) {
+    val hasKp = kp != null && kp > 0
+    val hasTmdb = tmdb != null && tmdb > 0
+    val hasImdb = imdb != null && imdb > 0
+
+    if (!hasKp && !hasTmdb && !hasImdb) return
+
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (hasKp) {
+            RatingBadge(
+                logoBg = Color(0xFFFF6A00),
+                logoText = "KP",
+                rating = kp!!
+            )
+        }
+        if (hasTmdb) {
+            RatingBadge(
+                logoBg = Color(0xFF01D277),
+                logoText = "TMDB",
+                rating = tmdb!!
+            )
+        }
+        if (hasImdb) {
+            RatingBadge(
+                logoBg = Color(0xFFF5C518),
+                logoText = "IMDb",
+                rating = imdb!!,
+                textColor = Color.Black
+            )
+        }
+    }
+}
+
+@Composable
+private fun RatingBadge(
+    logoBg: Color,
+    logoText: String,
+    rating: Double,
+    textColor: Color = Color.White
+) {
+    Box(
+        modifier = Modifier
+            .clip(ContinuousCapsule)
+            .background(Color.White.copy(alpha = 0.12f))
+            .border(
+                width = 1.dp,
+                color = Color.White.copy(alpha = 0.12f),
+                shape = ContinuousCapsule
+            )
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .clip(ContinuousRoundedRectangle(4.dp))
+                    .background(logoBg)
+                    .padding(horizontal = 4.dp, vertical = 1.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = logoText,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Black,
+                    color = textColor
+                )
+            }
+            Text(
+                text = String.format(java.util.Locale.US, "%.1f", rating),
+                fontSize = 12.5.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+        }
+    }
+}
+
 

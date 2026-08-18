@@ -32,6 +32,7 @@ data class HomeUiState(
     val selectedFilter: HomeFilter = HomeFilter.POPULAR,
     val categoryItems: Map<HomeCategory, List<MediaDto>> = emptyMap(),
     val categoryPages: Map<HomeCategory, Int> = emptyMap(),
+    val continueWatchingItems: List<ProgressEntity> = emptyList(),
     val errorMessage: String? = null
 ) {
     val items: List<MediaDto> get() = categoryItems[selectedCategory] ?: emptyList()
@@ -42,6 +43,7 @@ data class HomeUiState(
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = MoviesRepository()
+    private val store = PlaybackProgressStore(application)
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
@@ -50,6 +52,17 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         loadData(reset = true)
+        observeContinueWatching()
+    }
+
+    private fun observeContinueWatching() {
+        viewModelScope.launch {
+            store.allProgress.collect { list ->
+                _uiState.value = _uiState.value.copy(
+                    continueWatchingItems = list.filter { !it.watched && it.positionSec > 10 }
+                )
+            }
+        }
     }
 
     fun selectCategory(category: HomeCategory) {

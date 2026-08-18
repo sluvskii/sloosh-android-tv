@@ -58,6 +58,8 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.tv.foundation.lazy.grid.rememberTvLazyGridState
+import androidx.tv.foundation.lazy.list.TvLazyRow
+import androidx.tv.foundation.lazy.list.items
 import kotlinx.coroutines.launch
 import com.kyant.capsule.ContinuousCapsule
 import com.kyant.capsule.ContinuousRoundedRectangle
@@ -130,6 +132,72 @@ fun HomeScreen(
                     contentPadding = PaddingValues(start = 4.dp, top = 75.dp, end = 16.dp, bottom = 40.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
+                    // Continue Watching Section (When on ALL category and items exist)
+                    if (pageCategory == HomeCategory.ALL && state.continueWatchingItems.isNotEmpty()) {
+                        item(span = { androidx.tv.foundation.lazy.grid.TvGridItemSpan(gridColumns) }) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 14.dp)
+                            ) {
+                                Text(
+                                    text = "Продолжить просмотр",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 18.sp
+                                    ),
+                                    color = Color.White,
+                                    modifier = Modifier.padding(bottom = 10.dp, start = 2.dp)
+                                )
+
+                                androidx.tv.foundation.lazy.list.TvLazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                    contentPadding = PaddingValues(end = 16.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    items(state.continueWatchingItems.size, key = { "cw_${state.continueWatchingItems[it].mediaId}" }) { cIndex ->
+                                        val cItem = state.continueWatchingItems[cIndex]
+                                        val cFocusModifier = if (cIndex == 0) {
+                                            Modifier
+                                                .focusRequester(firstCardFocusRequester)
+                                                .onPreviewKeyEvent { keyEvent ->
+                                                    if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                                        keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP
+                                                    ) {
+                                                        try {
+                                                            categoryFocusRequesters[state.selectedCategory.ordinal].requestFocus()
+                                                            true
+                                                        } catch (e: Exception) {
+                                                            false
+                                                        }
+                                                    } else false
+                                                }
+                                        } else {
+                                            Modifier.onPreviewKeyEvent { keyEvent ->
+                                                if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                                    keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP
+                                                ) {
+                                                    try {
+                                                        categoryFocusRequesters[state.selectedCategory.ordinal].requestFocus()
+                                                        true
+                                                    } catch (e: Exception) {
+                                                        false
+                                                    }
+                                                } else false
+                                            }
+                                        }
+
+                                        HomeContinueWatchingCard(
+                                            item = cItem,
+                                            onClick = { onMediaSelected(cItem.mediaId) },
+                                            modifier = cFocusModifier
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Poster Items
                     items(categoryItems.size, key = { "${pageCategory.name}_${categoryItems[it].identifier}" }) { index ->
                         val item = categoryItems[index]
@@ -139,9 +207,10 @@ fun HomeScreen(
                             }
                         }
 
+                        val hasContinueWatching = pageCategory == HomeCategory.ALL && state.continueWatchingItems.isNotEmpty()
                         val cardModifier = if (index < gridColumns) {
                             Modifier
-                                .then(if (index == 0 && state.selectedCategory == pageCategory) Modifier.focusRequester(firstCardFocusRequester) else Modifier)
+                                .then(if (index == 0 && state.selectedCategory == pageCategory && !hasContinueWatching) Modifier.focusRequester(firstCardFocusRequester) else Modifier)
                                 .onPreviewKeyEvent { keyEvent ->
                                     if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
                                         keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP
@@ -508,3 +577,119 @@ fun MediaCard(
         }
     }
 }
+
+@Composable
+private fun HomeContinueWatchingCard(
+    item: com.sloosh.tv.data.db.ProgressEntity,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    SlooshFocusableCard(
+        onClick = onClick,
+        modifier = modifier
+            .width(280.dp)
+            .height(158.dp),
+        shape = ContinuousRoundedRectangle(16.dp)
+    ) { isFocused ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(ContinuousRoundedRectangle(16.dp))
+        ) {
+            val artworkUrl = item.backdropUrl ?: item.posterUrl
+            AsyncImage(
+                model = artworkUrl,
+                contentDescription = item.title,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+
+            // Gradient overlay
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.20f to Color.Transparent,
+                                1.0f to Color.Black.copy(alpha = 0.92f)
+                            )
+                        )
+                    )
+            )
+
+            // Play indicator on focus
+            if (isFocused) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(44.dp)
+                        .clip(ContinuousCapsule)
+                        .background(Color.White),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Смотреть",
+                        tint = Color.Black,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            }
+
+            // Info Content
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
+            ) {
+                Text(
+                    text = item.title.ifEmpty { "Без названия" },
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    ),
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                val subText = if (item.isEpisode && item.season != null && item.episode != null) {
+                    "Сезон ${item.season} • Серия ${item.episode}"
+                } else {
+                    val posSec = item.positionSec.toInt()
+                    val durSec = item.durationSec.toInt()
+                    if (durSec > 0) {
+                        val remSec = (durSec - posSec).coerceAtLeast(0)
+                        "Осталось ${remSec / 60} мин"
+                    } else {
+                        "Продолжить просмотр"
+                    }
+                }
+
+                Text(
+                    text = subText,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.5.sp),
+                    color = Color.White.copy(alpha = 0.72f),
+                    maxLines = 1
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                LinearProgressIndicator(
+                    progress = { item.progressFraction },
+                    color = Color.White,
+                    trackColor = Color.White.copy(alpha = 0.22f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .clip(ContinuousCapsule)
+                )
+            }
+        }
+    }
+}
+
