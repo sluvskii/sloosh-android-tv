@@ -27,6 +27,18 @@ import com.sloosh.tv.ui.theme.*
 import com.kyant.capsule.ContinuousCapsule
 import com.kyant.capsule.ContinuousRoundedRectangle
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
+
 // iOS ProfileView has 4 categories: Все / Фильмы / Сериалы / Мульты
 enum class FavoriteCategory(val title: String) {
     ALL("Все"),
@@ -86,6 +98,56 @@ fun ProfileScreen(
         }
     }
 
+    val categories = FavoriteCategory.values()
+    val categoryFocusRequesters = remember { Array(categories.size) { FocusRequester() } }
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+
+    val categoryTitles = remember(categoryCounts) {
+        categories.map { cat ->
+            val count = categoryCounts[cat] ?: 0
+            if (count > 0) "${cat.title} $count" else cat.title
+        }
+    }
+
+    val tabWidths = remember(categoryTitles, density) {
+        categoryTitles.map { title ->
+            val textLayoutResult = textMeasurer.measure(
+                text = title,
+                style = androidx.compose.ui.text.TextStyle(
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = (-0.2).sp
+                )
+            )
+            val measuredWidthDp = with(density) { textLayoutResult.size.width.toDp() }
+            (measuredWidthDp + 26.dp).coerceAtLeast(64.dp)
+        }
+    }
+
+    val selectedIndex = categories.indexOf(selectedCategory).coerceAtLeast(0)
+    val targetWidth = tabWidths.getOrElse(selectedIndex) { 80.dp }
+
+    val targetOffset = remember(selectedIndex, tabWidths) {
+        var acc = 0.dp
+        for (i in 0 until selectedIndex) {
+            acc += tabWidths.getOrElse(i) { 80.dp }
+        }
+        acc
+    }
+
+    val animatedPillOffset by animateDpAsState(
+        targetValue = targetOffset,
+        animationSpec = spring(dampingRatio = 0.76f, stiffness = 400f),
+        label = "favPillOffset"
+    )
+
+    val animatedPillWidth by animateDpAsState(
+        targetValue = targetWidth,
+        animationSpec = spring(dampingRatio = 0.76f, stiffness = 400f),
+        label = "favPillWidth"
+    )
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -105,24 +167,100 @@ fun ProfileScreen(
                 color = Color.White
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
-            // ─── Category Filter Tabs with counts ─────────────────────
-            val categories = FavoriteCategory.values()
-            TvLazyRow(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.padding(bottom = 20.dp)
+            // ─── Continuous Segmented Capsule ────────────────────────
+            Box(
+                modifier = Modifier
+                    .clip(ContinuousCapsule)
+                    .background(Color(0xFF141416).copy(alpha = 0.85f))
+                    .border(
+                        width = 1.dp,
+                        color = Color.White.copy(alpha = 0.12f),
+                        shape = ContinuousCapsule
+                    )
+                    .padding(3.5.dp)
             ) {
-                items(categories.size, key = { categories[it].name }) { idx ->
-                    val category = categories[idx]
-                    val count = categoryCounts[category] ?: 0
-                    SlooshButton(
-                        text = if (count > 0) "${category.title} $count" else category.title,
-                        isPrimary = selectedCategory == category,
-                        onClick = { selectedCategory = category }
+                // Sliding White Capsule Pill
+                if (targetWidth > 0.dp) {
+                    Box(
+                        modifier = Modifier
+                            .offset(x = animatedPillOffset)
+                            .width(animatedPillWidth)
+                            .height(34.dp)
+                            .clip(ContinuousCapsule)
+                            .background(Color.White)
                     )
                 }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    categories.forEachIndexed { index, cat ->
+                        val isSelected = selectedCategory == cat
+                        val thisTabWidth = tabWidths.getOrElse(index) { 80.dp }
+                        val titleText = categoryTitles.getOrElse(index) { cat.title }
+
+                        Box(
+                            modifier = Modifier
+                                .width(thisTabWidth)
+                                .height(34.dp)
+                                .clip(ContinuousCapsule)
+                                .focusRequester(categoryFocusRequesters[index])
+                                .onFocusChanged { focusState ->
+                                    if (focusState.isFocused && selectedCategory != cat) {
+                                        selectedCategory = cat
+                                    }
+                                }
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) {
+                                    selectedCategory = cat
+                                }
+                                .onPreviewKeyEvent { keyEvent ->
+                                    if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                                        when (keyEvent.nativeKeyEvent.keyCode) {
+                                            android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
+                                                if (index > 0) {
+                                                    try {
+                                                        categoryFocusRequesters[index - 1].requestFocus()
+                                                        true
+                                                    } catch (e: Exception) {
+                                                        false
+                                                    }
+                                                } else false
+                                            }
+                                            android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                                                if (index < categories.size - 1) {
+                                                    try {
+                                                        categoryFocusRequesters[index + 1].requestFocus()
+                                                        true
+                                                    } catch (e: Exception) {
+                                                        false
+                                                    }
+                                                } else false
+                                            }
+                                            else -> false
+                                        }
+                                    } else false
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = titleText,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 13.5.sp,
+                                    letterSpacing = (-0.2).sp
+                                ),
+                                color = if (isSelected) Color.Black else Color.White.copy(alpha = 0.85f),
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
             }
+
+            Spacer(modifier = Modifier.height(20.dp))
 
             // ─── Content ──────────────────────────────────────────────
             if (filteredFavorites.isEmpty()) {

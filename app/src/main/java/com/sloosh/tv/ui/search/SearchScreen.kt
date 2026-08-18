@@ -31,6 +31,12 @@ import com.sloosh.tv.ui.components.SlooshFocusableCard
 import com.sloosh.tv.ui.home.MediaCard
 import com.sloosh.tv.ui.theme.*
 
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+
 @Composable
 fun SearchScreen(
     onMediaSelected: (String) -> Unit,
@@ -38,6 +44,7 @@ fun SearchScreen(
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.uiState.collectAsState()
+    val firstResultFocusRequester = remember { FocusRequester() }
 
     Box(
         modifier = modifier
@@ -108,169 +115,197 @@ fun SearchScreen(
                     cursorColor = Color.White
                 ),
                 shape = ContinuousRoundedRectangle(18.dp),
-                modifier = Modifier.fillMaxWidth(0.65f)
+                modifier = Modifier
+                    .fillMaxWidth(0.65f)
+                    .onPreviewKeyEvent { keyEvent ->
+                        if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                            keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN
+                        ) {
+                            try {
+                                firstResultFocusRequester.requestFocus()
+                                true
+                            } catch (e: Exception) {
+                                false
+                            }
+                        } else false
+                    }
             )
 
             Spacer(modifier = Modifier.height(28.dp))
 
-            // ─── Content Area ────────────────────────────────────
-            when {
-                // Recent searches (when query is empty)
-                state.query.isEmpty() && state.recentSearches.isNotEmpty() -> {
-                    Text(
-                        text = "Недавние запросы",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color.White,
-                        modifier = Modifier.padding(bottom = 14.dp)
-                    )
-                    TvLazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        contentPadding = PaddingValues(end = 32.dp)
-                    ) {
-                        items(state.recentSearches.size, key = { state.recentSearches[it].query }) { idx ->
-                            val history = state.recentSearches[idx]
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            // ─── Animated Content Area ───────────────────────────
+            val searchStateKey = when {
+                state.query.isEmpty() && state.recentSearches.isNotEmpty() -> 0
+                state.query.isEmpty() -> 1
+                state.isLoading -> 2
+                state.results.isEmpty() -> 3
+                else -> 4
+            }
+
+            AnimatedContent(
+                targetState = searchStateKey,
+                transitionSpec = {
+                    fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(160))
+                },
+                label = "searchContentTransition",
+                modifier = Modifier.fillMaxSize()
+            ) { targetKey ->
+                when (targetKey) {
+                    0 -> {
+                        // Recent searches
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            Text(
+                                text = "Недавние запросы",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color.White,
+                                modifier = Modifier.padding(bottom = 14.dp)
+                            )
+                            TvLazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                contentPadding = PaddingValues(end = 32.dp)
                             ) {
-                                SlooshButton(
-                                    text = history.query,
-                                    onClick = { viewModel.selectHistoryQuery(history.query) }
-                                )
-                                // Delete button
-                                SlooshFocusableCard(
-                                    onClick = { viewModel.deleteHistoryQuery(history.query) },
-                                    shape = ContinuousCapsule,
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Box(
-                                        contentAlignment = Alignment.Center,
-                                        modifier = Modifier.fillMaxSize()
+                                items(state.recentSearches.size, key = { state.recentSearches[it].query }) { idx ->
+                                    val history = state.recentSearches[idx]
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Close,
-                                            contentDescription = "Удалить",
-                                            tint = TextMutedDark,
-                                            modifier = Modifier.size(12.dp)
+                                        SlooshButton(
+                                            text = history.query,
+                                            onClick = { viewModel.selectHistoryQuery(history.query) }
                                         )
+                                        SlooshFocusableCard(
+                                            onClick = { viewModel.deleteHistoryQuery(history.query) },
+                                            shape = ContinuousCapsule,
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Box(
+                                                contentAlignment = Alignment.Center,
+                                                modifier = Modifier.fillMaxSize()
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Close,
+                                                    contentDescription = "Удалить",
+                                                    tint = TextMutedDark,
+                                                    modifier = Modifier.size(12.dp)
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
-
-                // Empty state (no query, no history)
-                state.query.isEmpty() -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally
+                    1 -> {
+                        // Empty initial state
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = null,
-                                tint = TextMutedDark,
-                                modifier = Modifier.size(56.dp)
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = "Начните поиск",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = TextSecondaryDark
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "Ищите фильмы и сериалы по названию",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = TextMutedDark
-                            )
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = null,
+                                    tint = TextMutedDark,
+                                    modifier = Modifier.size(56.dp)
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = "Начните поиск",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = TextSecondaryDark
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = "Ищите фильмы и сериалы по названию",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = TextMutedDark
+                                )
+                            }
                         }
                     }
-                }
-
-                // Loading
-                state.isLoading -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator(color = Color.White)
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = "Ищем...",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = TextSecondaryDark
-                            )
+                    2 -> {
+                        // Loading
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator(color = Color.White)
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = "Ищем...",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = TextSecondaryDark
+                                )
+                            }
                         }
                     }
-                }
-
-                // No results
-                state.results.isEmpty() && state.query.isNotEmpty() -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = null,
-                                tint = TextMutedDark,
-                                modifier = Modifier.size(56.dp)
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = "Ничего не найдено",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = TextSecondaryDark
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "Попробуйте изменить запрос",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = TextMutedDark
-                            )
+                    3 -> {
+                        // No results found
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = null,
+                                    tint = TextMutedDark,
+                                    modifier = Modifier.size(56.dp)
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = "Ничего не найдено",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = TextSecondaryDark
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = "Попробуйте изменить запрос",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = TextMutedDark
+                                )
+                            }
                         }
                     }
-                }
+                    4 -> {
+                        // Results grid
+                        val context = androidx.compose.ui.platform.LocalContext.current
+                        val appSettings = remember { com.sloosh.tv.data.repository.AppSettings(context) }
+                        val gridColumns = appSettings.gridColumns
+                        val isCompact = gridColumns >= 6
+                        val gridSpacing = if (isCompact) 12.dp else 16.dp
 
-                // Results grid
-                else -> {
-                    val context = androidx.compose.ui.platform.LocalContext.current
-                    val appSettings = remember { com.sloosh.tv.data.repository.AppSettings(context) }
-                    val gridColumns = appSettings.gridColumns
-                    val isCompact = gridColumns >= 6
-                    val gridSpacing = if (isCompact) 12.dp else 16.dp
-
-                    Text(
-                        text = "Результаты: ${state.results.size}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = TextMutedDark,
-                        modifier = Modifier.padding(bottom = 14.dp)
-                    )
-                    TvLazyVerticalGrid(
-                        columns = TvGridCells.Fixed(gridColumns),
-                        horizontalArrangement = Arrangement.spacedBy(gridSpacing),
-                        verticalArrangement = Arrangement.spacedBy(gridSpacing),
-                        contentPadding = PaddingValues(bottom = 80.dp),
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        items(state.results.size, key = { state.results[it].identifier }) { index ->
-                            val item = state.results[index]
-                            MediaCard(
-                                item = item,
-                                onClick = { onMediaSelected(item.identifier) },
-                                compact = isCompact,
-                                onFocus = {}
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            Text(
+                                text = "Результаты: ${state.results.size}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = TextMutedDark,
+                                modifier = Modifier.padding(bottom = 14.dp)
                             )
+                            TvLazyVerticalGrid(
+                                columns = TvGridCells.Fixed(gridColumns),
+                                horizontalArrangement = Arrangement.spacedBy(gridSpacing),
+                                verticalArrangement = Arrangement.spacedBy(gridSpacing),
+                                contentPadding = PaddingValues(bottom = 80.dp),
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                items(state.results.size, key = { state.results[it].identifier }) { index ->
+                                    val item = state.results[index]
+                                    val cardModifier = if (index == 0) {
+                                        Modifier.focusRequester(firstResultFocusRequester)
+                                    } else Modifier
+
+                                    MediaCard(
+                                        item = item,
+                                        onClick = { onMediaSelected(item.identifier) },
+                                        compact = isCompact,
+                                        modifier = cardModifier,
+                                        onFocus = {}
+                                    )
+                                }
+                            }
                         }
                     }
                 }

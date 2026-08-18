@@ -154,10 +154,38 @@ private fun AppNavHost(
     NavHost(
         navController = navController,
         startDestination = "home",
-        enterTransition = { androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(180)) },
-        exitTransition = { androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(150)) },
-        popEnterTransition = { androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(180)) },
-        popExitTransition = { androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(150)) },
+        enterTransition = {
+            androidx.compose.animation.fadeIn(
+                animationSpec = androidx.compose.animation.core.tween(240, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+            ) + androidx.compose.animation.scaleIn(
+                initialScale = 0.96f,
+                animationSpec = androidx.compose.animation.core.tween(240, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+            )
+        },
+        exitTransition = {
+            androidx.compose.animation.fadeOut(
+                animationSpec = androidx.compose.animation.core.tween(180, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+            ) + androidx.compose.animation.scaleOut(
+                targetScale = 1.03f,
+                animationSpec = androidx.compose.animation.core.tween(180, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+            )
+        },
+        popEnterTransition = {
+            androidx.compose.animation.fadeIn(
+                animationSpec = androidx.compose.animation.core.tween(220, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+            ) + androidx.compose.animation.scaleIn(
+                initialScale = 1.03f,
+                animationSpec = androidx.compose.animation.core.tween(220, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+            )
+        },
+        popExitTransition = {
+            androidx.compose.animation.fadeOut(
+                animationSpec = androidx.compose.animation.core.tween(180, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+            ) + androidx.compose.animation.scaleOut(
+                targetScale = 0.96f,
+                animationSpec = androidx.compose.animation.core.tween(180, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+            )
+        },
         modifier = Modifier.fillMaxSize()
     ) {
         composable("home") {

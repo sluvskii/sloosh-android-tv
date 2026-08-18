@@ -18,25 +18,27 @@ class SlooshApplication : Application(), ImageLoaderFactory {
 
     override fun newImageLoader(): ImageLoader {
         val okHttpClient = OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
+            .connectTimeout(12, TimeUnit.SECONDS)
+            .readTimeout(12, TimeUnit.SECONDS)
+            .connectionPool(okhttp3.ConnectionPool(8, 5, TimeUnit.MINUTES))
             .build()
 
         return ImageLoader.Builder(this)
             .okHttpClient(okHttpClient)
             .memoryCache {
                 MemoryCache.Builder(this)
-                    .maxSizePercent(0.20)
+                    .maxSizePercent(0.25)
                     .build()
             }
             .diskCache {
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("image_cache"))
-                    .maxSizeBytes(150L * 1024 * 1024)
+                    .maxSizeBytes(200L * 1024 * 1024)
                     .build()
             }
-            .crossfade(120)
+            .crossfade(140)
             .allowHardware(true)
+            .allowRgb565(true)
             .respectCacheHeaders(false)
             .build()
     }
