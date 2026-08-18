@@ -110,6 +110,7 @@ fun DetailsScreen(
             state = state,
             viewModel = viewModel,
             watchButtonFocusRequester = watchButtonFocusRequester,
+            onPlayClick = onPlayClick,
             onBackClick = onBackClick
         )
 
@@ -160,6 +161,7 @@ private fun SidePosterDetailsLayout(
     state: DetailsUiState,
     viewModel: DetailsViewModel,
     watchButtonFocusRequester: FocusRequester,
+    onPlayClick: (String, Int?, Int?, String) -> Unit,
     onBackClick: (() -> Unit)? = null
 ) {
     val scrollState = rememberScrollState()
@@ -597,7 +599,7 @@ private fun SidePosterDetailsLayout(
 
             // ─── TV Series Seasons & Episodes Section ─────────────────────────
             val seriesData = state.allohaData
-            if (seriesData != null && seriesData.isSeries && seriesData.seasons.isNotEmpty()) {
+            if (seriesData != null && seriesData.isSerial && seriesData.seasons.isNotEmpty()) {
                 val seasons = seriesData.seasons
                 var selectedSeasonIndex by remember { mutableStateOf(0) }
                 val currentSeason = seasons.getOrNull(selectedSeasonIndex) ?: seasons.firstOrNull()
