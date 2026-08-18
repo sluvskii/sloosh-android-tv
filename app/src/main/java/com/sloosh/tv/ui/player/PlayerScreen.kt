@@ -726,6 +726,81 @@ fun PlayerScreen(
                 }
             }
 
+            // ─── Floating Next Episode Auto-Countdown Overlay ─────────────────────────
+            val nextEp = viewModel.getNextEpisode()
+            val remainingSec = if (durationMs > 0) ((durationMs - currentPositionMs) / 1000).toInt() else 0
+            val showNextEpisodeBadge = nextEp != null && durationMs > 30_000L && remainingSec in 1..20 && !isAnyModalOpen
+
+            AnimatedVisibility(
+                visible = showNextEpisodeBadge,
+                enter = fadeIn(tween(250)) + slideInHorizontally(initialOffsetX = { it / 2 }),
+                exit = fadeOut(tween(250)) + slideOutHorizontally(targetOffsetX = { it / 2 }),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 48.dp, bottom = if (showControls) 130.dp else 48.dp)
+            ) {
+                if (nextEp != null) {
+                    val (nextSeason, nextEpisodeObj) = nextEp
+                    SlooshFocusableCard(
+                        onClick = {
+                            viewModel.playNextEpisode()
+                        },
+                        shape = ContinuousRoundedRectangle(18.dp),
+                        modifier = Modifier.wrapContentSize()
+                    ) { isFocused ->
+                        Box(
+                            modifier = Modifier
+                                .clip(ContinuousRoundedRectangle(18.dp))
+                                .background(if (isFocused) Color.White else GlassSurfaceDark)
+                                .border(
+                                    width = 1.dp,
+                                    color = Color.White.copy(alpha = if (isFocused) 0.5f else 0.15f),
+                                    shape = ContinuousRoundedRectangle(18.dp)
+                                )
+                                .padding(horizontal = 20.dp, vertical = 14.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(ContinuousCapsule)
+                                        .background(if (isFocused) Color.Black else Color.White),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.SkipNext,
+                                        contentDescription = null,
+                                        tint = if (isFocused) Color.White else Color.Black,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                                Column {
+                                    Text(
+                                        text = "Следующая серия через ${remainingSec}с",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        ),
+                                        color = if (isFocused) Color.Black.copy(alpha = 0.7f) else TextSecondaryDark
+                                    )
+                                    Text(
+                                        text = "S${nextSeason} • E${nextEpisodeObj.episode}",
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 16.sp
+                                        ),
+                                        color = if (isFocused) Color.Black else Color.White
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // ─── Bottom Bar & Controls ────────────────────────────────
             AnimatedVisibility(
                 visible = showControls && !isAnyModalOpen,
