@@ -6,6 +6,9 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -69,8 +72,26 @@ fun HomeScreen(
 
     val gridState = rememberTvLazyGridState()
     val coroutineScope = rememberCoroutineScope()
+    val categories = HomeCategory.values()
     val firstCardFocusRequester = remember { FocusRequester() }
-    val categoryFocusRequesters = remember { Array(HomeCategory.values().size) { FocusRequester() } }
+    val categoryFocusRequesters = remember { Array(categories.size) { FocusRequester() } }
+
+    val pagerState = rememberPagerState(
+        initialPage = state.selectedCategory.ordinal,
+        pageCount = { categories.size }
+    )
+
+    LaunchedEffect(state.selectedCategory) {
+        if (pagerState.currentPage != state.selectedCategory.ordinal) {
+            pagerState.animateScrollToPage(
+                page = state.selectedCategory.ordinal,
+                animationSpec = spring(
+                    dampingRatio = 0.82f,
+                    stiffness = 320f
+                )
+            )
+        }
+    }
 
     Box(
         modifier = modifier.fillMaxSize()
@@ -83,23 +104,13 @@ fun HomeScreen(
         val isCompact = gridColumns >= 6
         val gridSpacing = if (isCompact) 12.dp else 16.dp
 
-        AnimatedContent(
-            targetState = state.selectedCategory,
-            transitionSpec = {
-                val isForward = targetState.ordinal > initialState.ordinal
-                val direction = if (isForward) 1 else -1
-                (slideInHorizontally(
-                    initialOffsetX = { fullWidth -> (direction * fullWidth * 0.40f).toInt() },
-                    animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
-                ) + fadeIn(animationSpec = tween(durationMillis = 260))) togetherWith (slideOutHorizontally(
-                    targetOffsetX = { fullWidth -> (-direction * fullWidth * 0.40f).toInt() },
-                    animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
-                ) + fadeOut(animationSpec = tween(durationMillis = 180)))
-            },
-            label = "categoryGalleryTransition",
+        HorizontalPager(
+            state = pagerState,
+            userScrollEnabled = false,
             modifier = Modifier.fillMaxSize()
-        ) { category ->
-            val categoryItems = state.categoryItems[category] ?: emptyList()
+        ) { pageIndex ->
+            val pageCategory = categories[pageIndex]
+            val categoryItems = state.categoryItems[pageCategory] ?: emptyList()
             val isCurrentLoading = state.isLoading && categoryItems.isEmpty()
 
             if (isCurrentLoading) {
@@ -119,9 +130,9 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     // Poster Items
-                    items(categoryItems.size, key = { categoryItems[it].identifier }) { index ->
+                    items(categoryItems.size, key = { "${pageCategory.name}_${categoryItems[it].identifier}" }) { index ->
                         val item = categoryItems[index]
-                        if (index >= categoryItems.size - 4 && !state.isLoadingMore && state.hasMorePages) {
+                        if (index >= categoryItems.size - 4 && !state.isLoadingMore && state.hasMorePages && state.selectedCategory == pageCategory) {
                             LaunchedEffect(index) {
                                 viewModel.loadData(reset = false)
                             }
@@ -129,7 +140,7 @@ fun HomeScreen(
 
                         val cardModifier = if (index < gridColumns) {
                             Modifier
-                                .then(if (index == 0) Modifier.focusRequester(firstCardFocusRequester) else Modifier)
+                                .then(if (index == 0 && state.selectedCategory == pageCategory) Modifier.focusRequester(firstCardFocusRequester) else Modifier)
                                 .onPreviewKeyEvent { keyEvent ->
                                     if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
                                         keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP
@@ -152,7 +163,7 @@ fun HomeScreen(
                         )
                     }
 
-                    if (state.isLoadingMore) {
+                    if (state.isLoadingMore && state.selectedCategory == pageCategory) {
                         item(span = { androidx.tv.foundation.lazy.grid.TvGridItemSpan(gridColumns) }) {
                             Box(
                                 modifier = Modifier
