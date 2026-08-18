@@ -134,12 +134,25 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 raw.filter { it.isMovie }
             }
             HomeCategory.SERIES -> {
-                val raw = repository.getTopTv(page)
+                val raw = if (filter == HomeFilter.POPULAR) {
+                    repository.getPopularMovies(page)
+                } else {
+                    repository.getTopTv(page)
+                }
                 raw.filter { it.isTvSeries && !it.isCartoon }
             }
             HomeCategory.CARTOONS -> {
-                val raw = repository.searchMovies("мультфильм", page)
-                raw.filter { it.isCartoon || (it.title ?: it.name ?: "").contains("мульт", ignoreCase = true) }
+                val raw = if (filter == HomeFilter.POPULAR) {
+                    repository.getPopularMovies(page)
+                } else {
+                    repository.getTopMovies(page)
+                }
+                val filtered = raw.filter { it.isCartoon }
+                if (filtered.isEmpty()) {
+                    repository.searchMovies("мультфильм", page).filter { it.isCartoon }
+                } else {
+                    filtered
+                }
             }
         }
     }
