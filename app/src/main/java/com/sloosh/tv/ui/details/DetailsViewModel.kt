@@ -57,6 +57,18 @@ class DetailsViewModel(application: Application) : AndroidViewModel(application)
                 progress = progress,
                 isFavorite = isFav
             )
+
+            // Pre-fetch seasons/episodes for series
+            if (details != null && (details.type == "tv" || details.type == "series" || details.type == "serial")) {
+                val kpId = details.ids?.kp
+                val dId = details.id ?: mediaId
+                launch {
+                    val alloha = allohaRepository.fetchAllohaData(dId, kpId)
+                    if (alloha != null) {
+                        _uiState.value = _uiState.value.copy(allohaData = alloha)
+                    }
+                }
+            }
         }
     }
 

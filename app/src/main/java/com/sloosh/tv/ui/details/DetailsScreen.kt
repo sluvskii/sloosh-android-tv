@@ -595,6 +595,104 @@ private fun SidePosterDetailsLayout(
                 }
             }
 
+            // ─── TV Series Seasons & Episodes Section ─────────────────────────
+            val seriesData = state.allohaData
+            if (seriesData != null && seriesData.isSeries && seriesData.seasons.isNotEmpty()) {
+                val seasons = seriesData.seasons
+                var selectedSeasonIndex by remember { mutableStateOf(0) }
+                val currentSeason = seasons.getOrNull(selectedSeasonIndex) ?: seasons.firstOrNull()
+
+                if (currentSeason != null) {
+                    Spacer(modifier = Modifier.height(28.dp))
+
+                    Text(
+                        text = "Сезоны и серии",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp
+                        ),
+                        color = Color.White,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+
+                    // Seasons Tabs Row
+                    if (seasons.size > 1) {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            contentPadding = PaddingValues(bottom = 14.dp)
+                        ) {
+                            items(seasons) { s ->
+                                val sIdx = seasons.indexOf(s)
+                                val isSelected = selectedSeasonIndex == sIdx
+
+                                SlooshFocusableCard(
+                                    onClick = { selectedSeasonIndex = sIdx },
+                                    shape = ContinuousCapsule,
+                                    modifier = Modifier.wrapContentSize()
+                                ) { isFocused ->
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(ContinuousCapsule)
+                                            .background(
+                                                if (isSelected && isFocused) Color.White
+                                                else if (isSelected) Color.White.copy(alpha = 0.90f)
+                                                else if (isFocused) Color.White.copy(alpha = 0.25f)
+                                                else Color.White.copy(alpha = 0.08f)
+                                            )
+                                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "Сезон ${s.season}",
+                                            style = MaterialTheme.typography.labelMedium.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.5.sp
+                                            ),
+                                            color = if (isSelected) Color.Black else Color.White
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Episodes Horizontal Row
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        contentPadding = PaddingValues(bottom = 16.dp, end = 24.dp)
+                    ) {
+                        items(currentSeason.episodes) { ep ->
+                            val validId = details.id?.replace("kp_", "") ?: ""
+                            val episodeStillUrl = "https://api.neome.uk/api/v1/images/screens/$validId/${currentSeason.season}/${ep.episode}/large"
+
+                            val isCurrentWatching = state.progress?.season == currentSeason.season && state.progress?.episode == ep.episode
+
+                            DetailsEpisodeCard(
+                                season = currentSeason.season,
+                                episode = ep.episode,
+                                stillUrl = episodeStillUrl,
+                                fallbackArtworkUrl = backdropUrl,
+                                isCurrentWatching = isCurrentWatching,
+                                progressFraction = if (isCurrentWatching) state.progress?.progressFraction ?: 0f else 0f,
+                                onClick = {
+                                    val firstTranslation = ep.translations.firstOrNull()
+                                    if (firstTranslation != null) {
+                                        onPlayClick(
+                                            firstTranslation.iframeUrl,
+                                            currentSeason.season,
+                                            ep.episode,
+                                            details.displayTitle
+                                        )
+                                    } else {
+                                        viewModel.openSourceSheet()
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(48.dp))
         }
     }
@@ -688,5 +786,103 @@ private fun RatingBadge(
         }
     }
 }
+
+@Composable
+private fun DetailsEpisodeCard(
+    season: Int,
+    episode: Int,
+    stillUrl: String,
+    fallbackArtworkUrl: String?,
+    isCurrentWatching: Boolean,
+    progressFraction: Float,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    SlooshFocusableCard(
+        onClick = onClick,
+        modifier = modifier
+            .width(220.dp)
+            .height(124.dp),
+        shape = ContinuousRoundedRectangle(14.dp)
+    ) { isFocused ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(ContinuousRoundedRectangle(14.dp))
+        ) {
+            AsyncImage(
+                model = stillUrl.ifEmpty { fallbackArtworkUrl },
+                contentDescription = "Серия $episode",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+
+            // Dark gradient overlay
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.20f to Color.Transparent,
+                                1.0f to Color.Black.copy(alpha = 0.90f)
+                            )
+                        )
+                    )
+            )
+
+            // Play indicator on focus
+            if (isFocused) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(38.dp)
+                        .clip(ContinuousCapsule)
+                        .background(Color.White),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Смотреть",
+                        tint = Color.Black,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+
+            // Info Content
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    text = "Серия $episode",
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    ),
+                    color = Color.White,
+                    maxLines = 1
+                )
+
+                if (isCurrentWatching && progressFraction > 0.01f) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    LinearProgressIndicator(
+                        progress = { progressFraction },
+                        color = Color.White,
+                        trackColor = Color.White.copy(alpha = 0.22f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(2.5.dp)
+                            .clip(ContinuousCapsule)
+                    )
+                }
+            }
+        }
+    }
+}
+
 
 
