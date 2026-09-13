@@ -557,6 +557,9 @@ class HlsProxyServer(
                     // Skip loopback Referer/Origin
                 } else {
                     builder.header(k, v)
+                    if (lower == "accepts-controls") {
+                        builder.header("Accepts-Controls", v)
+                    }
                 }
             }
         }

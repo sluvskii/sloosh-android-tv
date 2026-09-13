@@ -34,6 +34,7 @@ import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.net.URI
 import java.net.URL
+import java.net.URLDecoder
 import java.util.ArrayDeque
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -153,8 +154,8 @@ class AllohaRuntimeResolver(private val context: Context) {
         val selectedUserAgent = nextUserAgent()
 
         capturedHeaders["user-agent"] = selectedUserAgent
-        capturedHeaders["referer"] = "https://allplay.tv/"
-        capturedHeaders["origin"] = "https://allplay.tv"
+        capturedHeaders["referer"] = "$iframeOrigin/"
+        capturedHeaders["origin"] = iframeOrigin
         capturedHeaders["accept"] = "*/*"
 
         var bestMasterPayload: String? = null
@@ -595,7 +596,13 @@ class AllohaRuntimeResolver(private val context: Context) {
                         val uri = runCatching { Uri.parse(reqUrl) }.getOrNull()
                         val edgeHash = uri?.getQueryParameter("edge_hash")
                         val ttl = uri?.getQueryParameter("ttl")?.toIntOrNull() ?: 0
-                        val payload = uri?.getQueryParameter("payload")
+                        var payload = uri?.getQueryParameter("payload")
+
+                        val headerPayload = request.requestHeaders?.get("x-sloosh-payload") ?: request.requestHeaders?.get("X-Sloosh-Payload")
+                        if (!headerPayload.isNullOrBlank()) {
+                            val decoded = runCatching { URLDecoder.decode(headerPayload, "UTF-8") }.getOrNull()
+                            if (!decoded.isNullOrBlank()) payload = decoded
+                        }
 
                         if (!edgeHash.isNullOrBlank()) {
                             capturedHeaders["accepts-controls"] = edgeHash
@@ -670,12 +677,8 @@ class AllohaRuntimeResolver(private val context: Context) {
                                 }
                             }
 
-                            val respHeaders = mutableMapOf<String, String>()
-                            for (i in 0 until bnsiResp.headers.size) {
-                                respHeaders[bnsiResp.headers.name(i)] = bnsiResp.headers.value(i)
-                            }
-                            respHeaders["Access-Control-Allow-Origin"] = "*"
-
+                            val respHeaders = sanitizeInterceptResponseHeaders(bnsiResp.headers)
+                            val bnsiBytes = bnsiBody.toByteArray(Charsets.UTF_8)
                             val contentType = bnsiResp.header("Content-Type") ?: "application/json"
                             return WebResourceResponse(
                                 contentType,
@@ -683,7 +686,7 @@ class AllohaRuntimeResolver(private val context: Context) {
                                 bnsiResp.code,
                                 bnsiResp.message.ifBlank { "OK" },
                                 respHeaders,
-                                ByteArrayInputStream(bnsiBody.toByteArray(Charsets.UTF_8))
+                                ByteArrayInputStream(bnsiBytes)
                             )
                         } catch (e: Exception) {
                             Log.w(TAG, "Failed to intercept /bnsi/: ${e.message}")
@@ -714,8 +717,13 @@ class AllohaRuntimeResolver(private val context: Context) {
                             val htmlBody = htmlResp.body?.string().orEmpty()
                             Log.d(TAG, "Fetched Alloha HTML body: len=${htmlBody.length}")
 
+                            // Patch Alloha anti-framing check so body is never removed
+                            val patchedHtml = htmlBody
+                                .replace("var isFramed=false;", "var isFramed=true;")
+                                .replace("var isFramed = false;", "var isFramed = true;")
+
                             // Try direct parse from HTML body in case stream data is embedded
-                            val directParsed = AllohaRuntimeParser.parsePayload(htmlBody, cleanUrl, capturedHeaders)
+                            val directParsed = AllohaRuntimeParser.parsePayload(patchedHtml, cleanUrl, capturedHeaders)
                             if (directParsed != null && (directParsed.videoUrl.isNotBlank() || directParsed.audioVariants.isNotEmpty())) {
                                 Log.d(TAG, "Stream parsed directly from HTML body: ${directParsed.videoUrl}")
                                 mainHandler.post { finishOk(directParsed) }
@@ -724,22 +732,15 @@ class AllohaRuntimeResolver(private val context: Context) {
                             // Inject early hook script right after <head>
                             val scriptToInject = "<script>$IFRAME_INJECTED_HOOK_JS</script>"
                             val modifiedHtml = when {
-                                htmlBody.contains("<head>", ignoreCase = true) ->
-                                    htmlBody.replaceFirst(Regex("<head>", RegexOption.IGNORE_CASE), "<head>$scriptToInject")
-                                htmlBody.contains("<html>", ignoreCase = true) ->
-                                    htmlBody.replaceFirst(Regex("<html>", RegexOption.IGNORE_CASE), "<html><head>$scriptToInject</head>")
-                                else -> "$scriptToInject$htmlBody"
+                                patchedHtml.contains("<head>", ignoreCase = true) ->
+                                    patchedHtml.replaceFirst(Regex("<head>", RegexOption.IGNORE_CASE), "<head>$scriptToInject")
+                                patchedHtml.contains("<html>", ignoreCase = true) ->
+                                    patchedHtml.replaceFirst(Regex("<html>", RegexOption.IGNORE_CASE), "<html><head>$scriptToInject</head>")
+                                else -> "$scriptToInject$patchedHtml"
                             }
 
-                            val respHeaders = mutableMapOf<String, String>()
-                            for (i in 0 until htmlResp.headers.size) {
-                                respHeaders[htmlResp.headers.name(i)] = htmlResp.headers.value(i)
-                            }
-                            respHeaders.keys.removeAll {
-                                it.equals("content-security-policy", ignoreCase = true) ||
-                                it.equals("x-frame-options", ignoreCase = true)
-                            }
-                            respHeaders["Access-Control-Allow-Origin"] = "*"
+                            val respHeaders = sanitizeInterceptResponseHeaders(htmlResp.headers)
+                            val htmlBytes = modifiedHtml.toByteArray(Charsets.UTF_8)
 
                             return WebResourceResponse(
                                 "text/html",
@@ -747,7 +748,7 @@ class AllohaRuntimeResolver(private val context: Context) {
                                 htmlResp.code,
                                 htmlResp.message.ifBlank { "OK" },
                                 respHeaders,
-                                ByteArrayInputStream(modifiedHtml.toByteArray(Charsets.UTF_8))
+                                ByteArrayInputStream(htmlBytes)
                             )
                         } catch (e: Exception) {
                             Log.w(TAG, "Failed to intercept Alloha HTML: ${e.message}")
@@ -820,6 +821,26 @@ class AllohaRuntimeResolver(private val context: Context) {
         </body>
         </html>
         """.trimIndent()
+    }
+
+    private fun sanitizeInterceptResponseHeaders(headers: okhttp3.Headers): MutableMap<String, String> {
+        val map = mutableMapOf<String, String>()
+        for (i in 0 until headers.size) {
+            val name = headers.name(i)
+            val lower = name.lowercase(Locale.ROOT)
+            if (lower != "content-encoding" &&
+                lower != "content-length" &&
+                lower != "transfer-encoding" &&
+                lower != "content-security-policy" &&
+                lower != "content-security-policy-report-only" &&
+                lower != "x-frame-options") {
+                map[name] = headers.value(i)
+            }
+        }
+        map["Access-Control-Allow-Origin"] = "*"
+        map["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        map["Access-Control-Allow-Headers"] = "*"
+        return map
     }
 }
 
@@ -1126,47 +1147,81 @@ private const val IFRAME_INJECTED_HOOK_JS = """
   window.__slooshIframeHookInstalled = true;
 
   try {
-    if (window === window.top) {
-      Object.defineProperty(window, 'top', { get: function() { return {}; }, configurable: true });
-    }
-  } catch(e) {}
-
-  try {
     Object.defineProperty(document, 'visibilityState', { get: function() { return 'visible'; }, configurable: true });
     Object.defineProperty(document, 'hidden', { get: function() { return false; }, configurable: true });
   } catch(e) {}
 
   function sendBridge(params) {
+    var json = JSON.stringify(params);
+
+    // 1. Direct JavascriptInterface call (available if same-origin or main frame)
+    try {
+      var bridge = window.AndroidAllohaResolver || window.AndroidBridge ||
+                   (window.top && window.top.AndroidAllohaResolver) ||
+                   (window.top && window.top.AndroidBridge) ||
+                   (window.parent && window.parent.AndroidAllohaResolver) ||
+                   (window.parent && window.parent.AndroidBridge);
+      if (bridge && typeof bridge.post === 'function') {
+        bridge.post(json);
+      }
+    } catch(e) {}
+
+    // 2. AndroidX WebMessageListener bridge
+    try {
+      if (window.allohaWebMessageBridge && typeof window.allohaWebMessageBridge.postMessage === 'function') {
+        window.allohaWebMessageBridge.postMessage(json);
+      }
+    } catch(e) {}
+
+    // 3. Image beacon for lightweight signals (edge_hash, config_update)
     try {
       var qs = [];
       for (var k in params) {
         if (params.hasOwnProperty(k)) {
-          qs.push(encodeURIComponent(k) + '=' + encodeURIComponent(params[k]));
+          var val = String(params[k]);
+          if (val.length < 512) {
+            qs.push(encodeURIComponent(k) + '=' + encodeURIComponent(val));
+          }
         }
       }
       var img = new Image();
       img.src = 'https://sloosh-bridge.internal/msg?' + qs.join('&');
     } catch(e) {}
+
+    // 4. Fetch fallback with payload header for longer strings (m3u8 URLs, bnsi JSON)
+    if (params.payload && typeof params.payload === 'string' && params.payload.length > 0) {
+      try {
+        fetch('https://sloosh-bridge.internal/msg', {
+          headers: { 'x-sloosh-payload': encodeURIComponent(params.payload.slice(0, 8192)) }
+        }).catch(function(){});
+      } catch(e) {}
+    }
   }
 
-  // 1. Early WebSocket Hook - Hook before Alloha's __ws_factory can run!
+  function handleWsMessage(raw) {
+    try {
+      var msg = typeof raw === 'string' ? JSON.parse(raw) : null;
+      if (msg && msg.type === 'config_update' && msg.edge_hash) {
+        sendBridge({ type: 'config_update', edge_hash: msg.edge_hash, ttl: msg.ttl || 0 });
+      }
+      if (typeof raw === 'string' && (raw.indexOf('hlsSource') !== -1 || raw.indexOf('.m3u8') !== -1 || raw.indexOf('.mp4') !== -1)) {
+        sendBridge({ type: 'payload', payload: raw });
+      }
+    } catch(e) {
+      if (typeof raw === 'string' && (raw.indexOf('hlsSource') !== -1 || raw.indexOf('.m3u8') !== -1 || raw.indexOf('.mp4') !== -1)) {
+        sendBridge({ type: 'payload', payload: raw });
+      }
+    }
+  }
+
+  // 1. Early WebSocket Hook - executes before Alloha's __ws_factory is defined
   var RealWebSocket = window.WebSocket;
   if (RealWebSocket) {
     function SlooshWebSocket(url, protocols) {
       var ws = protocols ? new RealWebSocket(url, protocols) : new RealWebSocket(url);
       try {
         ws.addEventListener('message', function(evt) {
-          try {
-            var msg = typeof evt.data === 'string' ? JSON.parse(evt.data) : null;
-            if (msg && msg.type === 'config_update' && msg.edge_hash) {
-              sendBridge({ type: 'config_update', edge_hash: msg.edge_hash, ttl: msg.ttl || 0 });
-            }
-            if (typeof evt.data === 'string' && (evt.data.indexOf('hlsSource') !== -1 || evt.data.indexOf('.m3u8') !== -1)) {
-              if (evt.data.length < 16384) {
-                sendBridge({ type: 'payload', payload: evt.data });
-              }
-            }
-          } catch(e) {}
+          handleWsMessage(evt.data);
         });
       } catch(e) {}
       return ws;
@@ -1176,6 +1231,43 @@ private const val IFRAME_INJECTED_HOOK_JS = """
     SlooshWebSocket.OPEN = RealWebSocket.OPEN;
     SlooshWebSocket.CLOSING = RealWebSocket.CLOSING;
     SlooshWebSocket.CLOSED = RealWebSocket.CLOSED;
+
+    var origAddEvt = RealWebSocket.prototype.addEventListener;
+    if (origAddEvt) {
+      RealWebSocket.prototype.addEventListener = function(type, listener, options) {
+        if (type === 'message') {
+          var wrappedListener = function(evt) {
+            handleWsMessage(evt.data);
+            return listener.apply(this, arguments);
+          };
+          return origAddEvt.call(this, type, wrappedListener, options);
+        }
+        return origAddEvt.apply(this, arguments);
+      };
+    }
+
+    try {
+      var origOnMsgDesc = Object.getOwnPropertyDescriptor(RealWebSocket.prototype, 'onmessage');
+      Object.defineProperty(RealWebSocket.prototype, 'onmessage', {
+        get: function() {
+          return origOnMsgDesc && origOnMsgDesc.get ? origOnMsgDesc.get.call(this) : this.__slooshOnMsg;
+        },
+        set: function(fn) {
+          var wrapped = function(evt) {
+            handleWsMessage(evt.data);
+            if (typeof fn === 'function') return fn.apply(this, arguments);
+          };
+          if (origOnMsgDesc && origOnMsgDesc.set) {
+            origOnMsgDesc.set.call(this, wrapped);
+          } else {
+            this.__slooshOnMsg = wrapped;
+          }
+        },
+        configurable: true,
+        enumerable: true
+      });
+    } catch(e) {}
+
     window.WebSocket = SlooshWebSocket;
   }
 
@@ -1202,7 +1294,36 @@ private const val IFRAME_INJECTED_HOOK_JS = """
     };
   }
 
-  // 3. Auto-play trigger to kick-start player
+  // 3. Hook Fetch
+  var origFetch = window.fetch;
+  if (origFetch) {
+    window.fetch = function(input, init) {
+      try {
+        var reqUrl = (typeof input === 'string') ? input : (input && input.url ? input.url : '');
+        if (reqUrl.indexOf('.m3u8') !== -1 || reqUrl.indexOf('.mp4') !== -1) {
+          sendBridge({ type: 'payload', payload: reqUrl });
+        }
+      } catch(e) {}
+      return origFetch.apply(this, arguments).then(function(res) {
+        try {
+          var rUrl = res.url || '';
+          if (rUrl.indexOf('.m3u8') !== -1) {
+            sendBridge({ type: 'payload', payload: rUrl });
+          }
+          if (rUrl.indexOf('/bnsi/') !== -1 || rUrl.indexOf('config') !== -1) {
+            res.clone().text().then(function(t) {
+              if (t && (t.indexOf('hlsSource') !== -1 || t.indexOf('.m3u8') !== -1)) {
+                sendBridge({ type: 'payload', payload: t });
+              }
+            }).catch(function(){});
+          }
+        } catch(e) {}
+        return res;
+      });
+    };
+  }
+
+  // 4. Auto-play trigger to kick-start playback
   function autoPlay() {
     try {
       var timeSaveBtn = document.querySelector('.time_save__btn') || document.querySelector('.time_save:not(.hidden) button');

@@ -1493,23 +1493,23 @@ at java.lang.Thread.run(Thread.java:1119)
 
 ### Resolution (2026-09-13) - Alloha Playback & Cross-Origin Iframe Interception Resolution:
 1. **Root Cause Analysis**:
-   - Alloha embeds streams within an iframe that uses anti-tampering checks (`isFramed`), SRI hashes, early native WebSocket capture (`__ws_factory`), and asynchronous `/bnsi/` REST calls.
-   - On Android TV, WebView restricts JavaScript interface injection (`addJavascriptInterface`) and cross-origin document inspection across iframe boundaries (Same-Origin Policy).
-   - Consequently, JS hooks were never executing inside the Alloha iframe, causing the resolver to time out and inadvertently fall back to the raw iframe page URL (`token_movie=...`).
-   - When passed to `HlsProxyServer`, fetching an HTML page as an HLS playlist returned HTTP 404, throwing ExoPlayer `Source error: HttpDataSource$InvalidResponseCodeException: Response code: 404`.
+   - **`ERR_CONTENT_DECODING_FAILED`**: When `shouldInterceptRequest` intercepted the Alloha iframe HTML or `/bnsi/` requests, OkHttp automatically decompressed the response payload. However, the original response headers (including `Content-Encoding: gzip`, `Transfer-Encoding: chunked`, and compressed `Content-Length`) were retained in `WebResourceResponse`. WebView/Chromium failed to decode uncompressed UTF-8 bytes labeled as `gzip`, causing the iframe to abort and remain blank.
+   - **Anti-Framing check (`isFramed`)**: Line 30 of Alloha's HTML checked `isFramed = window != window.top || ...; if (!isFramed) document.querySelectorAll('body')[0].remove()`. When loaded in WebView, if this condition failed, the player destroyed its own DOM.
+   - **Early WebSocket hook**: Line 11 of Alloha HTML inline captured `window.WebSocket` into `window.__ws_factory` before external scripts could run.
+   - **CORS/CDN Headers**: Edge CDNs required `Accepts-Controls` header together with the iframe host's `Referer` and `Origin`.
 
 2. **Fix Implemented**:
    - **`AllohaRuntimeResolver.kt`**:
-     - Implemented direct HTTP request interception in `shouldInterceptRequest` for the iframe HTML, stripping CSP and X-Frame-Options, and injecting `$IFRAME_INJECTED_HOOK_JS` right after `<head>` before `__ws_factory` can run.
-     - Early WebSocket hook intercepts `config_update` and passes `edge_hash` to Java via internal bridge (`https://sloosh-bridge.internal/`).
-     - Directly intercepts `/bnsi/` requests in `shouldInterceptRequest`, executes them with `OkHttpClient`, captures the `{ "hlsSource": ... }` response payload in Java, and returns `WebResourceResponse` to WebView.
-     - Enforced strict `isPlayableURL` check on all resolved stream candidate URLs, guaranteeing that only verified `.m3u8` or `.mp4` URLs can ever finish resolution.
+     - Implemented `sanitizeInterceptResponseHeaders` stripping `content-encoding`, `content-length`, `transfer-encoding`, `content-security-policy`, `content-security-policy-report-only`, and `x-frame-options`.
+     - Injected early hook `$IFRAME_INJECTED_HOOK_JS` right after `<head>` before `window.__ws_factory` can run.
+     - Patched `var isFramed=false;` -> `var isFramed=true;` in HTML directly, preventing Alloha from deleting its DOM.
+     - Extended WebSocket hook to handle constructor, `addEventListener('message')`, and `.onmessage` setter/getter.
+     - Forwarded bridge signals via Java interface, AndroidX WebMessageListener, image beacons, and fetch payload headers.
+     - Bound default `referer` and `origin` to the iframe host.
    - **`HlsProxyServer.kt`**:
-     - Reject any non-media URLs (e.g. containing `token_movie=`, HTML tags, or missing media extensions) in `updateMasterUrl` and `fetchText`.
-     - Sanitize URL input before `CookieManager.getCookie` to prevent URI parsing exceptions.
-     - Return HTTP 503 with `Retry-After: 1` instead of fatal 404 during upstream reconnects.
+     - Ensured `Accepts-Controls` header casing in upstream CDN requests.
+     - Handled upstream reconnects with `503 Service Unavailable` and `Retry-After: 1` instead of fatal 404.
    - **`PlayerViewModel.kt`**:
-     - Added `isPlayableMediaUrl` guard in `initPlayer`, `selectAudio`, `scheduleProactiveRefresh`, `refreshSessionSilently`, and `retryPlayback`.
-     - Prevents passing unverified or non-media URLs to `HlsProxyServer` or ExoPlayer.
+     - Enforced `isPlayableMediaUrl` guards across all audio selection, refresh, and playback pipelines.
    - **`AllohaRuntimeParser.kt`**:
-     - Hardened `isPlayable` to strictly reject URLs with `token_movie=`, `token=`, `<`, spaces, or newlines.
+     - Strictly validated stream URLs, filtering non-playable links.
