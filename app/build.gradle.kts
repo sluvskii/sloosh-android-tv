@@ -19,9 +19,7 @@ fun getGitCommitCount(): Int {
 }
 
 val baseVersion = "2.0"
-val buildNumber: Int = (project.findProperty("buildNumber") as? String)?.toIntOrNull()
-    ?: (System.getenv("BUILD_NUMBER") ?: System.getenv("GITHUB_RUN_NUMBER"))?.toIntOrNull()
-    ?: getGitCommitCount()
+val buildNumber: Int = getGitCommitCount()
 
 android {
     namespace = "com.sloosh.tv"

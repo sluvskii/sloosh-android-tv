@@ -42,9 +42,8 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
 
       - name: Build Release APK
-        run: ./gradlew assembleRelease -PbuildNumber=${{ github.run_number }} --build-cache --stacktrace
+        run: ./gradlew assembleRelease --build-cache --stacktrace
         env:
-          BUILD_NUMBER: ${{ github.run_number }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
