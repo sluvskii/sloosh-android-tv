@@ -398,7 +398,18 @@ class AllohaRuntimeResolver(private val context: Context) {
                         resolveBestPayloadIfReady()
                     }
 
+                    val edgeHash = obj.optString("edge_hash")
+                    if (edgeHash.isNotBlank()) {
+                        capturedHeaders["accepts-controls"] = edgeHash
+                        val ttl = obj.optInt("ttl", 0)
+                        if (ttl > 0) capturedHeaders["x-neo-config-ttl"] = ttl.toString()
+                        HlsProxyServer.shared.updateHeaders(capturedHeaders)
+                        resolveBestPayloadIfReady()
+                    }
+
                     val payload = obj.optString("payload", "")
+                    Log.d(TAG, "processIncomingMessage: type=${obj.optString("type")}, payloadLen=${payload.length}, hasHls=${payload.contains("hlsSource")}, headersCount=${capturedHeaders.size}")
+
                     if (payload.isNotBlank()) {
                         pendingPayloads.addLast(payload)
                         while (pendingPayloads.size > 16) pendingPayloads.removeFirst()
@@ -428,6 +439,8 @@ class AllohaRuntimeResolver(private val context: Context) {
 
                         resolveIfReady(payload)
                     }
+                }.onFailure { e ->
+                    Log.w(TAG, "processIncomingMessage error: ${e.message}")
                 }
             }
         }
@@ -672,10 +685,21 @@ class AllohaRuntimeResolver(private val context: Context) {
                             val htmlBody = htmlResp.body?.string().orEmpty()
                             Log.d(TAG, "Fetched Alloha HTML body: len=${htmlBody.length}")
 
-                            // Patch Alloha anti-framing check so body is never removed
+                            // Patch Alloha anti-framing check and disable preroll/midroll/postroll ads for instant stream resolution
                             val patchedHtml = htmlBody
                                 .replace("var isFramed=false;", "var isFramed=true;")
                                 .replace("var isFramed = false;", "var isFramed = true;")
+                                .replace("\"ads\":{\"enabled\":true", "\"ads\":{\"enabled\":false")
+                                .replace("\"ads\":{\"enabled\": true", "\"ads\":{\"enabled\":false")
+                                .replace("\"ads\": {\"enabled\": true", "\"ads\":{\"enabled\":false")
+                                .replace("\"ads\": {\"enabled\":true", "\"ads\":{\"enabled\":false")
+                                .replace("\"preroll\":\"jsf:rotateP\"", "\"preroll\":\"\"")
+                                .replace("\"preroll\": \"jsf:rotateP\"", "\"preroll\":\"\"")
+                                .replace("\"preroll\":\"jsf:rotatePM\"", "\"preroll\":\"\"")
+                                .replace("\"preroll\": \"jsf:rotatePM\"", "\"preroll\":\"\"")
+                                .replace("\"midroll\":[", "\"midroll\":[],\"_orig_midroll\":[")
+                                .replace("\"postroll\":\"jsf:rotatePO\"", "\"postroll\":\"\"")
+                                .replace("\"postroll\": \"jsf:rotatePO\"", "\"postroll\":\"\"")
 
                             // Try direct parse from HTML body in case stream data is embedded
                             val directParsed = AllohaRuntimeParser.parsePayload(patchedHtml, cleanUrl, capturedHeaders)
@@ -733,7 +757,8 @@ class AllohaRuntimeResolver(private val context: Context) {
             wv.resumeTimers()
 
             val wrapper = wrapperHtml(cleanUrl)
-            wv.loadDataWithBaseURL(cleanUrl, wrapper, "text/html", "UTF-8", cleanUrl)
+            val baseUrl = "$origin/"
+            wv.loadDataWithBaseURL(baseUrl, wrapper, "text/html", "UTF-8", baseUrl)
 
         } catch (e: Exception) {
             finishError(e.localizedMessage ?: "Ошибка инициализации WebView")
@@ -756,6 +781,18 @@ class AllohaRuntimeResolver(private val context: Context) {
             <meta name="referrer" content="unsafe-url">
             <style>html, body, iframe { margin:0; padding:0; width:100%; height:100%; background:#000; overflow:hidden; border:0; }</style>
             <script>
+            (function() {
+                window.addEventListener('message', function(evt) {
+                    if (!evt || !evt.data) return;
+                    try {
+                        var raw = typeof evt.data === 'string' ? evt.data : JSON.stringify(evt.data);
+                        var bridge = window.AndroidBridge || window.AndroidAllohaResolver;
+                        if (bridge && typeof bridge.post === 'function') {
+                            bridge.post(raw);
+                        }
+                    } catch(e) {}
+                });
+            })();
             $HOOK_JS
             </script>
         </head>
@@ -768,6 +805,10 @@ class AllohaRuntimeResolver(private val context: Context) {
                     f.onload = function() {
                         try {
                             if (typeof window.__slooshTick === 'function') window.__slooshTick();
+                        } catch(e) {}
+                        try {
+                            var cw = f.contentWindow;
+                            if (cw && typeof cw.__slooshTick === 'function') cw.__slooshTick();
                         } catch(e) {}
                     };
                 }
@@ -834,6 +875,12 @@ private const val HOOK_JS = """
   function post(type, payload, targetWin) {
     try {
       var data = JSON.stringify({ type: type, payload: payload || '', headers: capturedHeaders });
+      if (window.parent && window.parent !== window) {
+        try { window.parent.postMessage(data, '*'); } catch(e) {}
+      }
+      if (window.top && window.top !== window) {
+        try { window.top.postMessage(data, '*'); } catch(e) {}
+      }
       if (window.allohaWebMessageBridge && typeof window.allohaWebMessageBridge.postMessage === 'function') {
         window.allohaWebMessageBridge.postMessage(data);
       }
@@ -927,7 +974,7 @@ private const val HOOK_JS = """
 
       // 2. Direct <video> play only if source is attached
       var video = win.document.querySelector('video');
-      if (video && (video.currentSrc || video.src || video.querySelector('source'))) {
+      if (video && (video.currentSrc || (video.src && video.src !== '' && video.src !== 'about:blank') || video.querySelector('source'))) {
         video.muted = true;
         if (video.paused) {
           try {
@@ -1109,65 +1156,89 @@ private const val IFRAME_INJECTED_HOOK_JS = """
     Object.defineProperty(document, 'hidden', { get: function() { return false; }, configurable: true });
   } catch(e) {}
 
+  // Dummy ad functions to immediately bypass any VAST / Alloha ad callbacks
+  try {
+    window.rotateP = function() {};
+    window.rotatePM = function() {};
+    window.rotateM1 = function() {};
+    window.rotatePO = function() {};
+    window.rmpVast = { stopAds: function(){}, playAds: function(){} };
+  } catch(e) {}
+
+  var capturedHeaders = {};
+  var lastPayload = '';
+  var lastM3u8 = '';
+
+  function putHeader(name, value) {
+    if (!name || !value) return;
+    capturedHeaders[String(name).toLowerCase()] = String(value);
+  }
+
+  function defaultHeaders() {
+    try {
+      if (window.location && window.location.origin) {
+        putHeader('origin', window.location.origin);
+        putHeader('referer', window.location.origin + '/');
+      }
+      if (window.navigator && window.navigator.userAgent) {
+        putHeader('user-agent', window.navigator.userAgent);
+      }
+      putHeader('accept', '*/*');
+      putHeader('sec-fetch-dest', 'empty');
+      putHeader('sec-fetch-mode', 'cors');
+      putHeader('sec-fetch-site', 'cross-site');
+    } catch(e) {}
+  }
+  defaultHeaders();
+
   function sendBridge(params) {
+    if (!params.headers) {
+      params.headers = capturedHeaders;
+    }
     var json = JSON.stringify(params);
 
-    // 1. Direct JavascriptInterface call (available if same-origin or main frame)
+    // 1. Standard HTML5 Cross-Window postMessage (Works across ALL origins, frames & webviews)
     try {
-      var bridge = window.AndroidAllohaResolver || window.AndroidBridge ||
-                   (window.top && window.top.AndroidAllohaResolver) ||
-                   (window.top && window.top.AndroidBridge) ||
-                   (window.parent && window.parent.AndroidAllohaResolver) ||
-                   (window.parent && window.parent.AndroidBridge);
-      if (bridge && typeof bridge.post === 'function') {
-        bridge.post(json);
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(json, '*');
+      }
+    } catch(e) {}
+    try {
+      if (window.top && window.top !== window) {
+        window.top.postMessage(json, '*');
       }
     } catch(e) {}
 
-    // 2. AndroidX WebMessageListener bridge
+    // 2. Direct JavascriptInterface if present in this frame
+    try {
+      var b = window.AndroidBridge || window.AndroidAllohaResolver;
+      if (b && typeof b.post === 'function') {
+        b.post(json);
+      }
+    } catch(e) {}
+
+    // 3. AndroidX WebMessageListener if present
     try {
       if (window.allohaWebMessageBridge && typeof window.allohaWebMessageBridge.postMessage === 'function') {
         window.allohaWebMessageBridge.postMessage(json);
       }
     } catch(e) {}
-
-    // 3. Image beacon for lightweight signals (edge_hash, config_update)
-    try {
-      var qs = [];
-      for (var k in params) {
-        if (params.hasOwnProperty(k)) {
-          var val = String(params[k]);
-          if (val.length < 512) {
-            qs.push(encodeURIComponent(k) + '=' + encodeURIComponent(val));
-          }
-        }
-      }
-      var img = new Image();
-      img.src = 'https://sloosh-bridge.internal/msg?' + qs.join('&');
-    } catch(e) {}
-
-    // 4. Fetch fallback with payload header for longer strings (m3u8 URLs, bnsi JSON)
-    if (params.payload && typeof params.payload === 'string' && params.payload.length > 0) {
-      try {
-        fetch('https://sloosh-bridge.internal/msg', {
-          headers: { 'x-sloosh-payload': encodeURIComponent(params.payload.slice(0, 8192)) }
-        }).catch(function(){});
-      } catch(e) {}
-    }
   }
 
   function handleWsMessage(raw) {
     try {
       var msg = typeof raw === 'string' ? JSON.parse(raw) : null;
       if (msg && msg.type === 'config_update' && msg.edge_hash) {
-        sendBridge({ type: 'config_update', edge_hash: msg.edge_hash, ttl: msg.ttl || 0 });
+        putHeader('accepts-controls', msg.edge_hash);
+        if (msg.ttl) putHeader('x-neo-config-ttl', String(msg.ttl));
+        sendBridge({ type: 'config_update', edge_hash: msg.edge_hash, ttl: msg.ttl || 0, headers: capturedHeaders });
       }
       if (typeof raw === 'string' && (raw.indexOf('hlsSource') !== -1 || raw.indexOf('.m3u8') !== -1 || raw.indexOf('.mp4') !== -1)) {
-        sendBridge({ type: 'payload', payload: raw });
+        sendBridge({ type: 'payload', payload: raw, headers: capturedHeaders });
       }
     } catch(e) {
       if (typeof raw === 'string' && (raw.indexOf('hlsSource') !== -1 || raw.indexOf('.m3u8') !== -1 || raw.indexOf('.mp4') !== -1)) {
-        sendBridge({ type: 'payload', payload: raw });
+        sendBridge({ type: 'payload', payload: raw, headers: capturedHeaders });
       }
     }
   }
@@ -1231,6 +1302,7 @@ private const val IFRAME_INJECTED_HOOK_JS = """
 
   // 2. Hook XMLHttpRequest
   var origOpen = window.XMLHttpRequest && window.XMLHttpRequest.prototype.open;
+  var origSetHeader = window.XMLHttpRequest && window.XMLHttpRequest.prototype.setRequestHeader;
   if (origOpen) {
     window.XMLHttpRequest.prototype.open = function(method, url) {
       var self = this;
@@ -1240,15 +1312,23 @@ private const val IFRAME_INJECTED_HOOK_JS = """
           var resUrl = self.responseURL || self.__slooshReqUrl || '';
           if (resUrl.indexOf('/bnsi/') !== -1 || (self.responseText && self.responseText.indexOf('hlsSource') !== -1)) {
             if (self.responseText && self.responseText.length > 0) {
-              sendBridge({ type: 'payload', payload: self.responseText });
+              sendBridge({ type: 'payload', payload: self.responseText, headers: capturedHeaders });
             }
           }
-          if (resUrl.indexOf('master.m3u8') !== -1) {
-            sendBridge({ type: 'payload', payload: resUrl });
+          if (resUrl.indexOf('master.m3u8') !== -1 && resUrl !== lastM3u8) {
+            lastM3u8 = resUrl;
+            sendBridge({ type: 'payload', payload: resUrl, headers: capturedHeaders });
           }
         } catch(e) {}
       });
       return origOpen.apply(this, arguments);
+    };
+  }
+  if (origSetHeader) {
+    window.XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
+      putHeader(name, value);
+      sendBridge({ type: 'headers', headers: capturedHeaders });
+      return origSetHeader.apply(this, arguments);
     };
   }
 
@@ -1258,20 +1338,29 @@ private const val IFRAME_INJECTED_HOOK_JS = """
     window.fetch = function(input, init) {
       try {
         var reqUrl = (typeof input === 'string') ? input : (input && input.url ? input.url : '');
+        if (init && init.headers) {
+          if (typeof init.headers.forEach === 'function') {
+            init.headers.forEach(function(v, k) { putHeader(k, v); });
+          } else {
+            for (var k in init.headers) putHeader(k, init.headers[k]);
+          }
+          sendBridge({ type: 'headers', headers: capturedHeaders });
+        }
         if (reqUrl.indexOf('.m3u8') !== -1 || reqUrl.indexOf('.mp4') !== -1) {
-          sendBridge({ type: 'payload', payload: reqUrl });
+          sendBridge({ type: 'payload', payload: reqUrl, headers: capturedHeaders });
         }
       } catch(e) {}
       return origFetch.apply(this, arguments).then(function(res) {
         try {
           var rUrl = res.url || '';
-          if (rUrl.indexOf('.m3u8') !== -1) {
-            sendBridge({ type: 'payload', payload: rUrl });
+          if (rUrl.indexOf('.m3u8') !== -1 && rUrl !== lastM3u8) {
+            lastM3u8 = rUrl;
+            sendBridge({ type: 'payload', payload: rUrl, headers: capturedHeaders });
           }
           if (rUrl.indexOf('/bnsi/') !== -1 || rUrl.indexOf('config') !== -1) {
             res.clone().text().then(function(t) {
               if (t && (t.indexOf('hlsSource') !== -1 || t.indexOf('.m3u8') !== -1)) {
-                sendBridge({ type: 'payload', payload: t });
+                sendBridge({ type: 'payload', payload: t, headers: capturedHeaders });
               }
             }).catch(function(){});
           }
@@ -1281,14 +1370,14 @@ private const val IFRAME_INJECTED_HOOK_JS = """
     };
   }
 
-  // 4. Auto-play trigger to kick-start playback
+  // 4. Auto-play trigger to kick-start playback safely
   function autoPlay() {
     try {
       var timeSaveBtn = document.querySelector('.time_save__btn') || document.querySelector('.time_save:not(.hidden) button');
       if (timeSaveBtn && typeof timeSaveBtn.click === 'function') timeSaveBtn.click();
 
       var video = document.querySelector('video');
-      if (video && (video.currentSrc || video.src || video.querySelector('source'))) {
+      if (video && (video.currentSrc || (video.src && video.src !== '' && video.src !== 'about:blank') || video.querySelector('source'))) {
         video.muted = true;
         if (video.paused) {
           try {
@@ -1298,7 +1387,7 @@ private const val IFRAME_INJECTED_HOOK_JS = """
         }
         var vSrc = video.currentSrc || video.src || '';
         if (vSrc && (vSrc.indexOf('.m3u8') !== -1 || vSrc.indexOf('.mp4') !== -1)) {
-          sendBridge({ type: 'payload', payload: vSrc });
+          sendBridge({ type: 'payload', payload: vSrc, headers: capturedHeaders });
         }
       }
       var playSelectors = ['.plyr__control--overlaid', 'button[data-plyr="play"]', '.allplay__play-btn', 'button.play', '.play-btn', '.vjs-big-play-button', '[data-plyr="play"]'];
