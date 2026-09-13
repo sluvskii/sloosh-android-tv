@@ -328,7 +328,7 @@ class AllohaRuntimeResolver(private val context: Context) {
 
         val timeoutTask = Runnable {
             if (!isFinished) {
-                Log.w(TAG, "Timeout task firing at 20s. Checking accumulated payloads...")
+                Log.w(TAG, "Timeout task firing at 45s. Checking accumulated payloads...")
                 val payloads = listOfNotNull(bestHlsSourcePayload, bestMasterPayload, bestDirectPayload) + pendingPayloads
                 for (p in payloads) {
                     val parsed = AllohaRuntimeParser.parsePayload(p, cleanUrl, capturedHeaders)
@@ -361,7 +361,7 @@ class AllohaRuntimeResolver(private val context: Context) {
             }
         }
         timeoutRunnable = timeoutTask
-        mainHandler.postDelayed(timeoutTask, 20_000L)
+        mainHandler.postDelayed(timeoutTask, 45_000L)
 
         fun parseAndMergeHeaders(headersJson: String?) {
             if (headersJson.isNullOrBlank()) return
@@ -642,70 +642,24 @@ class AllohaRuntimeResolver(private val context: Context) {
                         capturedHeaders["referer"] = refererFromReq
                     }
 
-                    // 2. Intercept /bnsi/ endpoint directly
-                    if (reqUrl.contains("/bnsi/")) {
-                        Log.d(TAG, "Intercepted /bnsi/ request: $reqUrl")
-                        try {
-                            val bnsiBuilder = Request.Builder().url(reqUrl)
-                            request.requestHeaders?.forEach { (k, v) ->
-                                val lower = k.lowercase(Locale.ROOT)
-                                if (lower != "host" && lower != "connection" && lower != "accept-encoding") {
-                                    bnsiBuilder.header(k, v)
-                                }
-                            }
-                            capturedHeaders.forEach { (k, v) ->
-                                if (bnsiBuilder.build().header(k) == null) {
-                                    bnsiBuilder.header(k, v)
-                                }
-                            }
-                            if (bnsiBuilder.build().header("Referer") == null) {
-                                bnsiBuilder.header("Referer", "https://allplay.tv/")
-                            }
-                            if (bnsiBuilder.build().header("Origin") == null) {
-                                bnsiBuilder.header("Origin", "https://allplay.tv")
-                            }
-                            val bnsiResp = httpClient.newCall(bnsiBuilder.build()).execute()
-                            val bnsiBody = bnsiResp.body?.string().orEmpty()
-                            Log.d(TAG, "Intercepted /bnsi/ response: code=${bnsiResp.code}, len=${bnsiBody.length}")
-
-                            if (bnsiBody.isNotBlank()) {
-                                mainHandler.post {
-                                    val msg = JSONObject().apply {
-                                        put("type", "payload")
-                                        put("payload", bnsiBody)
-                                    }.toString()
-                                    processIncomingMessage(msg)
-                                }
-                            }
-
-                            val respHeaders = sanitizeInterceptResponseHeaders(bnsiResp.headers)
-                            val bnsiBytes = bnsiBody.toByteArray(Charsets.UTF_8)
-                            val contentType = bnsiResp.header("Content-Type") ?: "application/json"
-                            return WebResourceResponse(
-                                contentType,
-                                "UTF-8",
-                                bnsiResp.code,
-                                bnsiResp.message.ifBlank { "OK" },
-                                respHeaders,
-                                ByteArrayInputStream(bnsiBytes)
-                            )
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Failed to intercept /bnsi/: ${e.message}")
-                        }
-                    }
-
-                    // 3. Intercept Alloha iframe HTML request and inject early hooks
+                    // 2. Intercept Alloha iframe HTML request and inject early hooks
+                    // NOTE: /bnsi/ is intentionally NOT intercepted here because /bnsi/ is a POST request
+                    // whose body is not exposed to shouldInterceptRequest in Android WebView. Allowing WebView
+                    // to execute /bnsi/ natively ensures proper method, headers, and cookies, while our
+                    // XHR/Fetch hooks in JS capture the response and deliver it to Android.
                     val isAllohaHtml = (reqUrl.contains("token_movie=") || reqUrl.contains("token=")) &&
                         (request.requestHeaders?.get("Accept")?.contains("text/html") == true ||
-                         request.isForMainFrame || (!reqUrl.contains(".js") && !reqUrl.contains(".css") && !reqUrl.contains(".m3u8") && !reqUrl.contains(".mp4") && !reqUrl.contains(".vtt")))
+                         request.isForMainFrame || (!reqUrl.contains(".js") && !reqUrl.contains(".css") && !reqUrl.contains(".m3u8") && !reqUrl.contains(".mp4") && !reqUrl.contains(".vtt") && !reqUrl.contains("/bnsi/")))
 
                     if (isAllohaHtml) {
                         Log.d(TAG, "Intercepted Alloha HTML page: $reqUrl")
                         try {
+                            val reqUri = runCatching { Uri.parse(reqUrl) }.getOrNull()
+                            val origin = reqUri?.let { "${it.scheme}://${it.host}" } ?: "https://allplay.tv"
                             val htmlReqBuilder = Request.Builder().url(reqUrl)
                                 .header("User-Agent", selectedUserAgent)
-                                .header("Referer", "https://allplay.tv/")
-                                .header("Origin", "https://allplay.tv")
+                                .header("Referer", "$origin/")
+                                .header("Origin", origin)
                                 .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
                             request.requestHeaders?.forEach { (k, v) ->
                                 val lower = k.lowercase(Locale.ROOT)
@@ -971,12 +925,15 @@ private const val HOOK_JS = """
         timeSaveBtn.click();
       }
 
-      // 2. Direct <video> play
+      // 2. Direct <video> play only if source is attached
       var video = win.document.querySelector('video');
-      if (video) {
+      if (video && (video.currentSrc || video.src || video.querySelector('source'))) {
         video.muted = true;
         if (video.paused) {
-          video.play().catch(function(){});
+          try {
+            var p = video.play();
+            if (p && typeof p.catch === 'function') p.catch(function(){});
+          } catch(e) {}
         }
       }
 
@@ -1282,7 +1239,7 @@ private const val IFRAME_INJECTED_HOOK_JS = """
         try {
           var resUrl = self.responseURL || self.__slooshReqUrl || '';
           if (resUrl.indexOf('/bnsi/') !== -1 || (self.responseText && self.responseText.indexOf('hlsSource') !== -1)) {
-            if (self.responseText && self.responseText.length < 16384) {
+            if (self.responseText && self.responseText.length > 0) {
               sendBridge({ type: 'payload', payload: self.responseText });
             }
           }
@@ -1331,11 +1288,17 @@ private const val IFRAME_INJECTED_HOOK_JS = """
       if (timeSaveBtn && typeof timeSaveBtn.click === 'function') timeSaveBtn.click();
 
       var video = document.querySelector('video');
-      if (video) {
+      if (video && (video.currentSrc || video.src || video.querySelector('source'))) {
         video.muted = true;
-        if (video.paused) video.play().catch(function(){});
-        if (video.src && (video.src.indexOf('.m3u8') !== -1 || video.src.indexOf('.mp4') !== -1)) {
-          sendBridge({ type: 'payload', payload: video.src });
+        if (video.paused) {
+          try {
+            var p = video.play();
+            if (p && typeof p.catch === 'function') p.catch(function(){});
+          } catch(e) {}
+        }
+        var vSrc = video.currentSrc || video.src || '';
+        if (vSrc && (vSrc.indexOf('.m3u8') !== -1 || vSrc.indexOf('.mp4') !== -1)) {
+          sendBridge({ type: 'payload', payload: vSrc });
         }
       }
       var playSelectors = ['.plyr__control--overlaid', 'button[data-plyr="play"]', '.allplay__play-btn', 'button.play', '.play-btn', '.vjs-big-play-button', '[data-plyr="play"]'];
@@ -1346,7 +1309,7 @@ private const val IFRAME_INJECTED_HOOK_JS = """
     } catch(e) {}
   }
 
-  setInterval(autoPlay, 300);
+  setInterval(autoPlay, 1000);
   window.addEventListener('load', autoPlay);
   window.addEventListener('DOMContentLoaded', autoPlay);
 })();
