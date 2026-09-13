@@ -530,6 +530,7 @@ private fun SidePosterDetailsLayout(
                         )
                     },
                     modifier = Modifier
+                        .widthIn(max = 240.dp)
                         .focusRequester(watchButtonFocusRequester)
                         .onPreviewKeyEvent { keyEvent ->
                             if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&

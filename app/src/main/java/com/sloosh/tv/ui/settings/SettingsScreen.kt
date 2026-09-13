@@ -480,6 +480,7 @@ fun SettingsScreen(
                                                     text = if (isCheckingUpdates) "Проверка..." else "Проверить обновления",
                                                     isWhite = true,
                                                     modifier = Modifier
+                                                        .widthIn(max = 220.dp)
                                                         .focusRequester(firstActionFocusRequester)
                                                         .onPreviewKeyEvent { keyEvent ->
                                                             if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
