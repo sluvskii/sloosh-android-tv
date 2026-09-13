@@ -13,18 +13,44 @@ object AllohaRuntimeParser {
 
         parseAllohaBNsiStream(payload, uri, headers)?.let { return it }
 
+        // Additional attempt: search for hlsSource inside nested keys (for Alloha series)
+        extractNestedHlsSourcePayload(payload)?.let { nested ->
+            parseAllohaBNsiStream(nested, uri, headers)?.let { return it }
+        }
+
         firstPreferredStreamURL(payload, uri)?.let { fallback ->
+            val skips = runCatching {
+                val obj = JSONObject(payload)
+                extractSkips(obj)
+            }.getOrDefault(Pair(null, null))
+
             return AllohaResolvedStream(
                 videoUrl = fallback,
                 audioVariants = emptyList(),
                 qualityVariants = emptyList(),
                 subtitles = subtitleTracks(payload, uri),
                 headers = headers,
-                introRange = null,
-                outroRange = null
+                introRange = skips.first,
+                outroRange = skips.second
             )
         }
 
+        return null
+    }
+
+    /**
+     * Searches for hlsSource inside other JSON wrapper objects (for Alloha series).
+     * Traverses wrappers like ["data"]["hlsSource"], ["result"]["hlsSource"], etc.
+     */
+    private fun extractNestedHlsSourcePayload(payload: String): String? {
+        val root = try { JSONObject(payload) } catch (e: Exception) { return null }
+        val wrapperKeys = listOf("data", "result", "payload", "response", "content", "body")
+        for (key in wrapperKeys) {
+            val nested = root.optJSONObject(key) ?: continue
+            if (nested.has("hlsSource")) {
+                return nested.toString()
+            }
+        }
         return null
     }
 
@@ -377,31 +403,10 @@ object AllohaRuntimeParser {
         var intro: SkipTimeRange? = null
         var outro: SkipTimeRange? = null
 
-        val skipArr = obj.optJSONArray("skipTime") ?: run {
-            val hls = obj.optJSONArray("hlsSource")?.optJSONObject(0)
-            hls?.optJSONArray("skipTime")
-        }
-        if (skipArr != null) {
-            if (skipArr.length() > 0) {
-                val item = skipArr.optJSONObject(0)
-                if (item != null) {
-                    val s = item.optDouble("start", -1.0)
-                    val e = item.optDouble("end", -1.0)
-                    if (s >= 0 && e > s) intro = SkipTimeRange(s, e)
-                }
-            }
-            if (skipArr.length() > 1) {
-                val item = skipArr.optJSONObject(1)
-                if (item != null) {
-                    val s = item.optDouble("start", -1.0)
-                    val e = item.optDouble("end", -1.0)
-                    if (s >= 0 && e > s) outro = SkipTimeRange(s, e)
-                }
-            }
-        }
-
-        val skipTime = obj.optString("skipTime", "")
-        if (intro == null && outro == null && skipTime.isNotBlank()) {
+        // 1. "skipTime" string format (e.g. "0-90,3453-3607")
+        val skipTime = obj.optString("skipTime", "").takeIf { it.isNotBlank() }
+            ?: obj.optJSONArray("hlsSource")?.optJSONObject(0)?.optString("skipTime", "")?.takeIf { it.isNotBlank() }
+        if (!skipTime.isNullOrBlank()) {
             val parts = skipTime.split(",")
             if (parts.isNotEmpty()) {
                 val times = parts[0].split("-")
@@ -417,6 +422,86 @@ object AllohaRuntimeParser {
                     val s = times[0].toDoubleOrNull()
                     val e = times[1].toDoubleOrNull()
                     if (s != null && e != null && e > s) outro = SkipTimeRange(s, e)
+                }
+            }
+            if (intro != null || outro != null) {
+                return Pair(intro, outro)
+            }
+        }
+
+        // 2. "skips": {"intro": [start, end], "outro": [start, end]}
+        val skipsObj = obj.optJSONObject("skips")
+        if (skipsObj != null) {
+            val introArr = skipsObj.optJSONArray("intro")
+            if (introArr != null && introArr.length() >= 2) {
+                val s = introArr.optDouble(0, -1.0)
+                val e = introArr.optDouble(1, -1.0)
+                if (s >= 0 && e > s) intro = SkipTimeRange(s, e)
+            }
+            val outroArr = skipsObj.optJSONArray("outro")
+            if (outroArr != null && outroArr.length() >= 2) {
+                val s = outroArr.optDouble(0, -1.0)
+                val e = outroArr.optDouble(1, -1.0)
+                if (s >= 0 && e > s) outro = SkipTimeRange(s, e)
+            }
+            if (intro != null || outro != null) {
+                return Pair(intro, outro)
+            }
+        }
+
+        // 3. "intro": {"start": s, "end": e}, "outro": {"start": s, "end": e}
+        val introObj = obj.optJSONObject("intro")
+        if (introObj != null) {
+            val s = introObj.optDouble("start", -1.0)
+            val e = introObj.optDouble("end", -1.0)
+            if (s >= 0 && e > s) intro = SkipTimeRange(s, e)
+        }
+        val outroObj = obj.optJSONObject("outro")
+        if (outroObj != null) {
+            val s = outroObj.optDouble("start", -1.0)
+            val e = outroObj.optDouble("end", -1.0)
+            if (s >= 0 && e > s) outro = SkipTimeRange(s, e)
+        }
+        if (intro != null || outro != null) {
+            return Pair(intro, outro)
+        }
+
+        // 4. "timecodes": [{"type": "intro", "start": s, "end": e}, ...]
+        val timecodes = obj.optJSONArray("timecodes")
+        if (timecodes != null) {
+            for (i in 0 until timecodes.length()) {
+                val tc = timecodes.optJSONObject(i) ?: continue
+                val type = tc.optString("type", "").lowercase(Locale.ROOT)
+                val s = tc.optDouble("start", -1.0)
+                val e = tc.optDouble("end", -1.0)
+                if (s >= 0 && e > s) {
+                    if (type == "intro" && intro == null) intro = SkipTimeRange(s, e)
+                    if (type == "outro" && outro == null) outro = SkipTimeRange(s, e)
+                }
+            }
+            if (intro != null || outro != null) {
+                return Pair(intro, outro)
+            }
+        }
+
+        // 5. "skipTime" array fallback
+        val skipArr = obj.optJSONArray("skipTime")
+            ?: obj.optJSONArray("hlsSource")?.optJSONObject(0)?.optJSONArray("skipTime")
+        if (skipArr != null) {
+            if (skipArr.length() > 0) {
+                val item = skipArr.optJSONObject(0)
+                if (item != null) {
+                    val s = item.optDouble("start", -1.0)
+                    val e = item.optDouble("end", -1.0)
+                    if (s >= 0 && e > s) intro = SkipTimeRange(s, e)
+                }
+            }
+            if (skipArr.length() > 1) {
+                val item = skipArr.optJSONObject(1)
+                if (item != null) {
+                    val s = item.optDouble("start", -1.0)
+                    val e = item.optDouble("end", -1.0)
+                    if (s >= 0 && e > s) outro = SkipTimeRange(s, e)
                 }
             }
         }

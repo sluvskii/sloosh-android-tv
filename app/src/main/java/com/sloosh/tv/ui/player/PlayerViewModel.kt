@@ -14,6 +14,7 @@ import com.sloosh.tv.data.repository.AllohaRuntimeResolver
 import com.sloosh.tv.data.repository.MoviesRepository
 import com.sloosh.tv.data.repository.PlaybackProgressStore
 import com.sloosh.tv.data.repository.allohaTranslationNamesMatch
+import com.sloosh.tv.data.repository.findMatchingAudioVariant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -178,11 +179,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                         val ep = allohaResult.seasons.firstOrNull { it.season == season }
                             ?.episodes?.firstOrNull { it.episode == episode }
                         ep?.translations?.forEach { tr ->
-                            audioVariants.add(AudioVariant(id = tr.id, title = tr.name, url = tr.iframeUrl, qualityVariants = qualities))
+                            val itemUrl = tr.streamUrl ?: tr.iframeUrl
+                            audioVariants.add(AudioVariant(id = tr.id, title = tr.name, url = itemUrl, qualityVariants = qualities))
                         }
                     } else {
                         allohaResult.movie?.translations?.forEach { tr ->
-                            audioVariants.add(AudioVariant(id = tr.id, title = tr.name, url = tr.iframeUrl, qualityVariants = qualities))
+                            val itemUrl = tr.streamUrl ?: tr.iframeUrl
+                            audioVariants.add(AudioVariant(id = tr.id, title = tr.name, url = itemUrl, qualityVariants = qualities))
                         }
                     }
                 }
@@ -192,8 +195,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
                 val kpIdInt = mediaId.removePrefix("kp_").toIntOrNull()
                 val savedVoice = kpIdInt?.let { allohaRepository.getLastVoiceover(it) } ?: allohaRepository.getLastTranslation()
-                val chosenAudio = audioVariants.firstOrNull { it.url == iframeUrl }
-                    ?: audioVariants.firstOrNull { allohaTranslationNamesMatch(it.title, savedVoice) }
+                val chosenAudio = findMatchingAudioVariant(audioVariants, savedVoice)
+                    ?: audioVariants.firstOrNull { it.url == iframeUrl }
                     ?: audioVariants.firstOrNull()
 
                 if (chosenAudio != null) {
@@ -203,8 +206,21 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     }
                 }
 
+                val activeStreamUrl = if (chosenAudio != null && chosenAudio.url.contains(".m3u8", ignoreCase = true)) {
+                    chosenAudio.url
+                } else {
+                    resolvedStream.videoUrl
+                }
+                proxy.updateMasterUrl(activeStreamUrl)
+
+                val effectiveProxyUrl = if (activeStreamUrl.contains("127.0.0.1") || activeStreamUrl.contains("localhost")) {
+                    activeStreamUrl
+                } else {
+                    proxy.proxyUrl(activeStreamUrl)
+                }
+
                 val streamWithProxy = resolvedStream.copy(
-                    videoUrl = proxyUrl,
+                    videoUrl = effectiveProxyUrl,
                     qualityVariants = qualities,
                     audioVariants = audioVariants,
                     subtitles = subtitleTracks
@@ -213,7 +229,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     resolvedStream = streamWithProxy,
-                    currentVideoUrl = proxyUrl,
+                    currentVideoUrl = effectiveProxyUrl,
                     currentQuality = activeQuality,
                     currentAudio = chosenAudio,
                     currentSubtitle = null,
@@ -277,13 +293,24 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 }
 
                 // 1. If audio.url is already a direct playable stream URL
-                if (audio.url.contains(".m3u8", ignoreCase = true)) {
+                if (audio.url.contains(".m3u8", ignoreCase = true) || audio.url.contains(".mp4", ignoreCase = true)) {
                     val proxy = HlsProxyServer.shared
                     proxy.updateMasterUrl(audio.url)
                     val newUrl = proxy.proxyUrl(audio.url)
+                    val qualities = audio.qualityVariants.ifEmpty {
+                        listOf(QualityVariant(label = "Авто", url = audio.url))
+                    }
+                    val activeQuality = qualities.firstOrNull { it.label == _uiState.value.currentQuality?.label }
+                        ?: qualities.firstOrNull()
+                    val updatedStream = _uiState.value.resolvedStream?.copy(
+                        videoUrl = newUrl,
+                        qualityVariants = qualities
+                    )
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        currentVideoUrl = newUrl
+                        resolvedStream = updatedStream,
+                        currentVideoUrl = newUrl,
+                        currentQuality = activeQuality
                     )
                     return@launch
                 }

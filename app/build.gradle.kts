@@ -142,5 +142,8 @@ dependencies {
     // Palette Color Extraction
     implementation(libs.androidx.palette)
 
+    // AndroidX WebKit for document-start script injection & cross-origin iframe hooking
+    implementation(libs.androidx.webkit)
+
     debugImplementation(libs.androidx.ui.tooling)
 }

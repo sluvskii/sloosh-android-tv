@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.net.Uri
 import android.net.http.SslError
 import android.os.Handler
 import android.os.Looper
@@ -19,6 +20,8 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import com.sloosh.tv.SlooshApplication
 import com.sloosh.tv.data.alloha.HlsProxyServer
 import com.sloosh.tv.data.api.AllohaResolvedStream
@@ -28,6 +31,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.URI
 import java.net.URL
+import java.util.ArrayDeque
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
@@ -100,18 +104,23 @@ class AllohaRuntimeResolver(private val context: Context) {
 
     private fun isLikelyURL(payload: String): Boolean {
         val trimmed = payload.trim()
-        if (trimmed.startsWith("{") || trimmed.startsWith("<") || trimmed.contains(" ")) return false
+        if (trimmed.startsWith("{") || trimmed.startsWith("<") || trimmed.contains(" ") || trimmed.contains("\n") || trimmed.contains("\r")) {
+            return false
+        }
+        if (trimmed.length > 1024) return false
         return trimmed.startsWith("http://", ignoreCase = true) ||
                trimmed.startsWith("https://", ignoreCase = true) ||
                trimmed.startsWith("//")
     }
 
     private fun isMasterPlaylistPayload(payload: String): Boolean {
+        if (!isLikelyURL(payload)) return false
         val lower = payload.lowercase(Locale.ROOT)
         return lower.contains("master.m3u8")
     }
 
     private fun isPlayableURL(url: String): Boolean {
+        if (!isLikelyURL(url)) return false
         val lower = url.lowercase(Locale.ROOT)
         if (lower.contains("blank.mp4") || lower.contains("cdn.plyr.io")) return false
         return lower.contains(".m3u8") || lower.contains(".mp4") || lower.contains(".mpd")
@@ -143,7 +152,6 @@ class AllohaRuntimeResolver(private val context: Context) {
         val pendingPayloads = ArrayDeque<String>()
 
         var timeoutRunnable: Runnable? = null
-        var livenessRunnable: Runnable? = null
         var fallbackRunnable: Runnable? = null
         var isCleanedUp = false
 
@@ -151,10 +159,8 @@ class AllohaRuntimeResolver(private val context: Context) {
             if (isCleanedUp) return
             isCleanedUp = true
             timeoutRunnable?.let { mainHandler.removeCallbacks(it) }
-            livenessRunnable?.let { mainHandler.removeCallbacks(it) }
             fallbackRunnable?.let { mainHandler.removeCallbacks(it) }
             timeoutRunnable = null
-            livenessRunnable = null
             fallbackRunnable = null
 
             mainHandler.post {
@@ -217,14 +223,20 @@ class AllohaRuntimeResolver(private val context: Context) {
 
         fun resolveBestAvailable(fallback: String) {
             if (isFinished) return
-            val payloads = listOfNotNull(bestHlsSourcePayload, bestMasterPayload, bestDirectPayload, fallback.ifBlank { null }) + pendingPayloads
+            val payloads = listOfNotNull(
+                bestHlsSourcePayload,
+                bestMasterPayload,
+                bestDirectPayload,
+                fallback.ifBlank { null }
+            ) + pendingPayloads
+
             val seen = mutableSetOf<String>()
 
             for (payload in payloads) {
                 if (!seen.add(payload)) continue
                 val parsed = AllohaRuntimeParser.parsePayload(payload, cleanUrl, capturedHeaders)
                 if (parsed != null && (parsed.videoUrl.isNotBlank() || parsed.audioVariants.isNotEmpty())) {
-                    val finalStream = if (!bestMasterPayload.isNullOrBlank() && bestMasterPayload?.contains(".m3u8", ignoreCase = true) == true) {
+                    val finalStream = if (!bestMasterPayload.isNullOrBlank() && isMasterPlaylistPayload(bestMasterPayload!!)) {
                         parsed.copy(videoUrl = bestMasterPayload!!)
                     } else {
                         parsed
@@ -234,8 +246,11 @@ class AllohaRuntimeResolver(private val context: Context) {
                 }
             }
 
-            // Fallback to direct playable URL if structured parser did not match
-            val direct = bestMasterPayload ?: bestDirectPayload ?: (if (isPlayableURL(fallback)) fallback else null)
+            // Only fallback to direct playable URL if it is a strictly verified URL
+            val direct = bestMasterPayload?.takeIf { isLikelyURL(it) && isPlayableURL(it) }
+                ?: bestDirectPayload?.takeIf { isLikelyURL(it) && isPlayableURL(it) }
+                ?: fallback.takeIf { isLikelyURL(it) && isPlayableURL(it) }
+
             if (!direct.isNullOrBlank()) {
                 val directStream = AllohaResolvedStream(
                     videoUrl = direct,
@@ -262,15 +277,15 @@ class AllohaRuntimeResolver(private val context: Context) {
             when {
                 payload.contains("\"hlsSource\"") || payload.contains("hlsSource") -> {
                     bestHlsSourcePayload = payload
+                    val delay = if (hasAllohaPlaybackHeaders()) 500L else 3500L
+                    scheduleFallbackResolve(payload, delay)
                     if (hasAllohaPlaybackHeaders()) {
                         resolveBestAvailable(payload)
-                    } else {
-                        scheduleFallbackResolve(payload, 1500L)
                     }
                 }
                 isMasterPlaylistPayload(payload) -> {
                     bestMasterPayload = payload
-                    val delay = if (bestHlsSourcePayload == null) 800L else 300L
+                    val delay = if (bestHlsSourcePayload == null) 2000L else 500L
                     scheduleFallbackResolve(payload, delay)
                     if (hasAllohaPlaybackHeaders()) {
                         resolveBestAvailable(payload)
@@ -278,7 +293,7 @@ class AllohaRuntimeResolver(private val context: Context) {
                 }
                 isPlayableURL(payload) -> {
                     bestDirectPayload = payload
-                    scheduleFallbackResolve(payload, if (hasAllohaPlaybackHeaders()) 400L else 1200L)
+                    scheduleFallbackResolve(payload, if (hasAllohaPlaybackHeaders()) 1500L else 4000L)
                 }
             }
         }
@@ -292,26 +307,14 @@ class AllohaRuntimeResolver(private val context: Context) {
             }
         }
 
-        val livenessTask = Runnable {
-            if (!isFinished) {
-                val hasCandidates = bestHlsSourcePayload != null || bestMasterPayload != null || bestDirectPayload != null || pendingPayloads.isNotEmpty()
-                if (hasCandidates) {
-                    Log.i(TAG, "Early resolution triggering at 3.0s with available candidates")
-                    resolveBestAvailable(bestHlsSourcePayload ?: bestMasterPayload ?: bestDirectPayload ?: "")
-                }
-            }
-        }
-        livenessRunnable = livenessTask
-        mainHandler.postDelayed(livenessTask, 3000L)
-
         val timeoutTask = Runnable {
             if (!isFinished) {
-                Log.w(TAG, "Timeout task firing at 15s. Checking any accumulated payloads...")
+                Log.w(TAG, "Timeout task firing at 20s. Checking accumulated payloads...")
                 val payloads = listOfNotNull(bestHlsSourcePayload, bestMasterPayload, bestDirectPayload) + pendingPayloads
                 for (p in payloads) {
                     val parsed = AllohaRuntimeParser.parsePayload(p, cleanUrl, capturedHeaders)
                     if (parsed != null && (parsed.videoUrl.isNotBlank() || parsed.audioVariants.isNotEmpty())) {
-                        val finalStream = if (!bestMasterPayload.isNullOrBlank() && bestMasterPayload?.contains(".m3u8", ignoreCase = true) == true) {
+                        val finalStream = if (!bestMasterPayload.isNullOrBlank() && isMasterPlaylistPayload(bestMasterPayload!!)) {
                             parsed.copy(videoUrl = bestMasterPayload!!)
                         } else {
                             parsed
@@ -320,7 +323,8 @@ class AllohaRuntimeResolver(private val context: Context) {
                         return@Runnable
                     }
                 }
-                val direct = bestMasterPayload ?: bestDirectPayload
+                val direct = bestMasterPayload?.takeIf { isLikelyURL(it) && isPlayableURL(it) }
+                    ?: bestDirectPayload?.takeIf { isLikelyURL(it) && isPlayableURL(it) }
                 if (!direct.isNullOrBlank()) {
                     val directStream = AllohaResolvedStream(
                         videoUrl = direct,
@@ -336,7 +340,7 @@ class AllohaRuntimeResolver(private val context: Context) {
             }
         }
         timeoutRunnable = timeoutTask
-        mainHandler.postDelayed(timeoutTask, 15_000L)
+        mainHandler.postDelayed(timeoutTask, 20_000L)
 
         fun parseAndMergeHeaders(headersJson: String?) {
             if (headersJson.isNullOrBlank()) return
@@ -353,60 +357,64 @@ class AllohaRuntimeResolver(private val context: Context) {
             }
         }
 
+        fun processIncomingMessage(raw: String?) {
+            if (raw.isNullOrBlank() || isFinished) return
+            mainHandler.post {
+                if (isFinished) return@post
+                runCatching {
+                    val obj = JSONObject(raw)
+                    val incomingHeaders = obj.optJSONObject("headers")
+                    if (incomingHeaders != null) {
+                        val keys = incomingHeaders.keys()
+                        while (keys.hasNext()) {
+                            val k = keys.next()
+                            val v = incomingHeaders.getString(k)
+                            if (v.isNotBlank()) {
+                                capturedHeaders[k.lowercase(Locale.ROOT)] = v
+                            }
+                        }
+                        HlsProxyServer.shared.updateHeaders(capturedHeaders)
+                        resolveBestPayloadIfReady()
+                    }
+
+                    val payload = obj.optString("payload", "")
+                    if (payload.isNotBlank()) {
+                        pendingPayloads.addLast(payload)
+                        while (pendingPayloads.size > 16) pendingPayloads.removeFirst()
+
+                        if (payload.contains("\"hlsSource\"") || payload.contains("hlsSource")) {
+                            bestHlsSourcePayload = payload
+                            if (hasAllohaPlaybackHeaders()) {
+                                resolveBestAvailable(payload)
+                                return@runCatching
+                            }
+                        }
+
+                        if (isMasterPlaylistPayload(payload)) {
+                            bestMasterPayload = payload
+                            scheduleFallbackResolve(payload, if (bestHlsSourcePayload == null) 2000L else 500L)
+                            if (hasAllohaPlaybackHeaders()) {
+                                resolveBestAvailable(payload)
+                            }
+                            return@runCatching
+                        }
+
+                        if (isPlayableURL(payload)) {
+                            bestDirectPayload = payload
+                            scheduleFallbackResolve(payload, if (hasAllohaPlaybackHeaders()) 1500L else 4000L)
+                            return@runCatching
+                        }
+
+                        resolveIfReady(payload)
+                    }
+                }
+            }
+        }
+
         val jsBridge = object {
             @JavascriptInterface
             fun post(raw: String?) {
-                if (raw.isNullOrBlank() || isFinished) return
-                mainHandler.post {
-                    if (isFinished) return@post
-                    runCatching {
-                        val obj = JSONObject(raw)
-                        val incomingHeaders = obj.optJSONObject("headers")
-                        if (incomingHeaders != null) {
-                            val keys = incomingHeaders.keys()
-                            while (keys.hasNext()) {
-                                val k = keys.next()
-                                val v = incomingHeaders.getString(k)
-                                if (v.isNotBlank()) {
-                                    capturedHeaders[k.lowercase(Locale.ROOT)] = v
-                                }
-                            }
-                            HlsProxyServer.shared.updateHeaders(capturedHeaders)
-                            resolveBestPayloadIfReady()
-                        }
-
-                        val payload = obj.optString("payload", "")
-                        if (payload.isNotBlank()) {
-                            pendingPayloads.addLast(payload)
-                            while (pendingPayloads.size > 16) pendingPayloads.removeFirst()
-
-                            if (payload.contains("\"hlsSource\"") || payload.contains("hlsSource")) {
-                                bestHlsSourcePayload = payload
-                                if (hasAllohaPlaybackHeaders()) {
-                                    resolveBestAvailable(payload)
-                                    return@runCatching
-                                }
-                            }
-
-                            if (isMasterPlaylistPayload(payload)) {
-                                bestMasterPayload = payload
-                                scheduleFallbackResolve(payload, if (bestHlsSourcePayload == null) 800L else 300L)
-                                if (hasAllohaPlaybackHeaders()) {
-                                    resolveBestAvailable(payload)
-                                }
-                                return@runCatching
-                            }
-
-                            if (isPlayableURL(payload)) {
-                                bestDirectPayload = payload
-                                scheduleFallbackResolve(payload, if (hasAllohaPlaybackHeaders()) 400L else 1200L)
-                                return@runCatching
-                            }
-
-                            resolveIfReady(payload)
-                        }
-                    }
-                }
+                processIncomingMessage(raw)
             }
 
             @JavascriptInterface
@@ -445,11 +453,11 @@ class AllohaRuntimeResolver(private val context: Context) {
                 mainHandler.post {
                     if (isFinished) return@post
                     parseAndMergeHeaders(headersJson)
-                    if (!url.isNullOrBlank()) {
+                    if (!url.isNullOrBlank() && isPlayableURL(url)) {
                         bestMasterPayload = url
                         HlsProxyServer.shared.updateMasterUrlSilently(url)
                         HlsProxyServer.shared.updateHeaders(capturedHeaders)
-                        scheduleFallbackResolve(url, 300L)
+                        scheduleFallbackResolve(url, 500L)
                     }
                 }
             }
@@ -477,9 +485,6 @@ class AllohaRuntimeResolver(private val context: Context) {
             webView = wv
 
             // Attach WebView to foreground activity window as an active background layer with near-zero alpha.
-            // Critical for Android TV Chromium:
-            // 1. Dimensions must NOT be 1x1 (which triggers Chromium tracking-pixel autoplay blocks and collapses responsive CSS).
-            // 2. Added at index 0 (behind Compose hierarchy) so it never intercepts clicks/D-pad focus.
             if (activity != null && !activity.isFinishing && !activity.isDestroyed) {
                 val decorView = activity.window?.decorView as? ViewGroup
                 if (decorView != null) {
@@ -517,6 +522,25 @@ class AllohaRuntimeResolver(private val context: Context) {
 
             wv.addJavascriptInterface(jsBridge, "AndroidAllohaResolver")
             wv.addJavascriptInterface(jsBridge, "AndroidBridge")
+
+            // Modern AndroidX WebKit injection: document_start script injection into ALL frames (including cross-origin iframes)
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                try {
+                    WebViewCompat.addDocumentStartJavaScript(wv, HOOK_JS, setOf("*"))
+                } catch (e: Throwable) {
+                    Log.w(TAG, "Could not addDocumentStartJavaScript: ${e.message}")
+                }
+            }
+
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+                try {
+                    WebViewCompat.addWebMessageListener(wv, "allohaWebMessageBridge", setOf("*")) { _, message, _, _, _ ->
+                        processIncomingMessage(message.data)
+                    }
+                } catch (e: Throwable) {
+                    Log.w(TAG, "Could not addWebMessageListener: ${e.message}")
+                }
+            }
 
             wv.webChromeClient = object : WebChromeClient() {
                 override fun getDefaultVideoPoster(): Bitmap {
@@ -569,13 +593,12 @@ class AllohaRuntimeResolver(private val context: Context) {
                                 if (hasAllohaPlaybackHeaders()) {
                                     resolveBestAvailable(reqUrl)
                                 } else {
-                                    scheduleFallbackResolve(reqUrl, 300L)
+                                    scheduleFallbackResolve(reqUrl, 500L)
                                 }
                             }
                         }
                     }
 
-                    // Native Chromium network stack handles 100% of requests (cookies, SSL, Cloudflare, etc.)
                     return null
                 }
             }
@@ -583,7 +606,6 @@ class AllohaRuntimeResolver(private val context: Context) {
             wv.onResume()
             wv.resumeTimers()
 
-            // Load iframe wrapper with base URL matching cleanUrl
             val wrapper = wrapperHtml(cleanUrl)
             wv.loadDataWithBaseURL(cleanUrl, wrapper, "text/html", "UTF-8", cleanUrl)
 
@@ -665,9 +687,12 @@ private const val HOOK_JS = """
 
   function post(type, payload, targetWin) {
     try {
+      var data = JSON.stringify({ type: type, payload: payload || '', headers: capturedHeaders });
+      if (window.allohaWebMessageBridge && typeof window.allohaWebMessageBridge.postMessage === 'function') {
+        window.allohaWebMessageBridge.postMessage(data);
+      }
       var bridge = getBridge(targetWin);
       if (bridge) {
-        var data = JSON.stringify({ type: type, payload: payload || '', headers: capturedHeaders });
         bridge.post(data);
       }
     } catch(e) {}
@@ -715,12 +740,11 @@ private const val HOOK_JS = """
       if (!win || !win.document) return;
       defaultHeaders(win);
       var chunks = [];
-      if (win.location && win.location.href) chunks.push(win.location.href);
-      if (win.document && win.document.documentElement) chunks.push(win.document.documentElement.outerHTML);
+      if (win.location && win.location.href && looksPlayable(win.location.href)) chunks.push(win.location.href);
       var media = win.document ? win.document.querySelectorAll('video, source, track') : [];
       for (var i = 0; i < media.length; i++) {
         var s = media[i].currentSrc || media[i].src || media[i].getAttribute('src') || '';
-        if (s) chunks.push(s);
+        if (looksPlayable(s)) chunks.push(s);
       }
       if (win.performance && win.performance.getEntriesByType) {
         var entries = win.performance.getEntriesByType('resource');
@@ -738,7 +762,9 @@ private const val HOOK_JS = """
       if (win.fileList) {
         try { chunks.push(JSON.stringify(win.fileList)); } catch(e) {}
       }
-      report(chunks.join('\n'), win);
+      for (var c = 0; c < chunks.length; c++) {
+        report(chunks[c], win);
+      }
     } catch(e) {}
   }
 
@@ -767,7 +793,7 @@ private const val HOOK_JS = """
         try { win.player.play(); } catch(e) {}
       }
 
-      // 4. Click all known play button selectors (Plyr, Alloha, VideoJS, JWPlayer, etc.)
+      // 4. Click all known play button selectors
       var playSelectors = [
         '.plyr__control--overlaid',
         'button[data-plyr="play"]',
@@ -858,10 +884,10 @@ private const val HOOK_JS = """
             try {
               var requestUrl = (typeof input === 'string') ? input : (input && input.url ? input.url : '');
               if (init && init.headers) {
-                if (typeof init.headers.forEach === 'function') init.headers.forEach(function(v, k) { putHeader(k, v); });
+                if (typeof init.headers.forEach === 'function') init.headers.forEach(function(value, name) { putHeader(name, value); });
                 else for (var key in init.headers) putHeader(key, init.headers[key]);
               }
-              if (input && input.headers && typeof input.headers.forEach === 'function') input.headers.forEach(function(v, k) { putHeader(k, v); });
+              if (input && input.headers && typeof input.headers.forEach === 'function') input.headers.forEach(function(value, name) { putHeader(name, value); });
               if (looksPlayable(requestUrl)) post('payload', requestUrl, win);
             } catch(e) {}
 
@@ -877,54 +903,19 @@ private const val HOOK_JS = """
           };
         }
 
-        // 3. Hook WebSocket constructor & prototypes
-        if (win.WebSocket) {
-          var OrigWS = win.WebSocket;
+        // 3. Hook WebSocket
+        var OriginalWebSocket = win.WebSocket;
+        if (OriginalWebSocket) {
           win.WebSocket = function(url, protocols) {
-            var ws = protocols ? new OrigWS(url, protocols) : new OrigWS(url);
+            var ws = protocols ? new OriginalWebSocket(url, protocols) : new OriginalWebSocket(url);
             hookWsInstance(ws, win);
             return ws;
           };
-          win.WebSocket.prototype = OrigWS.prototype;
-          win.WebSocket.CONNECTING = OrigWS.CONNECTING;
-          win.WebSocket.OPEN = OrigWS.OPEN;
-          win.WebSocket.CLOSING = OrigWS.CLOSING;
-          win.WebSocket.CLOSED = OrigWS.CLOSED;
-
-          var origSend = OrigWS.prototype.send;
-          if (origSend) {
-            OrigWS.prototype.send = function(data) {
-              hookWsInstance(this, win);
-              return origSend.apply(this, arguments);
-            };
-          }
-
-          var origAddEvt = OrigWS.prototype.addEventListener;
-          if (origAddEvt) {
-            OrigWS.prototype.addEventListener = function(type, listener, options) {
-              hookWsInstance(this, win);
-              return origAddEvt.apply(this, arguments);
-            };
-          }
-
-          try {
-            var origOnMessageDesc = Object.getOwnPropertyDescriptor(OrigWS.prototype, 'onmessage');
-            Object.defineProperty(OrigWS.prototype, 'onmessage', {
-              get: function() {
-                return origOnMessageDesc && origOnMessageDesc.get ? origOnMessageDesc.get.call(this) : this.__slooshOnMessage;
-              },
-              set: function(fn) {
-                hookWsInstance(this, win);
-                if (origOnMessageDesc && origOnMessageDesc.set) {
-                  origOnMessageDesc.set.call(this, fn);
-                } else {
-                  this.__slooshOnMessage = fn;
-                }
-              },
-              configurable: true,
-              enumerable: true
-            });
-          } catch(e) {}
+          win.WebSocket.prototype = OriginalWebSocket.prototype;
+          win.WebSocket.CONNECTING = OriginalWebSocket.CONNECTING;
+          win.WebSocket.OPEN = OriginalWebSocket.OPEN;
+          win.WebSocket.CLOSING = OriginalWebSocket.CLOSING;
+          win.WebSocket.CLOSED = OriginalWebSocket.CLOSED;
         }
       }
     } catch(e) {}
@@ -938,11 +929,11 @@ private const val HOOK_JS = """
       var frames = document.querySelectorAll('iframe');
       for (var i = 0; i < frames.length; i++) {
         try {
-          var fWin = frames[i].contentWindow;
-          if (fWin) {
-            install(fWin);
-            scan(fWin);
-            triggerPlay(fWin);
+          var cw = frames[i].contentWindow;
+          if (cw) {
+            install(cw);
+            scan(cw);
+            triggerPlay(cw);
           }
         } catch(e) {}
       }
@@ -950,13 +941,11 @@ private const val HOOK_JS = """
   }
 
   window.__slooshTick = tick;
-  fixVisibility(document);
   install(window);
   scan(window);
   triggerPlay(window);
   tick();
-  setInterval(tick, 150);
+  setInterval(tick, 500);
   window.addEventListener('load', tick);
-  window.addEventListener('DOMContentLoaded', tick);
 })();
 """

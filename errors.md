@@ -1,289 +1,2930 @@
-# Known Issues & Performance Bugs — sloosh Android TV
+2026-09-06 21:53:46.946 11756-11942 HlsProxy                com.sloosh.tv                        W  fetchText HTTP 404 for https://antipathic-as.stravers.live/?token_movie=21df5d3777ae838390d056f5f8e69b&
+2026-09-06 21:53:46.949 11756-11942 HlsProxy                com.sloosh.tv                        I  servePlaylist: fetch failed, notifying onSessionExpired and waiting for refresh...
+2026-09-06 21:53:46.952 11756-11941 PlayerViewModel         com.sloosh.tv                        I  Refreshing session silently due to proxy signal...
+2026-09-06 21:53:47.273 11756-11756 chromium                com.sloosh.tv                        I  [INFO:CONSOLE:342] "Allow attribute will take precedence over 'allowfullscreen'.", source: https://antipathic-as.stravers.live/?token_movie=21df5d3777ae838390d056f5f8e69b&token=ffbd312217e27c4245f2678afe1881&translation=234&season=1&episode=1 (342)
+2026-09-06 21:53:47.616 11756-11756 AllohaResolver          com.sloosh.tv                        D  Resolved stream successfully: videoUrl=https://antipathic-as.stravers.live/?token_movie=21df5d3777ae838390d056f5f8e69b&token=ffbd312217e27c4245f2678afe1881&translation=234&season=1&episode=1
+<html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="always">
+<meta name="referrer" content="unsafe-url">
+<style>html, body, iframe { margin:0; padding:0; width:100%; height:100%; background:#000; overflow:hidden; border:0; }</style>
+<script>
 
-Этот файл содержит полный список выявленных проблем производительности, багов навигации фокуса и архитектурных недочётов, обнаруженных в ходе глубокого аудита проекта.
+                                                                                                    (function() {
+                                                                                                      if (window.__slooshAllohaResolverInstalled) return;
+                                                                                                      window.__slooshAllohaResolverInstalled = true;
+                                                                                                      var capturedHeaders = {};
+                                                                                                      var lastPayload = '';
+                                                                                                      var lastM3u8 = '';
+                                                                                                    
+                                                                                                      function fixVisibility(targetDoc) {
+                                                                                                        try {
+                                                                                                          if (!targetDoc) return;
+                                                                                                          Object.defineProperty(targetDoc, 'visibilityState', { get: function() { return 'visible'; }, configurable: true });
+                                                                                                          Object.defineProperty(targetDoc, 'hidden', { get: function() { return false; }, configurable: true });
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function getBridge(win) {
+                                                                                                        if (win && win.AndroidAllohaResolver && typeof win.AndroidAllohaResolver.post === 'function') return win.AndroidAllohaResolver;
+                                                                                                        if (win && win.AndroidBridge && typeof win.AndroidBridge.post === 'function') return win.AndroidBridge;
+                                                                                                        if (window.AndroidAllohaResolver && typeof window.AndroidAllohaResolver.post === 'function') return window.AndroidAllohaResolver;
+                                                                                                        if (window.AndroidBridge && typeof window.AndroidBridge.post === 'function') return window.AndroidBridge;
+                                                                                                        try {
+                                                                                                          if (window.top && window.top.AndroidAllohaResolver && typeof window.top.AndroidAllohaResolver.post === 'function') return window.top.AndroidAllohaResolver;
+                                                                                                          if (window.top && window.top.AndroidBridge && typeof window.top.AndroidBridge.post === 'function') return window.top.AndroidBridge;
+                                                                                                        } catch(e) {}
+                                                                                                        try {
+                                                                                                          if (window.parent && window.parent.AndroidAllohaResolver && typeof window.parent.AndroidAllohaResolver.post === 'function') return window.parent.AndroidAllohaResolver;
+                                                                                                          if (window.parent && window.parent.AndroidBridge && typeof window.parent.AndroidBridge.post === 'function') return window.parent.AndroidBridge;
+                                                                                                        } catch(e) {}
+                                                                                                        return null;
+                                                                                                      }
+                                                                                                    
+                                                                                                      function post(type, payload, targetWin) {
+                                                                                                        try {
+                                                                                                          var bridge = getBridge(targetWin);
+                                                                                                          if (bridge) {
+                                                                                                            var data = JSON.stringify({ type: type, payload: payload || '', headers: capturedHeaders });
+                                                                                                            bridge.post(data);
+                                                                                                          }
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function putHeader(name, value) {
+                                                                                                        if (!name || !value) return;
+                                                                                                        capturedHeaders[String(name).toLowerCase()] = String(value);
+                                                                                                      }
+                                                                                                    
+                                                                                                      function defaultHeaders(win) {
+                                                                                                        try {
+                                                                                                          if (win.location && win.location.origin) {
+                                                                                                            putHeader('origin', win.location.origin);
+                                                                                                            putHeader('referer', win.location.origin + '/');
+                                                                                                          }
+                                                                                                          if (win.navigator && win.navigator.userAgent) {
+                                                                                                            putHeader('user-agent', win.navigator.userAgent);
+                                                                                                          }
+                                                                                                          putHeader('accept', '*/*');
+                                                                                                          putHeader('sec-fetch-dest', 'empty');
+                                                                                                          putHeader('sec-fetch-mode', 'cors');
+                                                                                                          putHeader('sec-fetch-site', 'cross-site');
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function looksPlayable(text) {
+                                                                                                        return typeof text === 'string' && (
+                                                                                                          text.indexOf('hlsSource') !== -1 ||
+                                                                                                          text.indexOf('.m3u8') !== -1 ||
+                                                                                                          text.indexOf('.mp4') !== -1 ||
+                                                                                                          text.indexOf('.vtt') !== -1
+                                                                                                        );
+                                                                                                      }
+                                                                                                    
+                                                                                                      function report(payload, targetWin) {
+                                                                                                        if (!looksPlayable(payload)) return;
+                                                                                                        if (payload === lastPayload) return;
+                                                                                                        lastPayload = payload;
+                                                                                                        post('payload', payload, targetWin);
+                                                                                                      }
+                                                                                                    
+                                                                                                      function scan(win) {
+                                                                                                        try {
+                                                                                                          if (!win || !win.document) return;
+                                                                                                          defaultHeaders(win);
+                                                                                                          var chunks = [];
+                                                                                                          if (win.location && win.location.href) chunks.push(win.location.href);
+2026-09-06 21:53:47.616 11756-11756 AllohaResolver          com.sloosh.tv                        D        if (win.document && win.document.documentElement) chunks.push(win.document.documentElement.outerHTML);
+var media = win.document ? win.document.querySelectorAll('video, source, track') : [];
+for (var i = 0; i < media.length; i++) {
+var s = media[i].currentSrc || media[i].src || media[i].getAttribute('src') || '';
+if (s) chunks.push(s);
+}
+if (win.performance && win.performance.getEntriesByType) {
+var entries = win.performance.getEntriesByType('resource');
+for (var p = 0; p < entries.length; p++) {
+var name = entries[p].name || '';
+if (looksPlayable(name)) chunks.push(name);
+}
+}
+if (win.hlsSource) {
+try { chunks.push(JSON.stringify({ hlsSource: win.hlsSource })); } catch(e) {}
+}
+if (win.player && win.player.config) {
+try { chunks.push(JSON.stringify(win.player.config)); } catch(e) {}
+}
+if (win.fileList) {
+try { chunks.push(JSON.stringify(win.fileList)); } catch(e) {}
+}
+report(chunks.join('\n'), win);
+} catch(e) {}
+}
+
+                                                                                                      function triggerPlay(win) {
+                                                                                                        try {
+                                                                                                          if (!win || !win.document) return;
+                                                                                                          fixVisibility(win.document);
+                                                                                                    
+                                                                                                          // 1. Always dismiss "Continue watching" modal (time_save) prompt if present
+                                                                                                          var timeSaveBtn = win.document.querySelector('.time_save__btn') || win.document.querySelector('.time_save:not(.hidden) button');
+                                                                                                          if (timeSaveBtn && typeof timeSaveBtn.click === 'function') {
+                                                                                                            timeSaveBtn.click();
+                                                                                                          }
+                                                                                                    
+                                                                                                          // 2. Direct <video> play
+                                                                                                          var video = win.document.querySelector('video');
+                                                                                                          if (video) {
+                                                                                                            video.muted = true;
+                                                                                                            if (video.paused) {
+                                                                                                              video.play().catch(function(){});
+                                                                                                            }
+                                                                                                          }
+                                                                                                    
+                                                                                                          // 3. Plyr player API if available
+                                                                                                          if (win.player && typeof win.player.play === 'function') {
+                                                                                                            try { win.player.play(); } catch(e) {}
+                                                                                                          }
+                                                                                                    
+                                                                                                          // 4. Click all known play button selectors (Plyr, Alloha, VideoJS, JWPlayer, etc.)
+                                                                                                          var playSelectors = [
+                                                                                                            '.plyr__control--overlaid',
+                                                                                                            'button[data-plyr="play"]',
+                                                                                                            '.plyr__control[data-plyr="play"]',
+                                                                                                            '.allplay__play-btn',
+                                                                                                            'button.play',
+                                                                                                            '.play-btn',
+                                                                                                            '.vjs-big-play-button',
+                                                                                                            '.jw-display-icon-container',
+                                                                                                            '[data-plyr="play"]'
+                                                                                                          ];
+                                                                                                          for (var s = 0; s < playSelectors.length; s++) {
+                                                                                                            var el = win.document.querySelector(playSelectors[s]);
+                                                                                                            if (el && typeof el.click === 'function') {
+                                                                                                              el.click();
+                                                                                                            }
+                                                                                                          }
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function hookWsInstance(ws, targetWin) {
+                                                                                                        try {
+                                                                                                          if (!ws || ws.__slooshWsHooked) return;
+                                                                                                          ws.__slooshWsHooked = true;
+                                                                                                          ws.addEventListener('message', function(event) {
+                                                                                                            try {
+                                                                                                              var msg = typeof event.data === 'string' ? JSON.parse(event.data) : null;
+                                                                                                              if (msg && msg.type === 'config_update' && msg.edge_hash) {
+                                                                                                                putHeader('accepts-controls', msg.edge_hash);
+                                                                                                                if (msg.ttl) putHeader('x-neo-config-ttl', String(msg.ttl));
+                                                                                                                post('headers', '', targetWin);
+                                                                                                                var bridge = getBridge(targetWin);
+                                                                                                                if (bridge && typeof bridge.onConfigUpdate === 'function') {
+                                                                                                                  bridge.onConfigUpdate(msg.edge_hash, msg.ttl || 0, JSON.stringify(capturedHeaders));
+                                                                                                                }
+                                                                                                              }
+                                                                                                              if (typeof event.data === 'string' && looksPlayable(event.data)) {
+                                                                                                                report(event.data, targetWin);
+                                                                                                              }
+                                                                                                            } catch(e) {
+                                                                                                              if (typeof event.data === 'string' && looksPlayable(event.data)) {
+                                                                                                                report(event.data, targetWin);
+                                                                                                              }
+                                                                                                            }
+                                                                                                          });
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function install(win) {
+                                                                                                        try {
+                                                                                                          if (!win) return;
+                                                                                                          fixVisibility(win.document);
+                                                                                                          defaultHeaders(win);
+                                                                                                    
+                                                                                                          if (!win.__slooshAllohaHooksInstalled) {
+                                                                                                            win.__slooshAllohaHooksInstalled = true;
+                                                                                                    
+                                                                                                            // 1. Hook XMLHttpRequest
+                                                                                                            var originalOpen = win.XMLHttpRequest && win.XMLHttpRequest.prototype.open;
+2026-09-06 21:53:47.626 11756-11756 AllohaResolver          com.sloosh.tv                        D          var originalSetHeader = win.XMLHttpRequest && win.XMLHttpRequest.prototype.setRequestHeader;
+if (originalOpen && originalSetHeader) {
+win.XMLHttpRequest.prototype.open = function(method, requestUrl) {
+this.__slooshUrl = requestUrl || '';
+this.addEventListener('load', function() {
+var responseUrl = this.responseURL || this.__slooshUrl || '';
+var responseText = '';
+try { responseText = this.responseText || ''; } catch(e) {}
+if (responseUrl.indexOf('/bnsi/') !== -1 && responseText) report(responseText, win);
+if (responseText && responseText.indexOf('hlsSource') !== -1) report(responseText, win);
+if (looksPlayable(responseText)) report(responseText, win);
+if (responseUrl.indexOf('master.m3u8') !== -1 && responseUrl !== lastM3u8) {
+lastM3u8 = responseUrl;
+post('payload', responseUrl, win);
+}
+});
+return originalOpen.apply(this, arguments);
+};
+win.XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
+putHeader(name, value);
+return originalSetHeader.apply(this, arguments);
+};
+}
+
+                                                                                                            // 2. Hook Fetch
+                                                                                                            var originalFetch = win.fetch;
+                                                                                                            if (originalFetch) {
+                                                                                                              win.fetch = function(input, init) {
+                                                                                                                try {
+                                                                                                                  var requestUrl = (typeof input === 'string') ? input : (input && input.url ? input.url : '');
+                                                                                                                  if (init && init.headers) {
+                                                                                                                    if (typeof init.headers.forEach === 'function') init.headers.forEach(function(v, k) { putHeader(k, v); });
+                                                                                                                    else for (var key in init.headers) putHeader(key, init.headers[key]);
+                                                                                                                  }
+                                                                                                                  if (input && input.headers && typeof input.headers.forEach === 'function') input.headers.forEach(function(v, k) { putHeader(k, v); });
+                                                                                                                  if (looksPlayable(requestUrl)) post('payload', requestUrl, win);
+                                                                                                                } catch(e) {}
+                                                                                                    
+                                                                                                                return originalFetch.apply(this, arguments).then(function(response) {
+                                                                                                                  try {
+                                                                                                                    var responseUrl = response.url || '';
+                                                                                                                    if (looksPlayable(responseUrl)) post('payload', responseUrl, win);
+                                                                                                                    var clone = response.clone();
+                                                                                                                    clone.text().then(function(text) { report(text, win); }).catch(function(){});
+                                                                                                                  } catch(e) {}
+                                                                                                                  return response;
+                                                                                                                });
+                                                                                                              };
+                                                                                                            }
+                                                                                                    
+                                                                                                            // 3. Hook WebSocket constructor & prototypes
+                                                                                                            if (win.WebSocket) {
+                                                                                                              var OrigWS = win.WebSocket;
+                                                                                                              win.WebSocket = function(url, protocols) {
+                                                                                                                var ws = protocols ? new OrigWS(url, protocols) : new OrigWS(url);
+                                                                                                                hookWsInstance(ws, win);
+                                                                                                                return ws;
+                                                                                                              };
+                                                                                                              win.WebSocket.prototype = OrigWS.prototype;
+                                                                                                              win.WebSocket.CONNECTING = OrigWS.CONNECTING;
+                                                                                                              win.WebSocket.OPEN = OrigWS.OPEN;
+                                                                                                              win.WebSocket.CLOSING = OrigWS.CLOSING;
+                                                                                                              win.WebSocket.CLOSED = OrigWS.CLOSED;
+                                                                                                    
+                                                                                                              var origSend = OrigWS.prototype.send;
+                                                                                                              if (origSend) {
+                                                                                                                OrigWS.prototype.send = function(data) {
+                                                                                                                  hookWsInstance(this, win);
+                                                                                                                  return origSend.apply(this, arguments);
+                                                                                                                };
+                                                                                                              }
+                                                                                                    
+                                                                                                              var origAddEvt = OrigWS.prototype.addEventListener;
+                                                                                                              if (origAddEvt) {
+                                                                                                                OrigWS.prototype.addEventListener = function(type, listener, options) {
+                                                                                                                  hookWsInstance(this, win);
+                                                                                                                  return origAddEvt.apply(this, arguments);
+                                                                                                                };
+                                                                                                              }
+                                                                                                    
+                                                                                                              try {
+                                                                                                                var origOnMessageDesc = Object.getOwnPropertyDescriptor(OrigWS.prototype, 'onmessage');
+                                                                                                                Object.defineProperty(OrigWS.prototype, 'onmessage', {
+                                                                                                                  get: function() {
+                                                                                                                    return origOnMessageDesc && origOnMessageDesc.get ? origOnMessageDesc.get.call(this) : this.__slooshOnMessage;
+2026-09-06 21:53:47.626 11756-11756 AllohaResolver          com.sloosh.tv                        D                },
+set: function(fn) {
+hookWsInstance(this, win);
+if (origOnMessageDesc && origOnMessageDesc.set) {
+origOnMessageDesc.set.call(this, fn);
+} else {
+this.__slooshOnMessage = fn;
+}
+},
+configurable: true,
+enumerable: true
+});
+} catch(e) {}
+}
+}
+} catch(e) {}
+}
+
+                                                                                                      function tick() {
+                                                                                                        install(window);
+                                                                                                        scan(window);
+                                                                                                        triggerPlay(window);
+                                                                                                        try {
+                                                                                                          var frames = document.querySelectorAll('iframe');
+                                                                                                          for (var i = 0; i < frames.length; i++) {
+                                                                                                            try {
+                                                                                                              var fWin = frames[i].contentWindow;
+                                                                                                              if (fWin) {
+                                                                                                                install(fWin);
+                                                                                                                scan(fWin);
+                                                                                                                triggerPlay(fWin);
+                                                                                                              }
+                                                                                                            } catch(e) {}
+                                                                                                          }
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      window.__slooshTick = tick;
+                                                                                                      fixVisibility(document);
+                                                                                                      install(window);
+                                                                                                      scan(window);
+                                                                                                      triggerPlay(window);
+                                                                                                      tick();
+                                                                                                      setInterval(tick, 150);
+                                                                                                      window.addEventListener('load', tick);
+                                                                                                      window.addEventListener('DOMContentLoaded', tick);
+                                                                                                    })();
+                                                                                                    
+                                                                                                                </script>
+                                                                                                            </head>
+                                                                                                            <body>
+                                                                                                                <iframe id="alloha_iframe" src="https://Antipathic-as.stravers.live/?token_movie=21df5d3777ae838390d056f5f8e69b&amp;token=ffbd312217e27c4245f2678afe1881&amp;translation=234&amp;season=1&amp;episode=1" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen="" frameborder="0" referrerpolicy="unsafe-url" style="width:100%;height:100%;border:none;"></iframe>
+                                                                                                                <script>
+                                                                                                                (function() {
+                                                                                                                    var f = document.getElementById('alloha_iframe');
+                                                                                                                    if (f) {
+                                                                                                                        f.onload = function() {
+                                                                                                                            try {
+                                                                                                                                if (typeof window.__slooshTick === 'function') window.__slooshTick();
+                                                                                                                            } catch(e) {}
+                                                                                                                        };
+                                                                                                                    }
+                                                                                                                })();
+                                                                                                                </script>
+                                                                                                            
+                                                                                                            </body></html>, audioVariants=0
+2026-09-06 21:53:47.626 11756-11756 HlsProxy                com.sloosh.tv                        D  Active master URL updated: https://antipathic-as.stravers.live/?token_movie=21df5d3777ae838390d056f5f8e69b&token=ffbd312217e27c4245f2678afe1881&translation=234&season=1&episode=1
+<html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="always">
+<meta name="referrer" content="unsafe-url">
+<style>html, body, iframe { margin:0; padding:0; width:100%; height:100%; background:#000; overflow:hidden; border:0; }</style>
+<script>
+
+                                                                                                    (function() {
+                                                                                                      if (window.__slooshAllohaResolverInstalled) return;
+                                                                                                      window.__slooshAllohaResolverInstalled = true;
+                                                                                                      var capturedHeaders = {};
+                                                                                                      var lastPayload = '';
+                                                                                                      var lastM3u8 = '';
+                                                                                                    
+                                                                                                      function fixVisibility(targetDoc) {
+                                                                                                        try {
+                                                                                                          if (!targetDoc) return;
+                                                                                                          Object.defineProperty(targetDoc, 'visibilityState', { get: function() { return 'visible'; }, configurable: true });
+                                                                                                          Object.defineProperty(targetDoc, 'hidden', { get: function() { return false; }, configurable: true });
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function getBridge(win) {
+                                                                                                        if (win && win.AndroidAllohaResolver && typeof win.AndroidAllohaResolver.post === 'function') return win.AndroidAllohaResolver;
+                                                                                                        if (win && win.AndroidBridge && typeof win.AndroidBridge.post === 'function') return win.AndroidBridge;
+                                                                                                        if (window.AndroidAllohaResolver && typeof window.AndroidAllohaResolver.post === 'function') return window.AndroidAllohaResolver;
+                                                                                                        if (window.AndroidBridge && typeof window.AndroidBridge.post === 'function') return window.AndroidBridge;
+                                                                                                        try {
+                                                                                                          if (window.top && window.top.AndroidAllohaResolver && typeof window.top.AndroidAllohaResolver.post === 'function') return window.top.AndroidAllohaResolver;
+                                                                                                          if (window.top && window.top.AndroidBridge && typeof window.top.AndroidBridge.post === 'function') return window.top.AndroidBridge;
+                                                                                                        } catch(e) {}
+                                                                                                        try {
+                                                                                                          if (window.parent && window.parent.AndroidAllohaResolver && typeof window.parent.AndroidAllohaResolver.post === 'function') return window.parent.AndroidAllohaResolver;
+                                                                                                          if (window.parent && window.parent.AndroidBridge && typeof window.parent.AndroidBridge.post === 'function') return window.parent.AndroidBridge;
+                                                                                                        } catch(e) {}
+                                                                                                        return null;
+                                                                                                      }
+                                                                                                    
+                                                                                                      function post(type, payload, targetWin) {
+                                                                                                        try {
+                                                                                                          var bridge = getBridge(targetWin);
+                                                                                                          if (bridge) {
+                                                                                                            var data = JSON.stringify({ type: type, payload: payload || '', headers: capturedHeaders });
+                                                                                                            bridge.post(data);
+                                                                                                          }
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function putHeader(name, value) {
+                                                                                                        if (!name || !value) return;
+                                                                                                        capturedHeaders[String(name).toLowerCase()] = String(value);
+                                                                                                      }
+                                                                                                    
+                                                                                                      function defaultHeaders(win) {
+                                                                                                        try {
+                                                                                                          if (win.location && win.location.origin) {
+                                                                                                            putHeader('origin', win.location.origin);
+                                                                                                            putHeader('referer', win.location.origin + '/');
+                                                                                                          }
+                                                                                                          if (win.navigator && win.navigator.userAgent) {
+                                                                                                            putHeader('user-agent', win.navigator.userAgent);
+                                                                                                          }
+                                                                                                          putHeader('accept', '*/*');
+                                                                                                          putHeader('sec-fetch-dest', 'empty');
+                                                                                                          putHeader('sec-fetch-mode', 'cors');
+                                                                                                          putHeader('sec-fetch-site', 'cross-site');
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function looksPlayable(text) {
+                                                                                                        return typeof text === 'string' && (
+                                                                                                          text.indexOf('hlsSource') !== -1 ||
+                                                                                                          text.indexOf('.m3u8') !== -1 ||
+                                                                                                          text.indexOf('.mp4') !== -1 ||
+                                                                                                          text.indexOf('.vtt') !== -1
+                                                                                                        );
+                                                                                                      }
+                                                                                                    
+                                                                                                      function report(payload, targetWin) {
+                                                                                                        if (!looksPlayable(payload)) return;
+                                                                                                        if (payload === lastPayload) return;
+                                                                                                        lastPayload = payload;
+                                                                                                        post('payload', payload, targetWin);
+                                                                                                      }
+                                                                                                    
+                                                                                                      function scan(win) {
+                                                                                                        try {
+                                                                                                          if (!win || !win.document) return;
+                                                                                                          defaultHeaders(win);
+                                                                                                          var chunks = [];
+                                                                                                          if (win.location && win.location.href) chunks.push(win.location.href);
+                                                                                                          if (win.document && win.document.documentElement) chunks.push(win.document.documentElement.outerHTML);
+2026-09-06 21:53:47.626 11756-11756 HlsProxy                com.sloosh.tv                        D        var media = win.document ? win.document.querySelectorAll('video, source, track') : [];
+for (var i = 0; i < media.length; i++) {
+var s = media[i].currentSrc || media[i].src || media[i].getAttribute('src') || '';
+if (s) chunks.push(s);
+}
+if (win.performance && win.performance.getEntriesByType) {
+var entries = win.performance.getEntriesByType('resource');
+for (var p = 0; p < entries.length; p++) {
+var name = entries[p].name || '';
+if (looksPlayable(name)) chunks.push(name);
+}
+}
+if (win.hlsSource) {
+try { chunks.push(JSON.stringify({ hlsSource: win.hlsSource })); } catch(e) {}
+}
+if (win.player && win.player.config) {
+try { chunks.push(JSON.stringify(win.player.config)); } catch(e) {}
+}
+if (win.fileList) {
+try { chunks.push(JSON.stringify(win.fileList)); } catch(e) {}
+}
+report(chunks.join('\n'), win);
+} catch(e) {}
+}
+
+                                                                                                      function triggerPlay(win) {
+                                                                                                        try {
+                                                                                                          if (!win || !win.document) return;
+                                                                                                          fixVisibility(win.document);
+                                                                                                    
+                                                                                                          // 1. Always dismiss "Continue watching" modal (time_save) prompt if present
+                                                                                                          var timeSaveBtn = win.document.querySelector('.time_save__btn') || win.document.querySelector('.time_save:not(.hidden) button');
+                                                                                                          if (timeSaveBtn && typeof timeSaveBtn.click === 'function') {
+                                                                                                            timeSaveBtn.click();
+                                                                                                          }
+                                                                                                    
+                                                                                                          // 2. Direct <video> play
+                                                                                                          var video = win.document.querySelector('video');
+                                                                                                          if (video) {
+                                                                                                            video.muted = true;
+                                                                                                            if (video.paused) {
+                                                                                                              video.play().catch(function(){});
+                                                                                                            }
+                                                                                                          }
+                                                                                                    
+                                                                                                          // 3. Plyr player API if available
+                                                                                                          if (win.player && typeof win.player.play === 'function') {
+                                                                                                            try { win.player.play(); } catch(e) {}
+                                                                                                          }
+                                                                                                    
+                                                                                                          // 4. Click all known play button selectors (Plyr, Alloha, VideoJS, JWPlayer, etc.)
+                                                                                                          var playSelectors = [
+                                                                                                            '.plyr__control--overlaid',
+                                                                                                            'button[data-plyr="play"]',
+                                                                                                            '.plyr__control[data-plyr="play"]',
+                                                                                                            '.allplay__play-btn',
+                                                                                                            'button.play',
+                                                                                                            '.play-btn',
+                                                                                                            '.vjs-big-play-button',
+                                                                                                            '.jw-display-icon-container',
+                                                                                                            '[data-plyr="play"]'
+                                                                                                          ];
+                                                                                                          for (var s = 0; s < playSelectors.length; s++) {
+                                                                                                            var el = win.document.querySelector(playSelectors[s]);
+                                                                                                            if (el && typeof el.click === 'function') {
+                                                                                                              el.click();
+                                                                                                            }
+                                                                                                          }
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function hookWsInstance(ws, targetWin) {
+                                                                                                        try {
+                                                                                                          if (!ws || ws.__slooshWsHooked) return;
+                                                                                                          ws.__slooshWsHooked = true;
+                                                                                                          ws.addEventListener('message', function(event) {
+                                                                                                            try {
+                                                                                                              var msg = typeof event.data === 'string' ? JSON.parse(event.data) : null;
+                                                                                                              if (msg && msg.type === 'config_update' && msg.edge_hash) {
+                                                                                                                putHeader('accepts-controls', msg.edge_hash);
+                                                                                                                if (msg.ttl) putHeader('x-neo-config-ttl', String(msg.ttl));
+                                                                                                                post('headers', '', targetWin);
+                                                                                                                var bridge = getBridge(targetWin);
+                                                                                                                if (bridge && typeof bridge.onConfigUpdate === 'function') {
+                                                                                                                  bridge.onConfigUpdate(msg.edge_hash, msg.ttl || 0, JSON.stringify(capturedHeaders));
+                                                                                                                }
+                                                                                                              }
+                                                                                                              if (typeof event.data === 'string' && looksPlayable(event.data)) {
+                                                                                                                report(event.data, targetWin);
+                                                                                                              }
+                                                                                                            } catch(e) {
+                                                                                                              if (typeof event.data === 'string' && looksPlayable(event.data)) {
+                                                                                                                report(event.data, targetWin);
+                                                                                                              }
+                                                                                                            }
+                                                                                                          });
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function install(win) {
+                                                                                                        try {
+                                                                                                          if (!win) return;
+                                                                                                          fixVisibility(win.document);
+                                                                                                          defaultHeaders(win);
+                                                                                                    
+                                                                                                          if (!win.__slooshAllohaHooksInstalled) {
+                                                                                                            win.__slooshAllohaHooksInstalled = true;
+                                                                                                    
+                                                                                                            // 1. Hook XMLHttpRequest
+                                                                                                            var originalOpen = win.XMLHttpRequest && win.XMLHttpRequest.prototype.open;
+                                                                                                            var originalSetHeader = win.XMLHttpRequest && win.XMLHttpRequest.prototype.setRequestHeader;
+2026-09-06 21:53:47.626 11756-11756 HlsProxy                com.sloosh.tv                        D          if (originalOpen && originalSetHeader) {
+win.XMLHttpRequest.prototype.open = function(method, requestUrl) {
+this.__slooshUrl = requestUrl || '';
+this.addEventListener('load', function() {
+var responseUrl = this.responseURL || this.__slooshUrl || '';
+var responseText = '';
+try { responseText = this.responseText || ''; } catch(e) {}
+if (responseUrl.indexOf('/bnsi/') !== -1 && responseText) report(responseText, win);
+if (responseText && responseText.indexOf('hlsSource') !== -1) report(responseText, win);
+if (looksPlayable(responseText)) report(responseText, win);
+if (responseUrl.indexOf('master.m3u8') !== -1 && responseUrl !== lastM3u8) {
+lastM3u8 = responseUrl;
+post('payload', responseUrl, win);
+}
+});
+return originalOpen.apply(this, arguments);
+};
+win.XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
+putHeader(name, value);
+return originalSetHeader.apply(this, arguments);
+};
+}
+
+                                                                                                            // 2. Hook Fetch
+                                                                                                            var originalFetch = win.fetch;
+                                                                                                            if (originalFetch) {
+                                                                                                              win.fetch = function(input, init) {
+                                                                                                                try {
+                                                                                                                  var requestUrl = (typeof input === 'string') ? input : (input && input.url ? input.url : '');
+                                                                                                                  if (init && init.headers) {
+                                                                                                                    if (typeof init.headers.forEach === 'function') init.headers.forEach(function(v, k) { putHeader(k, v); });
+                                                                                                                    else for (var key in init.headers) putHeader(key, init.headers[key]);
+                                                                                                                  }
+                                                                                                                  if (input && input.headers && typeof input.headers.forEach === 'function') input.headers.forEach(function(v, k) { putHeader(k, v); });
+                                                                                                                  if (looksPlayable(requestUrl)) post('payload', requestUrl, win);
+                                                                                                                } catch(e) {}
+                                                                                                    
+                                                                                                                return originalFetch.apply(this, arguments).then(function(response) {
+                                                                                                                  try {
+                                                                                                                    var responseUrl = response.url || '';
+                                                                                                                    if (looksPlayable(responseUrl)) post('payload', responseUrl, win);
+                                                                                                                    var clone = response.clone();
+                                                                                                                    clone.text().then(function(text) { report(text, win); }).catch(function(){});
+                                                                                                                  } catch(e) {}
+                                                                                                                  return response;
+                                                                                                                });
+                                                                                                              };
+                                                                                                            }
+                                                                                                    
+                                                                                                            // 3. Hook WebSocket constructor & prototypes
+                                                                                                            if (win.WebSocket) {
+                                                                                                              var OrigWS = win.WebSocket;
+                                                                                                              win.WebSocket = function(url, protocols) {
+                                                                                                                var ws = protocols ? new OrigWS(url, protocols) : new OrigWS(url);
+                                                                                                                hookWsInstance(ws, win);
+                                                                                                                return ws;
+                                                                                                              };
+                                                                                                              win.WebSocket.prototype = OrigWS.prototype;
+                                                                                                              win.WebSocket.CONNECTING = OrigWS.CONNECTING;
+                                                                                                              win.WebSocket.OPEN = OrigWS.OPEN;
+                                                                                                              win.WebSocket.CLOSING = OrigWS.CLOSING;
+                                                                                                              win.WebSocket.CLOSED = OrigWS.CLOSED;
+                                                                                                    
+                                                                                                              var origSend = OrigWS.prototype.send;
+                                                                                                              if (origSend) {
+                                                                                                                OrigWS.prototype.send = function(data) {
+                                                                                                                  hookWsInstance(this, win);
+                                                                                                                  return origSend.apply(this, arguments);
+                                                                                                                };
+                                                                                                              }
+                                                                                                    
+                                                                                                              var origAddEvt = OrigWS.prototype.addEventListener;
+                                                                                                              if (origAddEvt) {
+                                                                                                                OrigWS.prototype.addEventListener = function(type, listener, options) {
+                                                                                                                  hookWsInstance(this, win);
+                                                                                                                  return origAddEvt.apply(this, arguments);
+                                                                                                                };
+                                                                                                              }
+                                                                                                    
+                                                                                                              try {
+                                                                                                                var origOnMessageDesc = Object.getOwnPropertyDescriptor(OrigWS.prototype, 'onmessage');
+                                                                                                                Object.defineProperty(OrigWS.prototype, 'onmessage', {
+                                                                                                                  get: function() {
+                                                                                                                    return origOnMessageDesc && origOnMessageDesc.get ? origOnMessageDesc.get.call(this) : this.__slooshOnMessage;
+                                                                                                                  },
+                                                                                                                  set: function(fn) {
+                                                                                                                    hookWsInstance(this, win);
+2026-09-06 21:53:47.626 11756-11756 HlsProxy                com.sloosh.tv                        D                  if (origOnMessageDesc && origOnMessageDesc.set) {
+origOnMessageDesc.set.call(this, fn);
+} else {
+this.__slooshOnMessage = fn;
+}
+},
+configurable: true,
+enumerable: true
+});
+} catch(e) {}
+}
+}
+} catch(e) {}
+}
+
+                                                                                                      function tick() {
+                                                                                                        install(window);
+                                                                                                        scan(window);
+                                                                                                        triggerPlay(window);
+                                                                                                        try {
+                                                                                                          var frames = document.querySelectorAll('iframe');
+                                                                                                          for (var i = 0; i < frames.length; i++) {
+                                                                                                            try {
+                                                                                                              var fWin = frames[i].contentWindow;
+                                                                                                              if (fWin) {
+                                                                                                                install(fWin);
+                                                                                                                scan(fWin);
+                                                                                                                triggerPlay(fWin);
+                                                                                                              }
+                                                                                                            } catch(e) {}
+                                                                                                          }
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      window.__slooshTick = tick;
+                                                                                                      fixVisibility(document);
+                                                                                                      install(window);
+                                                                                                      scan(window);
+                                                                                                      triggerPlay(window);
+                                                                                                      tick();
+                                                                                                      setInterval(tick, 150);
+                                                                                                      window.addEventListener('load', tick);
+                                                                                                      window.addEventListener('DOMContentLoaded', tick);
+                                                                                                    })();
+                                                                                                    
+                                                                                                                </script>
+                                                                                                            </head>
+                                                                                                            <body>
+                                                                                                                <iframe id="alloha_iframe" src="https://Antipathic-as.stravers.live/?token_movie=21df5d3777ae838390d056f5f8e69b&amp;token=ffbd312217e27c4245f2678afe1881&amp;translation=234&amp;season=1&amp;episode=1" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen="" frameborder="0" referrerpolicy="unsafe-url" style="width:100%;height:100%;border:none;"></iframe>
+                                                                                                                <script>
+                                                                                                                (function() {
+                                                                                                                    var f = document.getElementById('alloha_iframe');
+                                                                                                                    if (f) {
+                                                                                                                        f.onload = function() {
+                                                                                                                            try {
+                                                                                                                                if (typeof window.__slooshTick === 'function') window.__slooshTick();
+                                                                                                                            } catch(e) {}
+                                                                                                                        };
+                                                                                                                    }
+                                                                                                                })();
+                                                                                                                </script>
+                                                                                                            
+                                                                                                            </body></html>
+2026-09-06 21:53:47.651 11756-11941 HlsProxy                com.sloosh.tv                        D  Active master URL updated: https://antipathic-as.stravers.live/?token_movie=21df5d3777ae838390d056f5f8e69b&token=ffbd312217e27c4245f2678afe1881&translation=234&season=1&episode=1
+<html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="always">
+<meta name="referrer" content="unsafe-url">
+<style>html, body, iframe { margin:0; padding:0; width:100%; height:100%; background:#000; overflow:hidden; border:0; }</style>
+<script>
+
+                                                                                                    (function() {
+                                                                                                      if (window.__slooshAllohaResolverInstalled) return;
+                                                                                                      window.__slooshAllohaResolverInstalled = true;
+                                                                                                      var capturedHeaders = {};
+                                                                                                      var lastPayload = '';
+                                                                                                      var lastM3u8 = '';
+                                                                                                    
+                                                                                                      function fixVisibility(targetDoc) {
+                                                                                                        try {
+                                                                                                          if (!targetDoc) return;
+                                                                                                          Object.defineProperty(targetDoc, 'visibilityState', { get: function() { return 'visible'; }, configurable: true });
+                                                                                                          Object.defineProperty(targetDoc, 'hidden', { get: function() { return false; }, configurable: true });
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function getBridge(win) {
+                                                                                                        if (win && win.AndroidAllohaResolver && typeof win.AndroidAllohaResolver.post === 'function') return win.AndroidAllohaResolver;
+                                                                                                        if (win && win.AndroidBridge && typeof win.AndroidBridge.post === 'function') return win.AndroidBridge;
+                                                                                                        if (window.AndroidAllohaResolver && typeof window.AndroidAllohaResolver.post === 'function') return window.AndroidAllohaResolver;
+                                                                                                        if (window.AndroidBridge && typeof window.AndroidBridge.post === 'function') return window.AndroidBridge;
+                                                                                                        try {
+                                                                                                          if (window.top && window.top.AndroidAllohaResolver && typeof window.top.AndroidAllohaResolver.post === 'function') return window.top.AndroidAllohaResolver;
+                                                                                                          if (window.top && window.top.AndroidBridge && typeof window.top.AndroidBridge.post === 'function') return window.top.AndroidBridge;
+                                                                                                        } catch(e) {}
+                                                                                                        try {
+                                                                                                          if (window.parent && window.parent.AndroidAllohaResolver && typeof window.parent.AndroidAllohaResolver.post === 'function') return window.parent.AndroidAllohaResolver;
+                                                                                                          if (window.parent && window.parent.AndroidBridge && typeof window.parent.AndroidBridge.post === 'function') return window.parent.AndroidBridge;
+                                                                                                        } catch(e) {}
+                                                                                                        return null;
+                                                                                                      }
+                                                                                                    
+                                                                                                      function post(type, payload, targetWin) {
+                                                                                                        try {
+                                                                                                          var bridge = getBridge(targetWin);
+                                                                                                          if (bridge) {
+                                                                                                            var data = JSON.stringify({ type: type, payload: payload || '', headers: capturedHeaders });
+                                                                                                            bridge.post(data);
+                                                                                                          }
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function putHeader(name, value) {
+                                                                                                        if (!name || !value) return;
+                                                                                                        capturedHeaders[String(name).toLowerCase()] = String(value);
+                                                                                                      }
+                                                                                                    
+                                                                                                      function defaultHeaders(win) {
+                                                                                                        try {
+                                                                                                          if (win.location && win.location.origin) {
+                                                                                                            putHeader('origin', win.location.origin);
+                                                                                                            putHeader('referer', win.location.origin + '/');
+                                                                                                          }
+                                                                                                          if (win.navigator && win.navigator.userAgent) {
+                                                                                                            putHeader('user-agent', win.navigator.userAgent);
+                                                                                                          }
+                                                                                                          putHeader('accept', '*/*');
+                                                                                                          putHeader('sec-fetch-dest', 'empty');
+                                                                                                          putHeader('sec-fetch-mode', 'cors');
+                                                                                                          putHeader('sec-fetch-site', 'cross-site');
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function looksPlayable(text) {
+                                                                                                        return typeof text === 'string' && (
+                                                                                                          text.indexOf('hlsSource') !== -1 ||
+                                                                                                          text.indexOf('.m3u8') !== -1 ||
+                                                                                                          text.indexOf('.mp4') !== -1 ||
+                                                                                                          text.indexOf('.vtt') !== -1
+                                                                                                        );
+                                                                                                      }
+                                                                                                    
+                                                                                                      function report(payload, targetWin) {
+                                                                                                        if (!looksPlayable(payload)) return;
+                                                                                                        if (payload === lastPayload) return;
+                                                                                                        lastPayload = payload;
+                                                                                                        post('payload', payload, targetWin);
+                                                                                                      }
+                                                                                                    
+                                                                                                      function scan(win) {
+                                                                                                        try {
+                                                                                                          if (!win || !win.document) return;
+                                                                                                          defaultHeaders(win);
+                                                                                                          var chunks = [];
+                                                                                                          if (win.location && win.location.href) chunks.push(win.location.href);
+                                                                                                          if (win.document && win.document.documentElement) chunks.push(win.document.documentElement.outerHTML);
+2026-09-06 21:53:47.651 11756-11941 HlsProxy                com.sloosh.tv                        D        var media = win.document ? win.document.querySelectorAll('video, source, track') : [];
+for (var i = 0; i < media.length; i++) {
+var s = media[i].currentSrc || media[i].src || media[i].getAttribute('src') || '';
+if (s) chunks.push(s);
+}
+if (win.performance && win.performance.getEntriesByType) {
+var entries = win.performance.getEntriesByType('resource');
+for (var p = 0; p < entries.length; p++) {
+var name = entries[p].name || '';
+if (looksPlayable(name)) chunks.push(name);
+}
+}
+if (win.hlsSource) {
+try { chunks.push(JSON.stringify({ hlsSource: win.hlsSource })); } catch(e) {}
+}
+if (win.player && win.player.config) {
+try { chunks.push(JSON.stringify(win.player.config)); } catch(e) {}
+}
+if (win.fileList) {
+try { chunks.push(JSON.stringify(win.fileList)); } catch(e) {}
+}
+report(chunks.join('\n'), win);
+} catch(e) {}
+}
+
+                                                                                                      function triggerPlay(win) {
+                                                                                                        try {
+                                                                                                          if (!win || !win.document) return;
+                                                                                                          fixVisibility(win.document);
+                                                                                                    
+                                                                                                          // 1. Always dismiss "Continue watching" modal (time_save) prompt if present
+                                                                                                          var timeSaveBtn = win.document.querySelector('.time_save__btn') || win.document.querySelector('.time_save:not(.hidden) button');
+                                                                                                          if (timeSaveBtn && typeof timeSaveBtn.click === 'function') {
+                                                                                                            timeSaveBtn.click();
+                                                                                                          }
+                                                                                                    
+                                                                                                          // 2. Direct <video> play
+                                                                                                          var video = win.document.querySelector('video');
+                                                                                                          if (video) {
+                                                                                                            video.muted = true;
+                                                                                                            if (video.paused) {
+                                                                                                              video.play().catch(function(){});
+                                                                                                            }
+                                                                                                          }
+                                                                                                    
+                                                                                                          // 3. Plyr player API if available
+                                                                                                          if (win.player && typeof win.player.play === 'function') {
+                                                                                                            try { win.player.play(); } catch(e) {}
+                                                                                                          }
+                                                                                                    
+                                                                                                          // 4. Click all known play button selectors (Plyr, Alloha, VideoJS, JWPlayer, etc.)
+                                                                                                          var playSelectors = [
+                                                                                                            '.plyr__control--overlaid',
+                                                                                                            'button[data-plyr="play"]',
+                                                                                                            '.plyr__control[data-plyr="play"]',
+                                                                                                            '.allplay__play-btn',
+                                                                                                            'button.play',
+                                                                                                            '.play-btn',
+                                                                                                            '.vjs-big-play-button',
+                                                                                                            '.jw-display-icon-container',
+                                                                                                            '[data-plyr="play"]'
+                                                                                                          ];
+                                                                                                          for (var s = 0; s < playSelectors.length; s++) {
+                                                                                                            var el = win.document.querySelector(playSelectors[s]);
+                                                                                                            if (el && typeof el.click === 'function') {
+                                                                                                              el.click();
+                                                                                                            }
+                                                                                                          }
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function hookWsInstance(ws, targetWin) {
+                                                                                                        try {
+                                                                                                          if (!ws || ws.__slooshWsHooked) return;
+                                                                                                          ws.__slooshWsHooked = true;
+                                                                                                          ws.addEventListener('message', function(event) {
+                                                                                                            try {
+                                                                                                              var msg = typeof event.data === 'string' ? JSON.parse(event.data) : null;
+                                                                                                              if (msg && msg.type === 'config_update' && msg.edge_hash) {
+                                                                                                                putHeader('accepts-controls', msg.edge_hash);
+                                                                                                                if (msg.ttl) putHeader('x-neo-config-ttl', String(msg.ttl));
+                                                                                                                post('headers', '', targetWin);
+                                                                                                                var bridge = getBridge(targetWin);
+                                                                                                                if (bridge && typeof bridge.onConfigUpdate === 'function') {
+                                                                                                                  bridge.onConfigUpdate(msg.edge_hash, msg.ttl || 0, JSON.stringify(capturedHeaders));
+                                                                                                                }
+                                                                                                              }
+                                                                                                              if (typeof event.data === 'string' && looksPlayable(event.data)) {
+                                                                                                                report(event.data, targetWin);
+                                                                                                              }
+                                                                                                            } catch(e) {
+                                                                                                              if (typeof event.data === 'string' && looksPlayable(event.data)) {
+                                                                                                                report(event.data, targetWin);
+                                                                                                              }
+                                                                                                            }
+                                                                                                          });
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function install(win) {
+                                                                                                        try {
+                                                                                                          if (!win) return;
+                                                                                                          fixVisibility(win.document);
+                                                                                                          defaultHeaders(win);
+                                                                                                    
+                                                                                                          if (!win.__slooshAllohaHooksInstalled) {
+                                                                                                            win.__slooshAllohaHooksInstalled = true;
+                                                                                                    
+                                                                                                            // 1. Hook XMLHttpRequest
+                                                                                                            var originalOpen = win.XMLHttpRequest && win.XMLHttpRequest.prototype.open;
+                                                                                                            var originalSetHeader = win.XMLHttpRequest && win.XMLHttpRequest.prototype.setRequestHeader;
+2026-09-06 21:53:47.651 11756-11941 HlsProxy                com.sloosh.tv                        D          if (originalOpen && originalSetHeader) {
+win.XMLHttpRequest.prototype.open = function(method, requestUrl) {
+this.__slooshUrl = requestUrl || '';
+this.addEventListener('load', function() {
+var responseUrl = this.responseURL || this.__slooshUrl || '';
+var responseText = '';
+try { responseText = this.responseText || ''; } catch(e) {}
+if (responseUrl.indexOf('/bnsi/') !== -1 && responseText) report(responseText, win);
+if (responseText && responseText.indexOf('hlsSource') !== -1) report(responseText, win);
+if (looksPlayable(responseText)) report(responseText, win);
+if (responseUrl.indexOf('master.m3u8') !== -1 && responseUrl !== lastM3u8) {
+lastM3u8 = responseUrl;
+post('payload', responseUrl, win);
+}
+});
+return originalOpen.apply(this, arguments);
+};
+win.XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
+putHeader(name, value);
+return originalSetHeader.apply(this, arguments);
+};
+}
+
+                                                                                                            // 2. Hook Fetch
+                                                                                                            var originalFetch = win.fetch;
+                                                                                                            if (originalFetch) {
+                                                                                                              win.fetch = function(input, init) {
+                                                                                                                try {
+                                                                                                                  var requestUrl = (typeof input === 'string') ? input : (input && input.url ? input.url : '');
+                                                                                                                  if (init && init.headers) {
+                                                                                                                    if (typeof init.headers.forEach === 'function') init.headers.forEach(function(v, k) { putHeader(k, v); });
+                                                                                                                    else for (var key in init.headers) putHeader(key, init.headers[key]);
+                                                                                                                  }
+                                                                                                                  if (input && input.headers && typeof input.headers.forEach === 'function') input.headers.forEach(function(v, k) { putHeader(k, v); });
+                                                                                                                  if (looksPlayable(requestUrl)) post('payload', requestUrl, win);
+                                                                                                                } catch(e) {}
+                                                                                                    
+                                                                                                                return originalFetch.apply(this, arguments).then(function(response) {
+                                                                                                                  try {
+                                                                                                                    var responseUrl = response.url || '';
+                                                                                                                    if (looksPlayable(responseUrl)) post('payload', responseUrl, win);
+                                                                                                                    var clone = response.clone();
+                                                                                                                    clone.text().then(function(text) { report(text, win); }).catch(function(){});
+                                                                                                                  } catch(e) {}
+                                                                                                                  return response;
+                                                                                                                });
+                                                                                                              };
+                                                                                                            }
+                                                                                                    
+                                                                                                            // 3. Hook WebSocket constructor & prototypes
+                                                                                                            if (win.WebSocket) {
+                                                                                                              var OrigWS = win.WebSocket;
+                                                                                                              win.WebSocket = function(url, protocols) {
+                                                                                                                var ws = protocols ? new OrigWS(url, protocols) : new OrigWS(url);
+                                                                                                                hookWsInstance(ws, win);
+                                                                                                                return ws;
+                                                                                                              };
+                                                                                                              win.WebSocket.prototype = OrigWS.prototype;
+                                                                                                              win.WebSocket.CONNECTING = OrigWS.CONNECTING;
+                                                                                                              win.WebSocket.OPEN = OrigWS.OPEN;
+                                                                                                              win.WebSocket.CLOSING = OrigWS.CLOSING;
+                                                                                                              win.WebSocket.CLOSED = OrigWS.CLOSED;
+                                                                                                    
+                                                                                                              var origSend = OrigWS.prototype.send;
+                                                                                                              if (origSend) {
+                                                                                                                OrigWS.prototype.send = function(data) {
+                                                                                                                  hookWsInstance(this, win);
+                                                                                                                  return origSend.apply(this, arguments);
+                                                                                                                };
+                                                                                                              }
+                                                                                                    
+                                                                                                              var origAddEvt = OrigWS.prototype.addEventListener;
+                                                                                                              if (origAddEvt) {
+                                                                                                                OrigWS.prototype.addEventListener = function(type, listener, options) {
+                                                                                                                  hookWsInstance(this, win);
+                                                                                                                  return origAddEvt.apply(this, arguments);
+                                                                                                                };
+                                                                                                              }
+                                                                                                    
+                                                                                                              try {
+                                                                                                                var origOnMessageDesc = Object.getOwnPropertyDescriptor(OrigWS.prototype, 'onmessage');
+                                                                                                                Object.defineProperty(OrigWS.prototype, 'onmessage', {
+                                                                                                                  get: function() {
+                                                                                                                    return origOnMessageDesc && origOnMessageDesc.get ? origOnMessageDesc.get.call(this) : this.__slooshOnMessage;
+                                                                                                                  },
+                                                                                                                  set: function(fn) {
+                                                                                                                    hookWsInstance(this, win);
+2026-09-06 21:53:47.651 11756-11941 HlsProxy                com.sloosh.tv                        D                  if (origOnMessageDesc && origOnMessageDesc.set) {
+origOnMessageDesc.set.call(this, fn);
+} else {
+this.__slooshOnMessage = fn;
+}
+},
+configurable: true,
+enumerable: true
+});
+} catch(e) {}
+}
+}
+} catch(e) {}
+}
+
+                                                                                                      function tick() {
+                                                                                                        install(window);
+                                                                                                        scan(window);
+                                                                                                        triggerPlay(window);
+                                                                                                        try {
+                                                                                                          var frames = document.querySelectorAll('iframe');
+                                                                                                          for (var i = 0; i < frames.length; i++) {
+                                                                                                            try {
+                                                                                                              var fWin = frames[i].contentWindow;
+                                                                                                              if (fWin) {
+                                                                                                                install(fWin);
+                                                                                                                scan(fWin);
+                                                                                                                triggerPlay(fWin);
+                                                                                                              }
+                                                                                                            } catch(e) {}
+                                                                                                          }
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      window.__slooshTick = tick;
+                                                                                                      fixVisibility(document);
+                                                                                                      install(window);
+                                                                                                      scan(window);
+                                                                                                      triggerPlay(window);
+                                                                                                      tick();
+                                                                                                      setInterval(tick, 150);
+                                                                                                      window.addEventListener('load', tick);
+                                                                                                      window.addEventListener('DOMContentLoaded', tick);
+                                                                                                    })();
+                                                                                                    
+                                                                                                                </script>
+                                                                                                            </head>
+                                                                                                            <body>
+                                                                                                                <iframe id="alloha_iframe" src="https://Antipathic-as.stravers.live/?token_movie=21df5d3777ae838390d056f5f8e69b&amp;token=ffbd312217e27c4245f2678afe1881&amp;translation=234&amp;season=1&amp;episode=1" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen="" frameborder="0" referrerpolicy="unsafe-url" style="width:100%;height:100%;border:none;"></iframe>
+                                                                                                                <script>
+                                                                                                                (function() {
+                                                                                                                    var f = document.getElementById('alloha_iframe');
+                                                                                                                    if (f) {
+                                                                                                                        f.onload = function() {
+                                                                                                                            try {
+                                                                                                                                if (typeof window.__slooshTick === 'function') window.__slooshTick();
+                                                                                                                            } catch(e) {}
+                                                                                                                        };
+                                                                                                                    }
+                                                                                                                })();
+                                                                                                                </script>
+                                                                                                            
+                                                                                                            </body></html>
+2026-09-06 21:53:47.652 11756-11941 PlayerViewModel         com.sloosh.tv                        I  Silent session refresh successful. Master URL updated: https://antipathic-as.stravers.live/?token_movie=21df5d3777ae838390d056f5f8e69b&token=ffbd312217e27c4245f2678afe1881&translation=234&season=1&episode=1
+<html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="always">
+<meta name="referrer" content="unsafe-url">
+<style>html, body, iframe { margin:0; padding:0; width:100%; height:100%; background:#000; overflow:hidden; border:0; }</style>
+<script>
+
+                                                                                                    (function() {
+                                                                                                      if (window.__slooshAllohaResolverInstalled) return;
+                                                                                                      window.__slooshAllohaResolverInstalled = true;
+                                                                                                      var capturedHeaders = {};
+                                                                                                      var lastPayload = '';
+                                                                                                      var lastM3u8 = '';
+                                                                                                    
+                                                                                                      function fixVisibility(targetDoc) {
+                                                                                                        try {
+                                                                                                          if (!targetDoc) return;
+                                                                                                          Object.defineProperty(targetDoc, 'visibilityState', { get: function() { return 'visible'; }, configurable: true });
+                                                                                                          Object.defineProperty(targetDoc, 'hidden', { get: function() { return false; }, configurable: true });
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function getBridge(win) {
+                                                                                                        if (win && win.AndroidAllohaResolver && typeof win.AndroidAllohaResolver.post === 'function') return win.AndroidAllohaResolver;
+                                                                                                        if (win && win.AndroidBridge && typeof win.AndroidBridge.post === 'function') return win.AndroidBridge;
+                                                                                                        if (window.AndroidAllohaResolver && typeof window.AndroidAllohaResolver.post === 'function') return window.AndroidAllohaResolver;
+                                                                                                        if (window.AndroidBridge && typeof window.AndroidBridge.post === 'function') return window.AndroidBridge;
+                                                                                                        try {
+                                                                                                          if (window.top && window.top.AndroidAllohaResolver && typeof window.top.AndroidAllohaResolver.post === 'function') return window.top.AndroidAllohaResolver;
+                                                                                                          if (window.top && window.top.AndroidBridge && typeof window.top.AndroidBridge.post === 'function') return window.top.AndroidBridge;
+                                                                                                        } catch(e) {}
+                                                                                                        try {
+                                                                                                          if (window.parent && window.parent.AndroidAllohaResolver && typeof window.parent.AndroidAllohaResolver.post === 'function') return window.parent.AndroidAllohaResolver;
+                                                                                                          if (window.parent && window.parent.AndroidBridge && typeof window.parent.AndroidBridge.post === 'function') return window.parent.AndroidBridge;
+                                                                                                        } catch(e) {}
+                                                                                                        return null;
+                                                                                                      }
+                                                                                                    
+                                                                                                      function post(type, payload, targetWin) {
+                                                                                                        try {
+                                                                                                          var bridge = getBridge(targetWin);
+                                                                                                          if (bridge) {
+                                                                                                            var data = JSON.stringify({ type: type, payload: payload || '', headers: capturedHeaders });
+                                                                                                            bridge.post(data);
+                                                                                                          }
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function putHeader(name, value) {
+                                                                                                        if (!name || !value) return;
+                                                                                                        capturedHeaders[String(name).toLowerCase()] = String(value);
+                                                                                                      }
+                                                                                                    
+                                                                                                      function defaultHeaders(win) {
+                                                                                                        try {
+                                                                                                          if (win.location && win.location.origin) {
+                                                                                                            putHeader('origin', win.location.origin);
+                                                                                                            putHeader('referer', win.location.origin + '/');
+                                                                                                          }
+                                                                                                          if (win.navigator && win.navigator.userAgent) {
+                                                                                                            putHeader('user-agent', win.navigator.userAgent);
+                                                                                                          }
+                                                                                                          putHeader('accept', '*/*');
+                                                                                                          putHeader('sec-fetch-dest', 'empty');
+                                                                                                          putHeader('sec-fetch-mode', 'cors');
+                                                                                                          putHeader('sec-fetch-site', 'cross-site');
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function looksPlayable(text) {
+                                                                                                        return typeof text === 'string' && (
+                                                                                                          text.indexOf('hlsSource') !== -1 ||
+                                                                                                          text.indexOf('.m3u8') !== -1 ||
+                                                                                                          text.indexOf('.mp4') !== -1 ||
+                                                                                                          text.indexOf('.vtt') !== -1
+                                                                                                        );
+                                                                                                      }
+                                                                                                    
+                                                                                                      function report(payload, targetWin) {
+                                                                                                        if (!looksPlayable(payload)) return;
+                                                                                                        if (payload === lastPayload) return;
+                                                                                                        lastPayload = payload;
+                                                                                                        post('payload', payload, targetWin);
+                                                                                                      }
+                                                                                                    
+                                                                                                      function scan(win) {
+                                                                                                        try {
+                                                                                                          if (!win || !win.document) return;
+                                                                                                          defaultHeaders(win);
+                                                                                                          var chunks = [];
+                                                                                                          if (win.location && win.location.href) chunks.push(win.location.href);
+2026-09-06 21:53:47.652 11756-11941 PlayerViewModel         com.sloosh.tv                        I        if (win.document && win.document.documentElement) chunks.push(win.document.documentElement.outerHTML);
+var media = win.document ? win.document.querySelectorAll('video, source, track') : [];
+for (var i = 0; i < media.length; i++) {
+var s = media[i].currentSrc || media[i].src || media[i].getAttribute('src') || '';
+if (s) chunks.push(s);
+}
+if (win.performance && win.performance.getEntriesByType) {
+var entries = win.performance.getEntriesByType('resource');
+for (var p = 0; p < entries.length; p++) {
+var name = entries[p].name || '';
+if (looksPlayable(name)) chunks.push(name);
+}
+}
+if (win.hlsSource) {
+try { chunks.push(JSON.stringify({ hlsSource: win.hlsSource })); } catch(e) {}
+}
+if (win.player && win.player.config) {
+try { chunks.push(JSON.stringify(win.player.config)); } catch(e) {}
+}
+if (win.fileList) {
+try { chunks.push(JSON.stringify(win.fileList)); } catch(e) {}
+}
+report(chunks.join('\n'), win);
+} catch(e) {}
+}
+
+                                                                                                      function triggerPlay(win) {
+                                                                                                        try {
+                                                                                                          if (!win || !win.document) return;
+                                                                                                          fixVisibility(win.document);
+                                                                                                    
+                                                                                                          // 1. Always dismiss "Continue watching" modal (time_save) prompt if present
+                                                                                                          var timeSaveBtn = win.document.querySelector('.time_save__btn') || win.document.querySelector('.time_save:not(.hidden) button');
+                                                                                                          if (timeSaveBtn && typeof timeSaveBtn.click === 'function') {
+                                                                                                            timeSaveBtn.click();
+                                                                                                          }
+                                                                                                    
+                                                                                                          // 2. Direct <video> play
+                                                                                                          var video = win.document.querySelector('video');
+                                                                                                          if (video) {
+                                                                                                            video.muted = true;
+                                                                                                            if (video.paused) {
+                                                                                                              video.play().catch(function(){});
+                                                                                                            }
+                                                                                                          }
+                                                                                                    
+                                                                                                          // 3. Plyr player API if available
+                                                                                                          if (win.player && typeof win.player.play === 'function') {
+                                                                                                            try { win.player.play(); } catch(e) {}
+                                                                                                          }
+                                                                                                    
+                                                                                                          // 4. Click all known play button selectors (Plyr, Alloha, VideoJS, JWPlayer, etc.)
+                                                                                                          var playSelectors = [
+                                                                                                            '.plyr__control--overlaid',
+                                                                                                            'button[data-plyr="play"]',
+                                                                                                            '.plyr__control[data-plyr="play"]',
+                                                                                                            '.allplay__play-btn',
+                                                                                                            'button.play',
+                                                                                                            '.play-btn',
+                                                                                                            '.vjs-big-play-button',
+                                                                                                            '.jw-display-icon-container',
+                                                                                                            '[data-plyr="play"]'
+                                                                                                          ];
+                                                                                                          for (var s = 0; s < playSelectors.length; s++) {
+                                                                                                            var el = win.document.querySelector(playSelectors[s]);
+                                                                                                            if (el && typeof el.click === 'function') {
+                                                                                                              el.click();
+                                                                                                            }
+                                                                                                          }
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function hookWsInstance(ws, targetWin) {
+                                                                                                        try {
+                                                                                                          if (!ws || ws.__slooshWsHooked) return;
+                                                                                                          ws.__slooshWsHooked = true;
+                                                                                                          ws.addEventListener('message', function(event) {
+                                                                                                            try {
+                                                                                                              var msg = typeof event.data === 'string' ? JSON.parse(event.data) : null;
+                                                                                                              if (msg && msg.type === 'config_update' && msg.edge_hash) {
+                                                                                                                putHeader('accepts-controls', msg.edge_hash);
+                                                                                                                if (msg.ttl) putHeader('x-neo-config-ttl', String(msg.ttl));
+                                                                                                                post('headers', '', targetWin);
+                                                                                                                var bridge = getBridge(targetWin);
+                                                                                                                if (bridge && typeof bridge.onConfigUpdate === 'function') {
+                                                                                                                  bridge.onConfigUpdate(msg.edge_hash, msg.ttl || 0, JSON.stringify(capturedHeaders));
+                                                                                                                }
+                                                                                                              }
+                                                                                                              if (typeof event.data === 'string' && looksPlayable(event.data)) {
+                                                                                                                report(event.data, targetWin);
+                                                                                                              }
+                                                                                                            } catch(e) {
+                                                                                                              if (typeof event.data === 'string' && looksPlayable(event.data)) {
+                                                                                                                report(event.data, targetWin);
+                                                                                                              }
+                                                                                                            }
+                                                                                                          });
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function install(win) {
+                                                                                                        try {
+                                                                                                          if (!win) return;
+                                                                                                          fixVisibility(win.document);
+                                                                                                          defaultHeaders(win);
+                                                                                                    
+                                                                                                          if (!win.__slooshAllohaHooksInstalled) {
+                                                                                                            win.__slooshAllohaHooksInstalled = true;
+                                                                                                    
+                                                                                                            // 1. Hook XMLHttpRequest
+                                                                                                            var originalOpen = win.XMLHttpRequest && win.XMLHttpRequest.prototype.open;
+2026-09-06 21:53:47.652 11756-11941 PlayerViewModel         com.sloosh.tv                        I          var originalSetHeader = win.XMLHttpRequest && win.XMLHttpRequest.prototype.setRequestHeader;
+if (originalOpen && originalSetHeader) {
+win.XMLHttpRequest.prototype.open = function(method, requestUrl) {
+this.__slooshUrl = requestUrl || '';
+this.addEventListener('load', function() {
+var responseUrl = this.responseURL || this.__slooshUrl || '';
+var responseText = '';
+try { responseText = this.responseText || ''; } catch(e) {}
+if (responseUrl.indexOf('/bnsi/') !== -1 && responseText) report(responseText, win);
+if (responseText && responseText.indexOf('hlsSource') !== -1) report(responseText, win);
+if (looksPlayable(responseText)) report(responseText, win);
+if (responseUrl.indexOf('master.m3u8') !== -1 && responseUrl !== lastM3u8) {
+lastM3u8 = responseUrl;
+post('payload', responseUrl, win);
+}
+});
+return originalOpen.apply(this, arguments);
+};
+win.XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
+putHeader(name, value);
+return originalSetHeader.apply(this, arguments);
+};
+}
+
+                                                                                                            // 2. Hook Fetch
+                                                                                                            var originalFetch = win.fetch;
+                                                                                                            if (originalFetch) {
+                                                                                                              win.fetch = function(input, init) {
+                                                                                                                try {
+                                                                                                                  var requestUrl = (typeof input === 'string') ? input : (input && input.url ? input.url : '');
+                                                                                                                  if (init && init.headers) {
+                                                                                                                    if (typeof init.headers.forEach === 'function') init.headers.forEach(function(v, k) { putHeader(k, v); });
+                                                                                                                    else for (var key in init.headers) putHeader(key, init.headers[key]);
+                                                                                                                  }
+                                                                                                                  if (input && input.headers && typeof input.headers.forEach === 'function') input.headers.forEach(function(v, k) { putHeader(k, v); });
+                                                                                                                  if (looksPlayable(requestUrl)) post('payload', requestUrl, win);
+                                                                                                                } catch(e) {}
+                                                                                                    
+                                                                                                                return originalFetch.apply(this, arguments).then(function(response) {
+                                                                                                                  try {
+                                                                                                                    var responseUrl = response.url || '';
+                                                                                                                    if (looksPlayable(responseUrl)) post('payload', responseUrl, win);
+                                                                                                                    var clone = response.clone();
+                                                                                                                    clone.text().then(function(text) { report(text, win); }).catch(function(){});
+                                                                                                                  } catch(e) {}
+                                                                                                                  return response;
+                                                                                                                });
+                                                                                                              };
+                                                                                                            }
+                                                                                                    
+                                                                                                            // 3. Hook WebSocket constructor & prototypes
+                                                                                                            if (win.WebSocket) {
+                                                                                                              var OrigWS = win.WebSocket;
+                                                                                                              win.WebSocket = function(url, protocols) {
+                                                                                                                var ws = protocols ? new OrigWS(url, protocols) : new OrigWS(url);
+                                                                                                                hookWsInstance(ws, win);
+                                                                                                                return ws;
+                                                                                                              };
+                                                                                                              win.WebSocket.prototype = OrigWS.prototype;
+                                                                                                              win.WebSocket.CONNECTING = OrigWS.CONNECTING;
+                                                                                                              win.WebSocket.OPEN = OrigWS.OPEN;
+                                                                                                              win.WebSocket.CLOSING = OrigWS.CLOSING;
+                                                                                                              win.WebSocket.CLOSED = OrigWS.CLOSED;
+                                                                                                    
+                                                                                                              var origSend = OrigWS.prototype.send;
+                                                                                                              if (origSend) {
+                                                                                                                OrigWS.prototype.send = function(data) {
+                                                                                                                  hookWsInstance(this, win);
+                                                                                                                  return origSend.apply(this, arguments);
+                                                                                                                };
+                                                                                                              }
+                                                                                                    
+                                                                                                              var origAddEvt = OrigWS.prototype.addEventListener;
+                                                                                                              if (origAddEvt) {
+                                                                                                                OrigWS.prototype.addEventListener = function(type, listener, options) {
+                                                                                                                  hookWsInstance(this, win);
+                                                                                                                  return origAddEvt.apply(this, arguments);
+                                                                                                                };
+                                                                                                              }
+                                                                                                    
+                                                                                                              try {
+                                                                                                                var origOnMessageDesc = Object.getOwnPropertyDescriptor(OrigWS.prototype, 'onmessage');
+                                                                                                                Object.defineProperty(OrigWS.prototype, 'onmessage', {
+                                                                                                                  get: function() {
+                                                                                                                    return origOnMessageDesc && origOnMessageDesc.get ? origOnMessageDesc.get.call(this) : this.__slooshOnMessage;
+2026-09-06 21:53:47.652 11756-11941 PlayerViewModel         com.sloosh.tv                        I                },
+set: function(fn) {
+hookWsInstance(this, win);
+if (origOnMessageDesc && origOnMessageDesc.set) {
+origOnMessageDesc.set.call(this, fn);
+} else {
+this.__slooshOnMessage = fn;
+}
+},
+configurable: true,
+enumerable: true
+});
+} catch(e) {}
+}
+}
+} catch(e) {}
+}
+
+                                                                                                      function tick() {
+                                                                                                        install(window);
+                                                                                                        scan(window);
+                                                                                                        triggerPlay(window);
+                                                                                                        try {
+                                                                                                          var frames = document.querySelectorAll('iframe');
+                                                                                                          for (var i = 0; i < frames.length; i++) {
+                                                                                                            try {
+                                                                                                              var fWin = frames[i].contentWindow;
+                                                                                                              if (fWin) {
+                                                                                                                install(fWin);
+                                                                                                                scan(fWin);
+                                                                                                                triggerPlay(fWin);
+                                                                                                              }
+                                                                                                            } catch(e) {}
+                                                                                                          }
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      window.__slooshTick = tick;
+                                                                                                      fixVisibility(document);
+                                                                                                      install(window);
+                                                                                                      scan(window);
+                                                                                                      triggerPlay(window);
+                                                                                                      tick();
+                                                                                                      setInterval(tick, 150);
+                                                                                                      window.addEventListener('load', tick);
+                                                                                                      window.addEventListener('DOMContentLoaded', tick);
+                                                                                                    })();
+                                                                                                    
+                                                                                                                </script>
+                                                                                                            </head>
+                                                                                                            <body>
+                                                                                                                <iframe id="alloha_iframe" src="https://Antipathic-as.stravers.live/?token_movie=21df5d3777ae838390d056f5f8e69b&amp;token=ffbd312217e27c4245f2678afe1881&amp;translation=234&amp;season=1&amp;episode=1" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen="" frameborder="0" referrerpolicy="unsafe-url" style="width:100%;height:100%;border:none;"></iframe>
+                                                                                                                <script>
+                                                                                                                (function() {
+                                                                                                                    var f = document.getElementById('alloha_iframe');
+                                                                                                                    if (f) {
+                                                                                                                        f.onload = function() {
+                                                                                                                            try {
+                                                                                                                                if (typeof window.__slooshTick === 'function') window.__slooshTick();
+                                                                                                                            } catch(e) {}
+                                                                                                                        };
+                                                                                                                    }
+                                                                                                                })();
+                                                                                                                </script>
+                                                                                                            
+                                                                                                            </body></html>
+2026-09-06 21:53:50.561 11756-11942 cr_CookieManager        com.sloosh.tv                        E  Unable to get cookies due to error parsing URL: https://antipathic-as.stravers.live/?token_movie=21df5d3777ae838390d056f5f8e69b&token=ffbd312217e27c4245f2678afe1881&translation=234&season=1&episode=1
+<html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="always">
+<meta name="referrer" content="unsafe-url">
+<style>html, body, iframe { margin:0; padding:0; width:100%; height:100%; background:#000; overflow:hidden; border:0; }</style>
+<script>
+
+                                                                                                    (function() {
+                                                                                                      if (window.__slooshAllohaResolverInstalled) return;
+                                                                                                      window.__slooshAllohaResolverInstalled = true;
+                                                                                                      var capturedHeaders = {};
+                                                                                                      var lastPayload = '';
+                                                                                                      var lastM3u8 = '';
+                                                                                                    
+                                                                                                      function fixVisibility(targetDoc) {
+                                                                                                        try {
+                                                                                                          if (!targetDoc) return;
+                                                                                                          Object.defineProperty(targetDoc, 'visibilityState', { get: function() { return 'visible'; }, configurable: true });
+                                                                                                          Object.defineProperty(targetDoc, 'hidden', { get: function() { return false; }, configurable: true });
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function getBridge(win) {
+                                                                                                        if (win && win.AndroidAllohaResolver && typeof win.AndroidAllohaResolver.post === 'function') return win.AndroidAllohaResolver;
+                                                                                                        if (win && win.AndroidBridge && typeof win.AndroidBridge.post === 'function') return win.AndroidBridge;
+                                                                                                        if (window.AndroidAllohaResolver && typeof window.AndroidAllohaResolver.post === 'function') return window.AndroidAllohaResolver;
+                                                                                                        if (window.AndroidBridge && typeof window.AndroidBridge.post === 'function') return window.AndroidBridge;
+                                                                                                        try {
+                                                                                                          if (window.top && window.top.AndroidAllohaResolver && typeof window.top.AndroidAllohaResolver.post === 'function') return window.top.AndroidAllohaResolver;
+                                                                                                          if (window.top && window.top.AndroidBridge && typeof window.top.AndroidBridge.post === 'function') return window.top.AndroidBridge;
+                                                                                                        } catch(e) {}
+                                                                                                        try {
+                                                                                                          if (window.parent && window.parent.AndroidAllohaResolver && typeof window.parent.AndroidAllohaResolver.post === 'function') return window.parent.AndroidAllohaResolver;
+                                                                                                          if (window.parent && window.parent.AndroidBridge && typeof window.parent.AndroidBridge.post === 'function') return window.parent.AndroidBridge;
+                                                                                                        } catch(e) {}
+                                                                                                        return null;
+                                                                                                      }
+                                                                                                    
+                                                                                                      function post(type, payload, targetWin) {
+                                                                                                        try {
+                                                                                                          var bridge = getBridge(targetWin);
+                                                                                                          if (bridge) {
+                                                                                                            var data = JSON.stringify({ type: type, payload: payload || '', headers: capturedHeaders });
+                                                                                                            bridge.post(data);
+                                                                                                          }
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function putHeader(name, value) {
+                                                                                                        if (!name || !value) return;
+                                                                                                        capturedHeaders[String(name).toLowerCase()] = String(value);
+                                                                                                      }
+                                                                                                    
+                                                                                                      function defaultHeaders(win) {
+                                                                                                        try {
+                                                                                                          if (win.location && win.location.origin) {
+                                                                                                            putHeader('origin', win.location.origin);
+                                                                                                            putHeader('referer', win.location.origin + '/');
+                                                                                                          }
+                                                                                                          if (win.navigator && win.navigator.userAgent) {
+                                                                                                            putHeader('user-agent', win.navigator.userAgent);
+                                                                                                          }
+                                                                                                          putHeader('accept', '*/*');
+                                                                                                          putHeader('sec-fetch-dest', 'empty');
+                                                                                                          putHeader('sec-fetch-mode', 'cors');
+                                                                                                          putHeader('sec-fetch-site', 'cross-site');
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function looksPlayable(text) {
+                                                                                                        return typeof text === 'string' && (
+                                                                                                          text.indexOf('hlsSource') !== -1 ||
+                                                                                                          text.indexOf('.m3u8') !== -1 ||
+                                                                                                          text.indexOf('.mp4') !== -1 ||
+                                                                                                          text.indexOf('.vtt') !== -1
+                                                                                                        );
+                                                                                                      }
+                                                                                                    
+                                                                                                      function report(payload, targetWin) {
+                                                                                                        if (!looksPlayable(payload)) return;
+                                                                                                        if (payload === lastPayload) return;
+                                                                                                        lastPayload = payload;
+                                                                                                        post('payload', payload, targetWin);
+                                                                                                      }
+                                                                                                    
+                                                                                                      function scan(win) {
+                                                                                                        try {
+                                                                                                          if (!win || !win.document) return;
+                                                                                                          defaultHeaders(win);
+                                                                                                          var chunks = [];
+                                                                                                          if (win.location && win.location.href) chunks.push(win.location.href);
+2026-09-06 21:53:50.561 11756-11942 cr_CookieManager        com.sloosh.tv                        E        if (win.document && win.document.documentElement) chunks.push(win.document.documentElement.outerHTML);
+var media = win.document ? win.document.querySelectorAll('video, source, track') : [];
+for (var i = 0; i < media.length; i++) {
+var s = media[i].currentSrc || media[i].src || media[i].getAttribute('src') || '';
+if (s) chunks.push(s);
+}
+if (win.performance && win.performance.getEntriesByType) {
+var entries = win.performance.getEntriesByType('resource');
+for (var p = 0; p < entries.length; p++) {
+var name = entries[p].name || '';
+if (looksPlayable(name)) chunks.push(name);
+}
+}
+if (win.hlsSource) {
+try { chunks.push(JSON.stringify({ hlsSource: win.hlsSource })); } catch(e) {}
+}
+if (win.player && win.player.config) {
+try { chunks.push(JSON.stringify(win.player.config)); } catch(e) {}
+}
+if (win.fileList) {
+try { chunks.push(JSON.stringify(win.fileList)); } catch(e) {}
+}
+report(chunks.join('\n'), win);
+} catch(e) {}
+}
+
+                                                                                                      function triggerPlay(win) {
+                                                                                                        try {
+                                                                                                          if (!win || !win.document) return;
+                                                                                                          fixVisibility(win.document);
+                                                                                                    
+                                                                                                          // 1. Always dismiss "Continue watching" modal (time_save) prompt if present
+                                                                                                          var timeSaveBtn = win.document.querySelector('.time_save__btn') || win.document.querySelector('.time_save:not(.hidden) button');
+                                                                                                          if (timeSaveBtn && typeof timeSaveBtn.click === 'function') {
+                                                                                                            timeSaveBtn.click();
+                                                                                                          }
+                                                                                                    
+                                                                                                          // 2. Direct <video> play
+                                                                                                          var video = win.document.querySelector('video');
+                                                                                                          if (video) {
+                                                                                                            video.muted = true;
+                                                                                                            if (video.paused) {
+                                                                                                              video.play().catch(function(){});
+                                                                                                            }
+                                                                                                          }
+                                                                                                    
+                                                                                                          // 3. Plyr player API if available
+                                                                                                          if (win.player && typeof win.player.play === 'function') {
+                                                                                                            try { win.player.play(); } catch(e) {}
+                                                                                                          }
+                                                                                                    
+                                                                                                          // 4. Click all known play button selectors (Plyr, Alloha, VideoJS, JWPlayer, etc.)
+                                                                                                          var playSelectors = [
+                                                                                                            '.plyr__control--overlaid',
+                                                                                                            'button[data-plyr="play"]',
+                                                                                                            '.plyr__control[data-plyr="play"]',
+                                                                                                            '.allplay__play-btn',
+                                                                                                            'button.play',
+                                                                                                            '.play-btn',
+                                                                                                            '.vjs-big-play-button',
+                                                                                                            '.jw-display-icon-container',
+                                                                                                            '[data-plyr="play"]'
+                                                                                                          ];
+                                                                                                          for (var s = 0; s < playSelectors.length; s++) {
+                                                                                                            var el = win.document.querySelector(playSelectors[s]);
+                                                                                                            if (el && typeof el.click === 'function') {
+                                                                                                              el.click();
+                                                                                                            }
+                                                                                                          }
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function hookWsInstance(ws, targetWin) {
+                                                                                                        try {
+                                                                                                          if (!ws || ws.__slooshWsHooked) return;
+                                                                                                          ws.__slooshWsHooked = true;
+                                                                                                          ws.addEventListener('message', function(event) {
+                                                                                                            try {
+                                                                                                              var msg = typeof event.data === 'string' ? JSON.parse(event.data) : null;
+                                                                                                              if (msg && msg.type === 'config_update' && msg.edge_hash) {
+                                                                                                                putHeader('accepts-controls', msg.edge_hash);
+                                                                                                                if (msg.ttl) putHeader('x-neo-config-ttl', String(msg.ttl));
+                                                                                                                post('headers', '', targetWin);
+                                                                                                                var bridge = getBridge(targetWin);
+                                                                                                                if (bridge && typeof bridge.onConfigUpdate === 'function') {
+                                                                                                                  bridge.onConfigUpdate(msg.edge_hash, msg.ttl || 0, JSON.stringify(capturedHeaders));
+                                                                                                                }
+                                                                                                              }
+                                                                                                              if (typeof event.data === 'string' && looksPlayable(event.data)) {
+                                                                                                                report(event.data, targetWin);
+                                                                                                              }
+                                                                                                            } catch(e) {
+                                                                                                              if (typeof event.data === 'string' && looksPlayable(event.data)) {
+                                                                                                                report(event.data, targetWin);
+                                                                                                              }
+                                                                                                            }
+                                                                                                          });
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function install(win) {
+                                                                                                        try {
+                                                                                                          if (!win) return;
+                                                                                                          fixVisibility(win.document);
+                                                                                                          defaultHeaders(win);
+                                                                                                    
+                                                                                                          if (!win.__slooshAllohaHooksInstalled) {
+                                                                                                            win.__slooshAllohaHooksInstalled = true;
+                                                                                                    
+                                                                                                            // 1. Hook XMLHttpRequest
+                                                                                                            var originalOpen = win.XMLHttpRequest && win.XMLHttpRequest.prototype.open;
+2026-09-06 21:53:50.561 11756-11942 cr_CookieManager        com.sloosh.tv                        E          var originalSetHeader = win.XMLHttpRequest && win.XMLHttpRequest.prototype.setRequestHeader;
+if (originalOpen && originalSetHeader) {
+win.XMLHttpRequest.prototype.open = function(method, requestUrl) {
+this.__slooshUrl = requestUrl || '';
+this.addEventListener('load', function() {
+var responseUrl = this.responseURL || this.__slooshUrl || '';
+var responseText = '';
+try { responseText = this.responseText || ''; } catch(e) {}
+if (responseUrl.indexOf('/bnsi/') !== -1 && responseText) report(responseText, win);
+if (responseText && responseText.indexOf('hlsSource') !== -1) report(responseText, win);
+if (looksPlayable(responseText)) report(responseText, win);
+if (responseUrl.indexOf('master.m3u8') !== -1 && responseUrl !== lastM3u8) {
+lastM3u8 = responseUrl;
+post('payload', responseUrl, win);
+}
+});
+return originalOpen.apply(this, arguments);
+};
+win.XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
+putHeader(name, value);
+return originalSetHeader.apply(this, arguments);
+};
+}
+
+                                                                                                            // 2. Hook Fetch
+                                                                                                            var originalFetch = win.fetch;
+                                                                                                            if (originalFetch) {
+                                                                                                              win.fetch = function(input, init) {
+                                                                                                                try {
+                                                                                                                  var requestUrl = (typeof input === 'string') ? input : (input && input.url ? input.url : '');
+                                                                                                                  if (init && init.headers) {
+                                                                                                                    if (typeof init.headers.forEach === 'function') init.headers.forEach(function(v, k) { putHeader(k, v); });
+                                                                                                                    else for (var key in init.headers) putHeader(key, init.headers[key]);
+                                                                                                                  }
+                                                                                                                  if (input && input.headers && typeof input.headers.forEach === 'function') input.headers.forEach(function(v, k) { putHeader(k, v); });
+                                                                                                                  if (looksPlayable(requestUrl)) post('payload', requestUrl, win);
+                                                                                                                } catch(e) {}
+                                                                                                    
+                                                                                                                return originalFetch.apply(this, arguments).then(function(response) {
+                                                                                                                  try {
+                                                                                                                    var responseUrl = response.url || '';
+                                                                                                                    if (looksPlayable(responseUrl)) post('payload', responseUrl, win);
+                                                                                                                    var clone = response.clone();
+                                                                                                                    clone.text().then(function(text) { report(text, win); }).catch(function(){});
+                                                                                                                  } catch(e) {}
+                                                                                                                  return response;
+                                                                                                                });
+                                                                                                              };
+                                                                                                            }
+                                                                                                    
+                                                                                                            // 3. Hook WebSocket constructor & prototypes
+                                                                                                            if (win.WebSocket) {
+                                                                                                              var OrigWS = win.WebSocket;
+                                                                                                              win.WebSocket = function(url, protocols) {
+                                                                                                                var ws = protocols ? new OrigWS(url, protocols) : new OrigWS(url);
+                                                                                                                hookWsInstance(ws, win);
+                                                                                                                return ws;
+                                                                                                              };
+                                                                                                              win.WebSocket.prototype = OrigWS.prototype;
+                                                                                                              win.WebSocket.CONNECTING = OrigWS.CONNECTING;
+                                                                                                              win.WebSocket.OPEN = OrigWS.OPEN;
+                                                                                                              win.WebSocket.CLOSING = OrigWS.CLOSING;
+                                                                                                              win.WebSocket.CLOSED = OrigWS.CLOSED;
+                                                                                                    
+                                                                                                              var origSend = OrigWS.prototype.send;
+                                                                                                              if (origSend) {
+                                                                                                                OrigWS.prototype.send = function(data) {
+                                                                                                                  hookWsInstance(this, win);
+                                                                                                                  return origSend.apply(this, arguments);
+                                                                                                                };
+                                                                                                              }
+                                                                                                    
+                                                                                                              var origAddEvt = OrigWS.prototype.addEventListener;
+                                                                                                              if (origAddEvt) {
+                                                                                                                OrigWS.prototype.addEventListener = function(type, listener, options) {
+                                                                                                                  hookWsInstance(this, win);
+                                                                                                                  return origAddEvt.apply(this, arguments);
+                                                                                                                };
+                                                                                                              }
+                                                                                                    
+                                                                                                              try {
+                                                                                                                var origOnMessageDesc = Object.getOwnPropertyDescriptor(OrigWS.prototype, 'onmessage');
+                                                                                                                Object.defineProperty(OrigWS.prototype, 'onmessage', {
+                                                                                                                  get: function() {
+                                                                                                                    return origOnMessageDesc && origOnMessageDesc.get ? origOnMessageDesc.get.call(this) : this.__slooshOnMessage;
+2026-09-06 21:53:50.562 11756-11942 cr_CookieManager        com.sloosh.tv                        E                },
+set: function(fn) {
+hookWsInstance(this, win);
+if (origOnMessageDesc && origOnMessageDesc.set) {
+origOnMessageDesc.set.call(this, fn);
+} else {
+this.__slooshOnMessage = fn;
+}
+},
+configurable: true,
+enumerable: true
+});
+} catch(e) {}
+}
+}
+} catch(e) {}
+}
+
+                                                                                                      function tick() {
+                                                                                                        install(window);
+                                                                                                        scan(window);
+                                                                                                        triggerPlay(window);
+                                                                                                        try {
+                                                                                                          var frames = document.querySelectorAll('iframe');
+                                                                                                          for (var i = 0; i < frames.length; i++) {
+                                                                                                            try {
+                                                                                                              var fWin = frames[i].contentWindow;
+                                                                                                              if (fWin) {
+                                                                                                                install(fWin);
+                                                                                                                scan(fWin);
+                                                                                                                triggerPlay(fWin);
+                                                                                                              }
+                                                                                                            } catch(e) {}
+                                                                                                          }
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      window.__slooshTick = tick;
+                                                                                                      fixVisibility(document);
+                                                                                                      install(window);
+                                                                                                      scan(window);
+                                                                                                      triggerPlay(window);
+                                                                                                      tick();
+                                                                                                      setInterval(tick, 150);
+                                                                                                      window.addEventListener('load', tick);
+                                                                                                      window.addEventListener('DOMContentLoaded', tick);
+                                                                                                    })();
+                                                                                                    
+                                                                                                                </script>
+                                                                                                            </head>
+                                                                                                            <body>
+                                                                                                                <iframe id="alloha_iframe" src="https://Antipathic-as.stravers.live/?token_movie=21df5d3777ae838390d056f5f8e69b&amp;token=ffbd312217e27c4245f2678afe1881&amp;translation=234&amp;season=1&amp;episode=1" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen="" frameborder="0" referrerpolicy="unsafe-url" style="width:100%;height:100%;border:none;"></iframe>
+                                                                                                                <script>
+                                                                                                                (function() {
+                                                                                                                    var f = document.getElementById('alloha_iframe');
+                                                                                                                    if (f) {
+                                                                                                                        f.onload = function() {
+                                                                                                                            try {
+                                                                                                                                if (typeof window.__slooshTick === 'function') window.__slooshTick();
+                                                                                                                            } catch(e) {}
+                                                                                                                        };
+                                                                                                                    }
+                                                                                                                })();
+                                                                                                                </script>
+                                                                                                            
+                                                                                                            </body></html>
+                                                                                                    java.net.URISyntaxException: Bad address: https://antipathic-as.stravers.live/?token_movie=21df5d3777ae838390d056f5f8e69b&token=ffbd312217e27c4245f2678afe1881&translation=234&season=1&episode=1
+                                                                                                    <html><head>
+                                                                                                                <meta charset="UTF-8">
+                                                                                                                <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+                                                                                                                <meta name="referrer" content="always">
+                                                                                                                <meta name="referrer" content="unsafe-url">
+                                                                                                                <style>html, body, iframe { margin:0; padding:0; width:100%; height:100%; background:#000; overflow:hidden; border:0; }</style>
+                                                                                                                <script>
+                                                                                                                
+                                                                                                    (function() {
+                                                                                                      if (window.__slooshAllohaResolverInstalled) return;
+                                                                                                      window.__slooshAllohaResolverInstalled = true;
+                                                                                                      var capturedHeaders = {};
+                                                                                                      var lastPayload = '';
+                                                                                                      var lastM3u8 = '';
+                                                                                                    
+                                                                                                      function fixVisibility(targetDoc) {
+                                                                                                        try {
+                                                                                                          if (!targetDoc) return;
+                                                                                                          Object.defineProperty(targetDoc, 'visibilityState', { get: function() { return 'visible'; }, configurable: true });
+                                                                                                          Object.defineProperty(targetDoc, 'hidden', { get: function() { return false; }, configurable: true });
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function getBridge(win) {
+                                                                                                        if (win && win.AndroidAllohaResolver && typeof win.AndroidAllohaResolver.post === 'function') return win.AndroidAllohaResolver;
+                                                                                                        if (win && win.AndroidBridge && typeof win.AndroidBridge.post === 'function') return win.AndroidBridge;
+                                                                                                        if (window.AndroidAllohaResolver && typeof window.AndroidAllohaResolver.post === 'function') return window.AndroidAllohaResolver;
+                                                                                                        if (window.AndroidBridge && typeof window.AndroidBridge.post === 'function') return window.AndroidBridge;
+                                                                                                        try {
+                                                                                                          if (window.top && window.top.AndroidAllohaResolver && typeof window.top.AndroidAllohaResolver.post === 'function') return window.top.AndroidAllohaResolver;
+2026-09-06 21:53:50.562 11756-11942 cr_CookieManager        com.sloosh.tv                        E        if (window.top && window.top.AndroidBridge && typeof window.top.AndroidBridge.post === 'function') return window.top.AndroidBridge;
+} catch(e) {}
+try {
+if (window.parent && window.parent.AndroidAllohaResolver && typeof window.parent.AndroidAllohaResolver.post === 'function') return window.parent.AndroidAllohaResolver;
+if (window.parent && window.parent.AndroidBridge && typeof window.parent.AndroidBridge.post === 'function') return window.parent.AndroidBridge;
+} catch(e) {}
+return null;
+}
+
+                                                                                                      function post(type, payload, targetWin) {
+                                                                                                        try {
+                                                                                                          var bridge = getBridge(targetWin);
+                                                                                                          if (bridge) {
+                                                                                                            var data = JSON.stringify({ type: type, payload: payload || '', headers: capturedHeaders });
+                                                                                                            bridge.post(data);
+                                                                                                          }
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function putHeader(name, value) {
+                                                                                                        if (!name || !value) return;
+                                                                                                        capturedHeaders[String(name).toLowerCase()] = String(value);
+                                                                                                      }
+                                                                                                    
+                                                                                                      function defaultHeaders(win) {
+                                                                                                        try {
+                                                                                                          if (win.location && win.location.origin) {
+                                                                                                            putHeader('origin', win.location.origin);
+                                                                                                            putHeader('referer', win.location.origin + '/');
+                                                                                                          }
+                                                                                                          if (win.navigator && win.navigator.userAgent) {
+                                                                                                            putHeader('user-agent', win.navigator.userAgent);
+                                                                                                          }
+                                                                                                          putHeader('accept', '*/*');
+                                                                                                          putHeader('sec-fetch-dest', 'empty');
+                                                                                                          putHeader('sec-fetch-mode', 'cors');
+                                                                                                          putHeader('sec-fetch-site', 'cross-site');
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function looksPlayable(text) {
+                                                                                                        return typeof text === 'string' && (
+                                                                                                          text.indexOf('hlsSource') !== -1 ||
+                                                                                                          text.indexOf('.m3u8') !== -1 ||
+                                                                                                          text.indexOf('.mp4') !== -1 ||
+                                                                                                          text.indexOf('.vtt') !== -1
+                                                                                                        );
+                                                                                                      }
+                                                                                                    
+                                                                                                      function report(payload, targetWin) {
+                                                                                                        if (!looksPlayable(payload)) return;
+                                                                                                        if (payload === lastPayload) return;
+                                                                                                        lastPayload = payload;
+                                                                                                        post('payload', payload, targetWin);
+                                                                                                      }
+                                                                                                    
+                                                                                                      function scan(win) {
+                                                                                                        try {
+                                                                                                          if (!win || !win.document) return;
+                                                                                                          defaultHeaders(win);
+                                                                                                          var chunks = [];
+                                                                                                          if (win.location && win.location.href) chunks.push(win.location.href);
+                                                                                                          if (win.document && win.document.documentElement) chunks.push(win.document.documentElement.outerHTML);
+                                                                                                          var media = win.document ? win.document.querySelectorAll('video, source, track') : [];
+                                                                                                          for (var i = 0; i < media.length; i++) {
+                                                                                                            var s = media[i].currentSrc || media[i].src || media[i].getAttribute('src') || '';
+                                                                                                            if (s) chunks.push(s);
+                                                                                                          }
+                                                                                                          if (win.performance && win.performance.getEntriesByType) {
+                                                                                                            var entries = win.performance.getEntriesByType('resource');
+                                                                                                            for (var p = 0; p < entries.length; p++) {
+                                                                                                              var name = entries[p].name || '';
+                                                                                                              if (looksPlayable(name)) chunks.push(name);
+                                                                                                            }
+                                                                                                          }
+                                                                                                          if (win.hlsSource) {
+                                                                                                            try { chunks.push(JSON.stringify({ hlsSource: win.hlsSource })); } catch(e) {}
+                                                                                                          }
+                                                                                                          if (win.player && win.player.config) {
+                                                                                                            try { chunks.push(JSON.stringify(win.player.config)); } catch(e) {}
+                                                                                                          }
+                                                                                                          if (win.fileList) {
+                                                                                                            try { chunks.push(JSON.stringify(win.fileList)); } catch(e) {}
+                                                                                                          }
+                                                                                                          report(chunks.join('\n'), win);
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function triggerPlay(win) {
+                                                                                                        try {
+                                                                                                          if (!win || !win.document) return;
+                                                                                                          fixVisibility(win.document);
+                                                                                                    
+                                                                                                          // 1. Always dismiss "Continue watching" modal (time_save) prompt if present
+                                                                                                          var timeSaveBtn = win.document.querySelector('.time_save__btn') || win.document.querySelector('.time_save:not(.hidden) button');
+                                                                                                          if (timeSaveBtn && typeof timeSaveBtn.click === 'function') {
+                                                                                                            timeSaveBtn.click();
+                                                                                                          }
+                                                                                                    
+                                                                                                          // 2. Direct <video> play
+                                                                                                          var video = win.document.querySelector('video');
+                                                                                                          if (video) {
+                                                                                                            video.muted = true;
+                                                                                                            if (video.paused) {
+                                                                                                              video.play().catch(function(){});
+                                                                                                            }
+                                                                                                          }
+                                                                                                    
+                                                                                                          // 3. Plyr player API if available
+                                                                                                          if (win.player && typeof win.player.play === 'function') {
+                                                                                                            try { win.player.play(); } catch(e) {}
+2026-09-06 21:53:50.563 11756-11942 cr_CookieManager        com.sloosh.tv                        E        }
+
+                                                                                                          // 4. Click all known play button selectors (Plyr, Alloha, VideoJS, JWPlayer, etc.)
+                                                                                                          var playSelectors = [
+                                                                                                            '.plyr__control--overlaid',
+                                                                                                            'button[data-plyr="play"]',
+                                                                                                            '.plyr__control[data-plyr="play"]',
+                                                                                                            '.allplay__play-btn',
+                                                                                                            'button.play',
+                                                                                                            '.play-btn',
+                                                                                                            '.vjs-big-play-button',
+                                                                                                            '.jw-display-icon-container',
+                                                                                                            '[data-plyr="play"]'
+                                                                                                          ];
+                                                                                                          for (var s = 0; s < playSelectors.length; s++) {
+                                                                                                            var el = win.document.querySelector(playSelectors[s]);
+                                                                                                            if (el && typeof el.click === 'function') {
+                                                                                                              el.click();
+                                                                                                            }
+                                                                                                          }
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function hookWsInstance(ws, targetWin) {
+                                                                                                        try {
+                                                                                                          if (!ws || ws.__slooshWsHooked) return;
+                                                                                                          ws.__slooshWsHooked = true;
+                                                                                                          ws.addEventListener('message', function(event) {
+                                                                                                            try {
+                                                                                                              var msg = typeof event.data === 'string' ? JSON.parse(event.data) : null;
+                                                                                                              if (msg && msg.type === 'config_update' && msg.edge_hash) {
+                                                                                                                putHeader('accepts-controls', msg.edge_hash);
+                                                                                                                if (msg.ttl) putHeader('x-neo-config-ttl', String(msg.ttl));
+                                                                                                                post('headers', '', targetWin);
+                                                                                                                var bridge = getBridge(targetWin);
+                                                                                                                if (bridge && typeof bridge.onConfigUpdate === 'function') {
+                                                                                                                  bridge.onConfigUpdate(msg.edge_hash, msg.ttl || 0, JSON.stringify(capturedHeaders));
+                                                                                                                }
+                                                                                                              }
+                                                                                                              if (typeof event.data === 'string' && looksPlayable(event.data)) {
+                                                                                                                report(event.data, targetWin);
+                                                                                                              }
+                                                                                                            } catch(e) {
+                                                                                                              if (typeof event.data === 'string' && looksPlayable(event.data)) {
+                                                                                                                report(event.data, targetWin);
+                                                                                                              }
+                                                                                                            }
+                                                                                                          });
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function install(win) {
+                                                                                                        try {
+                                                                                                          if (!win) return;
+                                                                                                          fixVisibility(win.document);
+                                                                                                          defaultHeaders(win);
+                                                                                                    
+                                                                                                          if (!win.__slooshAllohaHooksInstalled) {
+                                                                                                            win.__slooshAllohaHooksInstalled = true;
+                                                                                                    
+                                                                                                            // 1. Hook XMLHttpRequest
+                                                                                                            var originalOpen = win.XMLHttpRequest && win.XMLHttpRequest.prototype.open;
+                                                                                                            var originalSetHeader = win.XMLHttpRequest && win.XMLHttpRequest.prototype.setRequestHeader;
+                                                                                                            if (originalOpen && originalSetHeader) {
+                                                                                                              win.XMLHttpRequest.prototype.open = function(method, requestUrl) {
+                                                                                                                this.__slooshUrl = requestUrl || '';
+                                                                                                                this.addEventListener('load', function() {
+                                                                                                                  var responseUrl = this.responseURL || this.__slooshUrl || '';
+                                                                                                                  var responseText = '';
+                                                                                                                  try { responseText = this.responseText || ''; } catch(e) {}
+                                                                                                                  if (responseUrl.indexOf('/bnsi/') !== -1 && responseText) report(responseText, win);
+                                                                                                                  if (responseText && responseText.indexOf('hlsSource') !== -1) report(responseText, win);
+                                                                                                                  if (looksPlayable(responseText)) report(responseText, win);
+                                                                                                                  if (responseUrl.indexOf('master.m3u8') !== -1 && responseUrl !== lastM3u8) {
+                                                                                                                    lastM3u8 = responseUrl;
+                                                                                                                    post('payload', responseUrl, win);
+                                                                                                                  }
+                                                                                                                });
+                                                                                                                return originalOpen.apply(this, arguments);
+                                                                                                              };
+                                                                                                              win.XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
+                                                                                                                putHeader(name, value);
+                                                                                                                return originalSetHeader.apply(this, arguments);
+                                                                                                              };
+                                                                                                            }
+                                                                                                    
+                                                                                                            // 2. Hook Fetch
+                                                                                                            var originalFetch = win.fetch;
+                                                                                                            if (originalFetch) {
+                                                                                                              win.fetch = function(input, init) {
+                                                                                                                try {
+                                                                                                                  var requestUrl = (typeof input === 'string') ? input : (input && input.url ? input.url : '');
+                                                                                                                  if (init && init.headers) {
+                                                                                                                    if (typeof init.headers.forEach === 'function') init.headers.forEach(function(v, k) { putHeader(k, v); });
+                                                                                                                    else for (var key in init.headers) putHeader(key, init.headers[key]);
+                                                                                                                  }
+2026-09-06 21:53:50.564 11756-11942 cr_CookieManager        com.sloosh.tv                        E                if (input && input.headers && typeof input.headers.forEach === 'function') input.headers.forEach(function(v, k) { putHeader(k, v); });
+if (looksPlayable(requestUrl)) post('payload', requestUrl, win);
+} catch(e) {}
+
+                                                                                                                return originalFetch.apply(this, arguments).then(function(response) {
+                                                                                                                  try {
+                                                                                                                    var responseUrl = response.url || '';
+                                                                                                                    if (looksPlayable(responseUrl)) post('payload', responseUrl, win);
+                                                                                                                    var clone = response.clone();
+                                                                                                                    clone.text().then(function(text) { report(text, win); }).catch(function(){});
+                                                                                                                  } catch(e) {}
+                                                                                                                  return response;
+                                                                                                                });
+                                                                                                              };
+                                                                                                            }
+                                                                                                    
+                                                                                                            // 3. Hook WebSocket constructor & prototypes
+                                                                                                            if (win.WebSocket) {
+                                                                                                              var OrigWS = win.WebSocket;
+                                                                                                              win.WebSocket = function(url, protocols) {
+                                                                                                                var ws = protocols ? new OrigWS(url, protocols) : new OrigWS(url);
+                                                                                                                hookWsInstance(ws, win);
+                                                                                                                return ws;
+                                                                                                              };
+                                                                                                              win.WebSocket.prototype = OrigWS.prototype;
+                                                                                                              win.WebSocket.CONNECTING = OrigWS.CONNECTING;
+                                                                                                              win.WebSocket.OPEN = OrigWS.OPEN;
+                                                                                                              win.WebSocket.CLOSING = OrigWS.CLOSING;
+                                                                                                              win.WebSocket.CLOSED = OrigWS.CLOSED;
+                                                                                                    
+                                                                                                              var origSend = OrigWS.prototype.send;
+                                                                                                              if (origSend) {
+                                                                                                                OrigWS.prototype.send = function(data) {
+                                                                                                                  hookWsInstance(this, win);
+                                                                                                                  return origSend.apply(this, arguments);
+                                                                                                                };
+                                                                                                              }
+                                                                                                    
+                                                                                                              var origAddEvt = OrigWS.prototype.addEventListener;
+                                                                                                              if (origAddEvt) {
+                                                                                                                OrigWS.prototype.addEventListener = function(type, listener, options) {
+                                                                                                                  hookWsInstance(this, win);
+                                                                                                                  return origAddEvt.apply(this, arguments);
+                                                                                                                };
+                                                                                                              }
+                                                                                                    
+                                                                                                              try {
+                                                                                                                var origOnMessageDesc = Object.getOwnPropertyDescriptor(OrigWS.prototype, 'onmessage');
+                                                                                                                Object.defineProperty(OrigWS.prototype, 'onmessage', {
+                                                                                                                  get: function() {
+                                                                                                                    return origOnMessageDesc && origOnMessageDesc.get ? origOnMessageDesc.get.call(this) : this.__slooshOnMessage;
+                                                                                                                  },
+                                                                                                                  set: function(fn) {
+                                                                                                                    hookWsInstance(this, win);
+                                                                                                                    if (origOnMessageDesc && origOnMessageDesc.set) {
+                                                                                                                      origOnMessageDesc.set.call(this, fn);
+                                                                                                                    } else {
+                                                                                                                      this.__slooshOnMessage = fn;
+                                                                                                                    }
+                                                                                                                  },
+                                                                                                                  configurable: true,
+                                                                                                                  enumerable: true
+                                                                                                                });
+                                                                                                              } catch(e) {}
+                                                                                                            }
+                                                                                                          }
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function tick() {
+                                                                                                        install(window);
+                                                                                                        scan(window);
+                                                                                                        triggerPlay(window);
+                                                                                                        try {
+                                                                                                          var frames = document.querySelectorAll('iframe');
+                                                                                                          for (var i = 0; i < frames.length; i++) {
+                                                                                                            try {
+                                                                                                              var fWin = frames[i].contentWindow;
+                                                                                                              if (fWin) {
+                                                                                                                install(fWin);
+                                                                                                                scan(fWin);
+                                                                                                                triggerPlay(fWin);
+                                                                                                              }
+                                                                                                            } catch(e) {}
+                                                                                                          }
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      window.__slooshTick = tick;
+                                                                                                      fixVisibility(document);
+                                                                                                      install(window);
+                                                                                                      scan(window);
+                                                                                                      triggerPlay(window);
+                                                                                                      tick();
+                                                                                                      setInterval(tick, 150);
+                                                                                                      window.addEventListener('load', tick);
+                                                                                                      window.addEventListener('DOMContentLoaded', tick);
+                                                                                                    })();
+                                                                                                    
+                                                                                                                </script>
+                                                                                                            </head>
+                                                                                                            <body>
+                                                                                                                <iframe id="alloha_iframe" src="https://Antipathic-as.stravers.live/?token_movie=21df5d3777ae838390d056f5f8e69b&amp;token=ffbd312217e27c4245f2678afe1881&amp;translation=234&amp;season=1&amp;episode=1" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen="" frameborder="0" referrerpolicy="unsafe-url" style="width:100%;height:100%;border:none;"></iframe>
+                                                                                                                <script>
+                                                                                                                (function() {
+                                                                                                                    var f = document.getElementById('alloha_iframe');
+                                                                                                                    if (f) {
+                                                                                                                        f.onload = function() {
+                                                                                                                            try {
+2026-09-06 21:53:50.564 11756-11942 cr_CookieManager        com.sloosh.tv                        E                              if (typeof window.__slooshTick === 'function') window.__slooshTick(); (Fix with AI)
+} catch(e) {}
+};
+}
+})();
+</script>
+
+                                                                                                            </body></html>
+                                                                                                    	at com.android.webview.chromium.a.a(chromium-TrichromeWebViewGoogle.aab-stable-749902436:184)
+                                                                                                    	at com.android.webview.chromium.a.getCookie(chromium-TrichromeWebViewGoogle.aab-stable-749902436:4)
+                                                                                                    	at com.sloosh.tv.data.alloha.HlsProxyServer.buildRequest(HlsProxyServer.kt:562)
+                                                                                                    	at com.sloosh.tv.data.alloha.HlsProxyServer.fetchText(HlsProxyServer.kt:510)
+                                                                                                    	at com.sloosh.tv.data.alloha.HlsProxyServer.servePlaylist(HlsProxyServer.kt:311)
+                                                                                                    	at com.sloosh.tv.data.alloha.HlsProxyServer.access$servePlaylist(HlsProxyServer.kt:28)
+                                                                                                    	at com.sloosh.tv.data.alloha.HlsProxyServer$handleConnection$2.invokeSuspend(HlsProxyServer.kt:266)
+                                                                                                    	at com.sloosh.tv.data.alloha.HlsProxyServer$handleConnection$2.invoke(Unknown Source:8)
+                                                                                                    	at com.sloosh.tv.data.alloha.HlsProxyServer$handleConnection$2.invoke(Unknown Source:4)
+                                                                                                    	at kotlinx.coroutines.intrinsics.UndispatchedKt.startUndispatchedOrReturn(Undispatched.kt:78)
+                                                                                                    	at kotlinx.coroutines.BuildersKt__Builders_commonKt.withContext(Builders.common.kt:167)
+                                                                                                    	at kotlinx.coroutines.BuildersKt.withContext(Unknown Source:1)
+                                                                                                    	at com.sloosh.tv.data.alloha.HlsProxyServer.handleConnection(HlsProxyServer.kt:197)
+                                                                                                    	at com.sloosh.tv.data.alloha.HlsProxyServer.access$handleConnection(HlsProxyServer.kt:28)
+                                                                                                    	at com.sloosh.tv.data.alloha.HlsProxyServer$start$1$1$1.invokeSuspend(HlsProxyServer.kt:153)
+                                                                                                    	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+                                                                                                    	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:108)
+                                                                                                    	at kotlinx.coroutines.internal.LimitedDispatcher$Worker.run(LimitedDispatcher.kt:115)
+                                                                                                    	at kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:103)
+                                                                                                    	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:584)
+                                                                                                    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:793)
+                                                                                                    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:697)
+                                                                                                    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:684)
+2026-09-06 21:53:50.759 11756-11942 HlsProxy                com.sloosh.tv                        W  fetchText HTTP 404 for https://antipathic-as.stravers.live/?token_movie=21df5d3777ae838390d056f5f8e69b&
+2026-09-06 21:53:50.959 11756-11942 cr_CookieManager        com.sloosh.tv                        E  Unable to get cookies due to error parsing URL: https://antipathic-as.stravers.live/?token_movie=21df5d3777ae838390d056f5f8e69b&token=ffbd312217e27c4245f2678afe1881&translation=234&season=1&episode=1
+<html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="always">
+<meta name="referrer" content="unsafe-url">
+<style>html, body, iframe { margin:0; padding:0; width:100%; height:100%; background:#000; overflow:hidden; border:0; }</style>
+<script>
+
+                                                                                                    (function() {
+                                                                                                      if (window.__slooshAllohaResolverInstalled) return;
+                                                                                                      window.__slooshAllohaResolverInstalled = true;
+                                                                                                      var capturedHeaders = {};
+                                                                                                      var lastPayload = '';
+                                                                                                      var lastM3u8 = '';
+                                                                                                    
+                                                                                                      function fixVisibility(targetDoc) {
+                                                                                                        try {
+                                                                                                          if (!targetDoc) return;
+                                                                                                          Object.defineProperty(targetDoc, 'visibilityState', { get: function() { return 'visible'; }, configurable: true });
+                                                                                                          Object.defineProperty(targetDoc, 'hidden', { get: function() { return false; }, configurable: true });
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function getBridge(win) {
+                                                                                                        if (win && win.AndroidAllohaResolver && typeof win.AndroidAllohaResolver.post === 'function') return win.AndroidAllohaResolver;
+                                                                                                        if (win && win.AndroidBridge && typeof win.AndroidBridge.post === 'function') return win.AndroidBridge;
+                                                                                                        if (window.AndroidAllohaResolver && typeof window.AndroidAllohaResolver.post === 'function') return window.AndroidAllohaResolver;
+                                                                                                        if (window.AndroidBridge && typeof window.AndroidBridge.post === 'function') return window.AndroidBridge;
+                                                                                                        try {
+                                                                                                          if (window.top && window.top.AndroidAllohaResolver && typeof window.top.AndroidAllohaResolver.post === 'function') return window.top.AndroidAllohaResolver;
+                                                                                                          if (window.top && window.top.AndroidBridge && typeof window.top.AndroidBridge.post === 'function') return window.top.AndroidBridge;
+                                                                                                        } catch(e) {}
+                                                                                                        try {
+                                                                                                          if (window.parent && window.parent.AndroidAllohaResolver && typeof window.parent.AndroidAllohaResolver.post === 'function') return window.parent.AndroidAllohaResolver;
+                                                                                                          if (window.parent && window.parent.AndroidBridge && typeof window.parent.AndroidBridge.post === 'function') return window.parent.AndroidBridge;
+                                                                                                        } catch(e) {}
+                                                                                                        return null;
+                                                                                                      }
+                                                                                                    
+                                                                                                      function post(type, payload, targetWin) {
+                                                                                                        try {
+                                                                                                          var bridge = getBridge(targetWin);
+                                                                                                          if (bridge) {
+                                                                                                            var data = JSON.stringify({ type: type, payload: payload || '', headers: capturedHeaders });
+                                                                                                            bridge.post(data);
+                                                                                                          }
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function putHeader(name, value) {
+                                                                                                        if (!name || !value) return;
+                                                                                                        capturedHeaders[String(name).toLowerCase()] = String(value);
+                                                                                                      }
+                                                                                                    
+                                                                                                      function defaultHeaders(win) {
+                                                                                                        try {
+                                                                                                          if (win.location && win.location.origin) {
+                                                                                                            putHeader('origin', win.location.origin);
+                                                                                                            putHeader('referer', win.location.origin + '/');
+                                                                                                          }
+                                                                                                          if (win.navigator && win.navigator.userAgent) {
+                                                                                                            putHeader('user-agent', win.navigator.userAgent);
+                                                                                                          }
+                                                                                                          putHeader('accept', '*/*');
+                                                                                                          putHeader('sec-fetch-dest', 'empty');
+                                                                                                          putHeader('sec-fetch-mode', 'cors');
+                                                                                                          putHeader('sec-fetch-site', 'cross-site');
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function looksPlayable(text) {
+                                                                                                        return typeof text === 'string' && (
+                                                                                                          text.indexOf('hlsSource') !== -1 ||
+                                                                                                          text.indexOf('.m3u8') !== -1 ||
+                                                                                                          text.indexOf('.mp4') !== -1 ||
+                                                                                                          text.indexOf('.vtt') !== -1
+                                                                                                        );
+                                                                                                      }
+                                                                                                    
+                                                                                                      function report(payload, targetWin) {
+                                                                                                        if (!looksPlayable(payload)) return;
+                                                                                                        if (payload === lastPayload) return;
+                                                                                                        lastPayload = payload;
+                                                                                                        post('payload', payload, targetWin);
+                                                                                                      }
+                                                                                                    
+                                                                                                      function scan(win) {
+                                                                                                        try {
+                                                                                                          if (!win || !win.document) return;
+                                                                                                          defaultHeaders(win);
+                                                                                                          var chunks = [];
+                                                                                                          if (win.location && win.location.href) chunks.push(win.location.href);
+2026-09-06 21:53:50.965 11756-11942 cr_CookieManager        com.sloosh.tv                        E        if (win.document && win.document.documentElement) chunks.push(win.document.documentElement.outerHTML);
+var media = win.document ? win.document.querySelectorAll('video, source, track') : [];
+for (var i = 0; i < media.length; i++) {
+var s = media[i].currentSrc || media[i].src || media[i].getAttribute('src') || '';
+if (s) chunks.push(s);
+}
+if (win.performance && win.performance.getEntriesByType) {
+var entries = win.performance.getEntriesByType('resource');
+for (var p = 0; p < entries.length; p++) {
+var name = entries[p].name || '';
+if (looksPlayable(name)) chunks.push(name);
+}
+}
+if (win.hlsSource) {
+try { chunks.push(JSON.stringify({ hlsSource: win.hlsSource })); } catch(e) {}
+}
+if (win.player && win.player.config) {
+try { chunks.push(JSON.stringify(win.player.config)); } catch(e) {}
+}
+if (win.fileList) {
+try { chunks.push(JSON.stringify(win.fileList)); } catch(e) {}
+}
+report(chunks.join('\n'), win);
+} catch(e) {}
+}
+
+                                                                                                      function triggerPlay(win) {
+                                                                                                        try {
+                                                                                                          if (!win || !win.document) return;
+                                                                                                          fixVisibility(win.document);
+                                                                                                    
+                                                                                                          // 1. Always dismiss "Continue watching" modal (time_save) prompt if present
+                                                                                                          var timeSaveBtn = win.document.querySelector('.time_save__btn') || win.document.querySelector('.time_save:not(.hidden) button');
+                                                                                                          if (timeSaveBtn && typeof timeSaveBtn.click === 'function') {
+                                                                                                            timeSaveBtn.click();
+                                                                                                          }
+                                                                                                    
+                                                                                                          // 2. Direct <video> play
+                                                                                                          var video = win.document.querySelector('video');
+                                                                                                          if (video) {
+                                                                                                            video.muted = true;
+                                                                                                            if (video.paused) {
+                                                                                                              video.play().catch(function(){});
+                                                                                                            }
+                                                                                                          }
+                                                                                                    
+                                                                                                          // 3. Plyr player API if available
+                                                                                                          if (win.player && typeof win.player.play === 'function') {
+                                                                                                            try { win.player.play(); } catch(e) {}
+                                                                                                          }
+                                                                                                    
+                                                                                                          // 4. Click all known play button selectors (Plyr, Alloha, VideoJS, JWPlayer, etc.)
+                                                                                                          var playSelectors = [
+                                                                                                            '.plyr__control--overlaid',
+                                                                                                            'button[data-plyr="play"]',
+                                                                                                            '.plyr__control[data-plyr="play"]',
+                                                                                                            '.allplay__play-btn',
+                                                                                                            'button.play',
+                                                                                                            '.play-btn',
+                                                                                                            '.vjs-big-play-button',
+                                                                                                            '.jw-display-icon-container',
+                                                                                                            '[data-plyr="play"]'
+                                                                                                          ];
+                                                                                                          for (var s = 0; s < playSelectors.length; s++) {
+                                                                                                            var el = win.document.querySelector(playSelectors[s]);
+                                                                                                            if (el && typeof el.click === 'function') {
+                                                                                                              el.click();
+                                                                                                            }
+                                                                                                          }
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function hookWsInstance(ws, targetWin) {
+                                                                                                        try {
+                                                                                                          if (!ws || ws.__slooshWsHooked) return;
+                                                                                                          ws.__slooshWsHooked = true;
+                                                                                                          ws.addEventListener('message', function(event) {
+                                                                                                            try {
+                                                                                                              var msg = typeof event.data === 'string' ? JSON.parse(event.data) : null;
+                                                                                                              if (msg && msg.type === 'config_update' && msg.edge_hash) {
+                                                                                                                putHeader('accepts-controls', msg.edge_hash);
+                                                                                                                if (msg.ttl) putHeader('x-neo-config-ttl', String(msg.ttl));
+                                                                                                                post('headers', '', targetWin);
+                                                                                                                var bridge = getBridge(targetWin);
+                                                                                                                if (bridge && typeof bridge.onConfigUpdate === 'function') {
+                                                                                                                  bridge.onConfigUpdate(msg.edge_hash, msg.ttl || 0, JSON.stringify(capturedHeaders));
+                                                                                                                }
+                                                                                                              }
+                                                                                                              if (typeof event.data === 'string' && looksPlayable(event.data)) {
+                                                                                                                report(event.data, targetWin);
+                                                                                                              }
+                                                                                                            } catch(e) {
+                                                                                                              if (typeof event.data === 'string' && looksPlayable(event.data)) {
+                                                                                                                report(event.data, targetWin);
+                                                                                                              }
+                                                                                                            }
+                                                                                                          });
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function install(win) {
+                                                                                                        try {
+                                                                                                          if (!win) return;
+                                                                                                          fixVisibility(win.document);
+                                                                                                          defaultHeaders(win);
+                                                                                                    
+                                                                                                          if (!win.__slooshAllohaHooksInstalled) {
+                                                                                                            win.__slooshAllohaHooksInstalled = true;
+                                                                                                    
+                                                                                                            // 1. Hook XMLHttpRequest
+                                                                                                            var originalOpen = win.XMLHttpRequest && win.XMLHttpRequest.prototype.open;
+2026-09-06 21:53:50.968 11756-11942 cr_CookieManager        com.sloosh.tv                        E          var originalSetHeader = win.XMLHttpRequest && win.XMLHttpRequest.prototype.setRequestHeader;
+if (originalOpen && originalSetHeader) {
+win.XMLHttpRequest.prototype.open = function(method, requestUrl) {
+this.__slooshUrl = requestUrl || '';
+this.addEventListener('load', function() {
+var responseUrl = this.responseURL || this.__slooshUrl || '';
+var responseText = '';
+try { responseText = this.responseText || ''; } catch(e) {}
+if (responseUrl.indexOf('/bnsi/') !== -1 && responseText) report(responseText, win);
+if (responseText && responseText.indexOf('hlsSource') !== -1) report(responseText, win);
+if (looksPlayable(responseText)) report(responseText, win);
+if (responseUrl.indexOf('master.m3u8') !== -1 && responseUrl !== lastM3u8) {
+lastM3u8 = responseUrl;
+post('payload', responseUrl, win);
+}
+});
+return originalOpen.apply(this, arguments);
+};
+win.XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
+putHeader(name, value);
+return originalSetHeader.apply(this, arguments);
+};
+}
+
+                                                                                                            // 2. Hook Fetch
+                                                                                                            var originalFetch = win.fetch;
+                                                                                                            if (originalFetch) {
+                                                                                                              win.fetch = function(input, init) {
+                                                                                                                try {
+                                                                                                                  var requestUrl = (typeof input === 'string') ? input : (input && input.url ? input.url : '');
+                                                                                                                  if (init && init.headers) {
+                                                                                                                    if (typeof init.headers.forEach === 'function') init.headers.forEach(function(v, k) { putHeader(k, v); });
+                                                                                                                    else for (var key in init.headers) putHeader(key, init.headers[key]);
+                                                                                                                  }
+                                                                                                                  if (input && input.headers && typeof input.headers.forEach === 'function') input.headers.forEach(function(v, k) { putHeader(k, v); });
+                                                                                                                  if (looksPlayable(requestUrl)) post('payload', requestUrl, win);
+                                                                                                                } catch(e) {}
+                                                                                                    
+                                                                                                                return originalFetch.apply(this, arguments).then(function(response) {
+                                                                                                                  try {
+                                                                                                                    var responseUrl = response.url || '';
+                                                                                                                    if (looksPlayable(responseUrl)) post('payload', responseUrl, win);
+                                                                                                                    var clone = response.clone();
+                                                                                                                    clone.text().then(function(text) { report(text, win); }).catch(function(){});
+                                                                                                                  } catch(e) {}
+                                                                                                                  return response;
+                                                                                                                });
+                                                                                                              };
+                                                                                                            }
+                                                                                                    
+                                                                                                            // 3. Hook WebSocket constructor & prototypes
+                                                                                                            if (win.WebSocket) {
+                                                                                                              var OrigWS = win.WebSocket;
+                                                                                                              win.WebSocket = function(url, protocols) {
+                                                                                                                var ws = protocols ? new OrigWS(url, protocols) : new OrigWS(url);
+                                                                                                                hookWsInstance(ws, win);
+                                                                                                                return ws;
+                                                                                                              };
+                                                                                                              win.WebSocket.prototype = OrigWS.prototype;
+                                                                                                              win.WebSocket.CONNECTING = OrigWS.CONNECTING;
+                                                                                                              win.WebSocket.OPEN = OrigWS.OPEN;
+                                                                                                              win.WebSocket.CLOSING = OrigWS.CLOSING;
+                                                                                                              win.WebSocket.CLOSED = OrigWS.CLOSED;
+                                                                                                    
+                                                                                                              var origSend = OrigWS.prototype.send;
+                                                                                                              if (origSend) {
+                                                                                                                OrigWS.prototype.send = function(data) {
+                                                                                                                  hookWsInstance(this, win);
+                                                                                                                  return origSend.apply(this, arguments);
+                                                                                                                };
+                                                                                                              }
+                                                                                                    
+                                                                                                              var origAddEvt = OrigWS.prototype.addEventListener;
+                                                                                                              if (origAddEvt) {
+                                                                                                                OrigWS.prototype.addEventListener = function(type, listener, options) {
+                                                                                                                  hookWsInstance(this, win);
+                                                                                                                  return origAddEvt.apply(this, arguments);
+                                                                                                                };
+                                                                                                              }
+                                                                                                    
+                                                                                                              try {
+                                                                                                                var origOnMessageDesc = Object.getOwnPropertyDescriptor(OrigWS.prototype, 'onmessage');
+                                                                                                                Object.defineProperty(OrigWS.prototype, 'onmessage', {
+                                                                                                                  get: function() {
+                                                                                                                    return origOnMessageDesc && origOnMessageDesc.get ? origOnMessageDesc.get.call(this) : this.__slooshOnMessage;
+2026-09-06 21:53:50.968 11756-11942 cr_CookieManager        com.sloosh.tv                        E                },
+set: function(fn) {
+hookWsInstance(this, win);
+if (origOnMessageDesc && origOnMessageDesc.set) {
+origOnMessageDesc.set.call(this, fn);
+} else {
+this.__slooshOnMessage = fn;
+}
+},
+configurable: true,
+enumerable: true
+});
+} catch(e) {}
+}
+}
+} catch(e) {}
+}
+
+                                                                                                      function tick() {
+                                                                                                        install(window);
+                                                                                                        scan(window);
+                                                                                                        triggerPlay(window);
+                                                                                                        try {
+                                                                                                          var frames = document.querySelectorAll('iframe');
+                                                                                                          for (var i = 0; i < frames.length; i++) {
+                                                                                                            try {
+                                                                                                              var fWin = frames[i].contentWindow;
+                                                                                                              if (fWin) {
+                                                                                                                install(fWin);
+                                                                                                                scan(fWin);
+                                                                                                                triggerPlay(fWin);
+                                                                                                              }
+                                                                                                            } catch(e) {}
+                                                                                                          }
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      window.__slooshTick = tick;
+                                                                                                      fixVisibility(document);
+                                                                                                      install(window);
+                                                                                                      scan(window);
+                                                                                                      triggerPlay(window);
+                                                                                                      tick();
+                                                                                                      setInterval(tick, 150);
+                                                                                                      window.addEventListener('load', tick);
+                                                                                                      window.addEventListener('DOMContentLoaded', tick);
+                                                                                                    })();
+                                                                                                    
+                                                                                                                </script>
+                                                                                                            </head>
+                                                                                                            <body>
+                                                                                                                <iframe id="alloha_iframe" src="https://Antipathic-as.stravers.live/?token_movie=21df5d3777ae838390d056f5f8e69b&amp;token=ffbd312217e27c4245f2678afe1881&amp;translation=234&amp;season=1&amp;episode=1" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen="" frameborder="0" referrerpolicy="unsafe-url" style="width:100%;height:100%;border:none;"></iframe>
+                                                                                                                <script>
+                                                                                                                (function() {
+                                                                                                                    var f = document.getElementById('alloha_iframe');
+                                                                                                                    if (f) {
+                                                                                                                        f.onload = function() {
+                                                                                                                            try {
+                                                                                                                                if (typeof window.__slooshTick === 'function') window.__slooshTick();
+                                                                                                                            } catch(e) {}
+                                                                                                                        };
+                                                                                                                    }
+                                                                                                                })();
+                                                                                                                </script>
+                                                                                                            
+                                                                                                            </body></html>
+                                                                                                    java.net.URISyntaxException: Bad address: https://antipathic-as.stravers.live/?token_movie=21df5d3777ae838390d056f5f8e69b&token=ffbd312217e27c4245f2678afe1881&translation=234&season=1&episode=1
+                                                                                                    <html><head>
+                                                                                                                <meta charset="UTF-8">
+                                                                                                                <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+                                                                                                                <meta name="referrer" content="always">
+                                                                                                                <meta name="referrer" content="unsafe-url">
+                                                                                                                <style>html, body, iframe { margin:0; padding:0; width:100%; height:100%; background:#000; overflow:hidden; border:0; }</style>
+                                                                                                                <script>
+                                                                                                                
+                                                                                                    (function() {
+                                                                                                      if (window.__slooshAllohaResolverInstalled) return;
+                                                                                                      window.__slooshAllohaResolverInstalled = true;
+                                                                                                      var capturedHeaders = {};
+                                                                                                      var lastPayload = '';
+                                                                                                      var lastM3u8 = '';
+                                                                                                    
+                                                                                                      function fixVisibility(targetDoc) {
+                                                                                                        try {
+                                                                                                          if (!targetDoc) return;
+                                                                                                          Object.defineProperty(targetDoc, 'visibilityState', { get: function() { return 'visible'; }, configurable: true });
+                                                                                                          Object.defineProperty(targetDoc, 'hidden', { get: function() { return false; }, configurable: true });
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function getBridge(win) {
+                                                                                                        if (win && win.AndroidAllohaResolver && typeof win.AndroidAllohaResolver.post === 'function') return win.AndroidAllohaResolver;
+                                                                                                        if (win && win.AndroidBridge && typeof win.AndroidBridge.post === 'function') return win.AndroidBridge;
+                                                                                                        if (window.AndroidAllohaResolver && typeof window.AndroidAllohaResolver.post === 'function') return window.AndroidAllohaResolver;
+                                                                                                        if (window.AndroidBridge && typeof window.AndroidBridge.post === 'function') return window.AndroidBridge;
+                                                                                                        try {
+                                                                                                          if (window.top && window.top.AndroidAllohaResolver && typeof window.top.AndroidAllohaResolver.post === 'function') return window.top.AndroidAllohaResolver;
+2026-09-06 21:53:50.969 11756-11942 cr_CookieManager        com.sloosh.tv                        E        if (window.top && window.top.AndroidBridge && typeof window.top.AndroidBridge.post === 'function') return window.top.AndroidBridge;
+} catch(e) {}
+try {
+if (window.parent && window.parent.AndroidAllohaResolver && typeof window.parent.AndroidAllohaResolver.post === 'function') return window.parent.AndroidAllohaResolver;
+if (window.parent && window.parent.AndroidBridge && typeof window.parent.AndroidBridge.post === 'function') return window.parent.AndroidBridge;
+} catch(e) {}
+return null;
+}
+
+                                                                                                      function post(type, payload, targetWin) {
+                                                                                                        try {
+                                                                                                          var bridge = getBridge(targetWin);
+                                                                                                          if (bridge) {
+                                                                                                            var data = JSON.stringify({ type: type, payload: payload || '', headers: capturedHeaders });
+                                                                                                            bridge.post(data);
+                                                                                                          }
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function putHeader(name, value) {
+                                                                                                        if (!name || !value) return;
+                                                                                                        capturedHeaders[String(name).toLowerCase()] = String(value);
+                                                                                                      }
+                                                                                                    
+                                                                                                      function defaultHeaders(win) {
+                                                                                                        try {
+                                                                                                          if (win.location && win.location.origin) {
+                                                                                                            putHeader('origin', win.location.origin);
+                                                                                                            putHeader('referer', win.location.origin + '/');
+                                                                                                          }
+                                                                                                          if (win.navigator && win.navigator.userAgent) {
+                                                                                                            putHeader('user-agent', win.navigator.userAgent);
+                                                                                                          }
+                                                                                                          putHeader('accept', '*/*');
+                                                                                                          putHeader('sec-fetch-dest', 'empty');
+                                                                                                          putHeader('sec-fetch-mode', 'cors');
+                                                                                                          putHeader('sec-fetch-site', 'cross-site');
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function looksPlayable(text) {
+                                                                                                        return typeof text === 'string' && (
+                                                                                                          text.indexOf('hlsSource') !== -1 ||
+                                                                                                          text.indexOf('.m3u8') !== -1 ||
+                                                                                                          text.indexOf('.mp4') !== -1 ||
+                                                                                                          text.indexOf('.vtt') !== -1
+                                                                                                        );
+                                                                                                      }
+                                                                                                    
+                                                                                                      function report(payload, targetWin) {
+                                                                                                        if (!looksPlayable(payload)) return;
+                                                                                                        if (payload === lastPayload) return;
+                                                                                                        lastPayload = payload;
+                                                                                                        post('payload', payload, targetWin);
+                                                                                                      }
+                                                                                                    
+                                                                                                      function scan(win) {
+                                                                                                        try {
+                                                                                                          if (!win || !win.document) return;
+                                                                                                          defaultHeaders(win);
+                                                                                                          var chunks = [];
+                                                                                                          if (win.location && win.location.href) chunks.push(win.location.href);
+                                                                                                          if (win.document && win.document.documentElement) chunks.push(win.document.documentElement.outerHTML);
+                                                                                                          var media = win.document ? win.document.querySelectorAll('video, source, track') : [];
+                                                                                                          for (var i = 0; i < media.length; i++) {
+                                                                                                            var s = media[i].currentSrc || media[i].src || media[i].getAttribute('src') || '';
+                                                                                                            if (s) chunks.push(s);
+                                                                                                          }
+                                                                                                          if (win.performance && win.performance.getEntriesByType) {
+                                                                                                            var entries = win.performance.getEntriesByType('resource');
+                                                                                                            for (var p = 0; p < entries.length; p++) {
+                                                                                                              var name = entries[p].name || '';
+                                                                                                              if (looksPlayable(name)) chunks.push(name);
+                                                                                                            }
+                                                                                                          }
+                                                                                                          if (win.hlsSource) {
+                                                                                                            try { chunks.push(JSON.stringify({ hlsSource: win.hlsSource })); } catch(e) {}
+                                                                                                          }
+                                                                                                          if (win.player && win.player.config) {
+                                                                                                            try { chunks.push(JSON.stringify(win.player.config)); } catch(e) {}
+                                                                                                          }
+                                                                                                          if (win.fileList) {
+                                                                                                            try { chunks.push(JSON.stringify(win.fileList)); } catch(e) {}
+                                                                                                          }
+                                                                                                          report(chunks.join('\n'), win);
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function triggerPlay(win) {
+                                                                                                        try {
+                                                                                                          if (!win || !win.document) return;
+                                                                                                          fixVisibility(win.document);
+                                                                                                    
+                                                                                                          // 1. Always dismiss "Continue watching" modal (time_save) prompt if present
+                                                                                                          var timeSaveBtn = win.document.querySelector('.time_save__btn') || win.document.querySelector('.time_save:not(.hidden) button');
+                                                                                                          if (timeSaveBtn && typeof timeSaveBtn.click === 'function') {
+                                                                                                            timeSaveBtn.click();
+                                                                                                          }
+                                                                                                    
+                                                                                                          // 2. Direct <video> play
+                                                                                                          var video = win.document.querySelector('video');
+                                                                                                          if (video) {
+                                                                                                            video.muted = true;
+                                                                                                            if (video.paused) {
+                                                                                                              video.play().catch(function(){});
+                                                                                                            }
+                                                                                                          }
+                                                                                                    
+                                                                                                          // 3. Plyr player API if available
+                                                                                                          if (win.player && typeof win.player.play === 'function') {
+                                                                                                            try { win.player.play(); } catch(e) {}
+2026-09-06 21:53:50.969 11756-11942 cr_CookieManager        com.sloosh.tv                        E        }
+
+                                                                                                          // 4. Click all known play button selectors (Plyr, Alloha, VideoJS, JWPlayer, etc.)
+                                                                                                          var playSelectors = [
+                                                                                                            '.plyr__control--overlaid',
+                                                                                                            'button[data-plyr="play"]',
+                                                                                                            '.plyr__control[data-plyr="play"]',
+                                                                                                            '.allplay__play-btn',
+                                                                                                            'button.play',
+                                                                                                            '.play-btn',
+                                                                                                            '.vjs-big-play-button',
+                                                                                                            '.jw-display-icon-container',
+                                                                                                            '[data-plyr="play"]'
+                                                                                                          ];
+                                                                                                          for (var s = 0; s < playSelectors.length; s++) {
+                                                                                                            var el = win.document.querySelector(playSelectors[s]);
+                                                                                                            if (el && typeof el.click === 'function') {
+                                                                                                              el.click();
+                                                                                                            }
+                                                                                                          }
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function hookWsInstance(ws, targetWin) {
+                                                                                                        try {
+                                                                                                          if (!ws || ws.__slooshWsHooked) return;
+                                                                                                          ws.__slooshWsHooked = true;
+                                                                                                          ws.addEventListener('message', function(event) {
+                                                                                                            try {
+                                                                                                              var msg = typeof event.data === 'string' ? JSON.parse(event.data) : null;
+                                                                                                              if (msg && msg.type === 'config_update' && msg.edge_hash) {
+                                                                                                                putHeader('accepts-controls', msg.edge_hash);
+                                                                                                                if (msg.ttl) putHeader('x-neo-config-ttl', String(msg.ttl));
+                                                                                                                post('headers', '', targetWin);
+                                                                                                                var bridge = getBridge(targetWin);
+                                                                                                                if (bridge && typeof bridge.onConfigUpdate === 'function') {
+                                                                                                                  bridge.onConfigUpdate(msg.edge_hash, msg.ttl || 0, JSON.stringify(capturedHeaders));
+                                                                                                                }
+                                                                                                              }
+                                                                                                              if (typeof event.data === 'string' && looksPlayable(event.data)) {
+                                                                                                                report(event.data, targetWin);
+                                                                                                              }
+                                                                                                            } catch(e) {
+                                                                                                              if (typeof event.data === 'string' && looksPlayable(event.data)) {
+                                                                                                                report(event.data, targetWin);
+                                                                                                              }
+                                                                                                            }
+                                                                                                          });
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function install(win) {
+                                                                                                        try {
+                                                                                                          if (!win) return;
+                                                                                                          fixVisibility(win.document);
+                                                                                                          defaultHeaders(win);
+                                                                                                    
+                                                                                                          if (!win.__slooshAllohaHooksInstalled) {
+                                                                                                            win.__slooshAllohaHooksInstalled = true;
+                                                                                                    
+                                                                                                            // 1. Hook XMLHttpRequest
+                                                                                                            var originalOpen = win.XMLHttpRequest && win.XMLHttpRequest.prototype.open;
+                                                                                                            var originalSetHeader = win.XMLHttpRequest && win.XMLHttpRequest.prototype.setRequestHeader;
+                                                                                                            if (originalOpen && originalSetHeader) {
+                                                                                                              win.XMLHttpRequest.prototype.open = function(method, requestUrl) {
+                                                                                                                this.__slooshUrl = requestUrl || '';
+                                                                                                                this.addEventListener('load', function() {
+                                                                                                                  var responseUrl = this.responseURL || this.__slooshUrl || '';
+                                                                                                                  var responseText = '';
+                                                                                                                  try { responseText = this.responseText || ''; } catch(e) {}
+                                                                                                                  if (responseUrl.indexOf('/bnsi/') !== -1 && responseText) report(responseText, win);
+                                                                                                                  if (responseText && responseText.indexOf('hlsSource') !== -1) report(responseText, win);
+                                                                                                                  if (looksPlayable(responseText)) report(responseText, win);
+                                                                                                                  if (responseUrl.indexOf('master.m3u8') !== -1 && responseUrl !== lastM3u8) {
+                                                                                                                    lastM3u8 = responseUrl;
+                                                                                                                    post('payload', responseUrl, win);
+                                                                                                                  }
+                                                                                                                });
+                                                                                                                return originalOpen.apply(this, arguments);
+                                                                                                              };
+                                                                                                              win.XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
+                                                                                                                putHeader(name, value);
+                                                                                                                return originalSetHeader.apply(this, arguments);
+                                                                                                              };
+                                                                                                            }
+                                                                                                    
+                                                                                                            // 2. Hook Fetch
+                                                                                                            var originalFetch = win.fetch;
+                                                                                                            if (originalFetch) {
+                                                                                                              win.fetch = function(input, init) {
+                                                                                                                try {
+                                                                                                                  var requestUrl = (typeof input === 'string') ? input : (input && input.url ? input.url : '');
+                                                                                                                  if (init && init.headers) {
+                                                                                                                    if (typeof init.headers.forEach === 'function') init.headers.forEach(function(v, k) { putHeader(k, v); });
+                                                                                                                    else for (var key in init.headers) putHeader(key, init.headers[key]);
+                                                                                                                  }
+2026-09-06 21:53:50.969 11756-11942 cr_CookieManager        com.sloosh.tv                        E                if (input && input.headers && typeof input.headers.forEach === 'function') input.headers.forEach(function(v, k) { putHeader(k, v); });
+if (looksPlayable(requestUrl)) post('payload', requestUrl, win);
+} catch(e) {}
+
+                                                                                                                return originalFetch.apply(this, arguments).then(function(response) {
+                                                                                                                  try {
+                                                                                                                    var responseUrl = response.url || '';
+                                                                                                                    if (looksPlayable(responseUrl)) post('payload', responseUrl, win);
+                                                                                                                    var clone = response.clone();
+                                                                                                                    clone.text().then(function(text) { report(text, win); }).catch(function(){});
+                                                                                                                  } catch(e) {}
+                                                                                                                  return response;
+                                                                                                                });
+                                                                                                              };
+                                                                                                            }
+                                                                                                    
+                                                                                                            // 3. Hook WebSocket constructor & prototypes
+                                                                                                            if (win.WebSocket) {
+                                                                                                              var OrigWS = win.WebSocket;
+                                                                                                              win.WebSocket = function(url, protocols) {
+                                                                                                                var ws = protocols ? new OrigWS(url, protocols) : new OrigWS(url);
+                                                                                                                hookWsInstance(ws, win);
+                                                                                                                return ws;
+                                                                                                              };
+                                                                                                              win.WebSocket.prototype = OrigWS.prototype;
+                                                                                                              win.WebSocket.CONNECTING = OrigWS.CONNECTING;
+                                                                                                              win.WebSocket.OPEN = OrigWS.OPEN;
+                                                                                                              win.WebSocket.CLOSING = OrigWS.CLOSING;
+                                                                                                              win.WebSocket.CLOSED = OrigWS.CLOSED;
+                                                                                                    
+                                                                                                              var origSend = OrigWS.prototype.send;
+                                                                                                              if (origSend) {
+                                                                                                                OrigWS.prototype.send = function(data) {
+                                                                                                                  hookWsInstance(this, win);
+                                                                                                                  return origSend.apply(this, arguments);
+                                                                                                                };
+                                                                                                              }
+                                                                                                    
+                                                                                                              var origAddEvt = OrigWS.prototype.addEventListener;
+                                                                                                              if (origAddEvt) {
+                                                                                                                OrigWS.prototype.addEventListener = function(type, listener, options) {
+                                                                                                                  hookWsInstance(this, win);
+                                                                                                                  return origAddEvt.apply(this, arguments);
+                                                                                                                };
+                                                                                                              }
+                                                                                                    
+                                                                                                              try {
+                                                                                                                var origOnMessageDesc = Object.getOwnPropertyDescriptor(OrigWS.prototype, 'onmessage');
+                                                                                                                Object.defineProperty(OrigWS.prototype, 'onmessage', {
+                                                                                                                  get: function() {
+                                                                                                                    return origOnMessageDesc && origOnMessageDesc.get ? origOnMessageDesc.get.call(this) : this.__slooshOnMessage;
+                                                                                                                  },
+                                                                                                                  set: function(fn) {
+                                                                                                                    hookWsInstance(this, win);
+                                                                                                                    if (origOnMessageDesc && origOnMessageDesc.set) {
+                                                                                                                      origOnMessageDesc.set.call(this, fn);
+                                                                                                                    } else {
+                                                                                                                      this.__slooshOnMessage = fn;
+                                                                                                                    }
+                                                                                                                  },
+                                                                                                                  configurable: true,
+                                                                                                                  enumerable: true
+                                                                                                                });
+                                                                                                              } catch(e) {}
+                                                                                                            }
+                                                                                                          }
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      function tick() {
+                                                                                                        install(window);
+                                                                                                        scan(window);
+                                                                                                        triggerPlay(window);
+                                                                                                        try {
+                                                                                                          var frames = document.querySelectorAll('iframe');
+                                                                                                          for (var i = 0; i < frames.length; i++) {
+                                                                                                            try {
+                                                                                                              var fWin = frames[i].contentWindow;
+                                                                                                              if (fWin) {
+                                                                                                                install(fWin);
+                                                                                                                scan(fWin);
+                                                                                                                triggerPlay(fWin);
+                                                                                                              }
+                                                                                                            } catch(e) {}
+                                                                                                          }
+                                                                                                        } catch(e) {}
+                                                                                                      }
+                                                                                                    
+                                                                                                      window.__slooshTick = tick;
+                                                                                                      fixVisibility(document);
+                                                                                                      install(window);
+                                                                                                      scan(window);
+                                                                                                      triggerPlay(window);
+                                                                                                      tick();
+                                                                                                      setInterval(tick, 150);
+                                                                                                      window.addEventListener('load', tick);
+                                                                                                      window.addEventListener('DOMContentLoaded', tick);
+                                                                                                    })();
+                                                                                                    
+                                                                                                                </script>
+                                                                                                            </head>
+                                                                                                            <body>
+                                                                                                                <iframe id="alloha_iframe" src="https://Antipathic-as.stravers.live/?token_movie=21df5d3777ae838390d056f5f8e69b&amp;token=ffbd312217e27c4245f2678afe1881&amp;translation=234&amp;season=1&amp;episode=1" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen="" frameborder="0" referrerpolicy="unsafe-url" style="width:100%;height:100%;border:none;"></iframe>
+                                                                                                                <script>
+                                                                                                                (function() {
+                                                                                                                    var f = document.getElementById('alloha_iframe');
+                                                                                                                    if (f) {
+                                                                                                                        f.onload = function() {
+                                                                                                                            try {
+2026-09-06 21:53:50.971 11756-11942 cr_CookieManager        com.sloosh.tv                        E                              if (typeof window.__slooshTick === 'function') window.__slooshTick(); (Fix with AI)
+} catch(e) {}
+};
+}
+})();
+</script>
+
+                                                                                                            </body></html>
+                                                                                                    	at com.android.webview.chromium.a.a(chromium-TrichromeWebViewGoogle.aab-stable-749902436:184)
+                                                                                                    	at com.android.webview.chromium.a.getCookie(chromium-TrichromeWebViewGoogle.aab-stable-749902436:4)
+                                                                                                    	at com.sloosh.tv.data.alloha.HlsProxyServer.buildRequest(HlsProxyServer.kt:562)
+                                                                                                    	at com.sloosh.tv.data.alloha.HlsProxyServer.fetchText(HlsProxyServer.kt:510)
+                                                                                                    	at com.sloosh.tv.data.alloha.HlsProxyServer.servePlaylist(HlsProxyServer.kt:311)
+                                                                                                    	at com.sloosh.tv.data.alloha.HlsProxyServer.access$servePlaylist(HlsProxyServer.kt:28)
+                                                                                                    	at com.sloosh.tv.data.alloha.HlsProxyServer$handleConnection$2.invokeSuspend(HlsProxyServer.kt:266)
+                                                                                                    	at com.sloosh.tv.data.alloha.HlsProxyServer$handleConnection$2.invoke(Unknown Source:8)
+                                                                                                    	at com.sloosh.tv.data.alloha.HlsProxyServer$handleConnection$2.invoke(Unknown Source:4)
+                                                                                                    	at kotlinx.coroutines.intrinsics.UndispatchedKt.startUndispatchedOrReturn(Undispatched.kt:78)
+                                                                                                    	at kotlinx.coroutines.BuildersKt__Builders_commonKt.withContext(Builders.common.kt:167)
+                                                                                                    	at kotlinx.coroutines.BuildersKt.withContext(Unknown Source:1)
+                                                                                                    	at com.sloosh.tv.data.alloha.HlsProxyServer.handleConnection(HlsProxyServer.kt:197)
+                                                                                                    	at com.sloosh.tv.data.alloha.HlsProxyServer.access$handleConnection(HlsProxyServer.kt:28)
+                                                                                                    	at com.sloosh.tv.data.alloha.HlsProxyServer$start$1$1$1.invokeSuspend(HlsProxyServer.kt:153)
+                                                                                                    	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+                                                                                                    	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:108)
+                                                                                                    	at kotlinx.coroutines.internal.LimitedDispatcher$Worker.run(LimitedDispatcher.kt:115)
+                                                                                                    	at kotlinx.coroutines.scheduling.TaskImpl.run(Tasks.kt:103)
+                                                                                                    	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:584)
+                                                                                                    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:793)
+                                                                                                    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:697)
+                                                                                                    	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:684)
+2026-09-06 21:53:51.158 11756-11942 HlsProxy                com.sloosh.tv                        W  fetchText HTTP 404 for https://antipathic-as.stravers.live/?token_movie=21df5d3777ae838390d056f5f8e69b&
+2026-09-06 21:53:51.164 11756-11942 HlsProxy                com.sloosh.tv                        I  servePlaylist: fetch failed, notifying onSessionExpired and waiting for refresh...
+2026-09-06 21:53:52.671 11756-11756 PlayerScreen            com.sloosh.tv                        W  Buffering watchdog: stalled for 12s, kicking ExoPlayer at 0 ms
+2026-09-06 21:53:52.760 11756-12129 ExoPlayerImplInternal   com.sloosh.tv                        E  Playback error (Fix with AI)
+androidx.media3.exoplayer.ExoPlaybackException: Source error
+at androidx.media3.exoplayer.ExoPlayerImplInternal.handleIoException(ExoPlayerImplInternal.java:717)
+at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(ExoPlayerImplInternal.java:689)
+at android.os.Handler.dispatchMessage(Handler.java:106)
+at android.os.Looper.loopOnce(Looper.java:248)
+at android.os.Looper.loop(Looper.java:338)
+at android.os.HandlerThread.run(HandlerThread.java:85)
+Caused by: androidx.media3.datasource.HttpDataSource$InvalidResponseCodeException: Response code: 404
+at androidx.media3.datasource.DefaultHttpDataSource.open(DefaultHttpDataSource.java:436)
+at androidx.media3.datasource.DefaultDataSource.open(DefaultDataSource.java:275)
+at androidx.media3.datasource.StatsDataSource.open(StatsDataSource.java:86)
+at androidx.media3.datasource.DataSourceInputStream.checkOpened(DataSourceInputStream.java:101)
+at androidx.media3.datasource.DataSourceInputStream.open(DataSourceInputStream.java:64)
+at androidx.media3.exoplayer.upstream.ParsingLoadable.load(ParsingLoadable.java:182)
+at androidx.media3.exoplayer.upstream.Loader$LoadTask.run(Loader.java:421)
+at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1156)
+at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:651)
+at java.lang.Thread.run(Thread.java:1119)
+2026-09-06 21:53:52.777 11756-11756 PlayerScreen            com.sloosh.tv                        W  ExoPlayer error: ERROR_CODE_IO_BAD_HTTP_STATUS - Source error
 
 ---
 
-## 🚨 КРИТИЧЕСКИЕ ПРОБЛЕМЫ ПРОИЗВОДИТЕЛЬНОСТИ — ВСЕ УСТРАНЕНЫ ✅
+### Resolution (2026-09-13) - Alloha Playback & HLS Proxy Parity with iOS:
+1. **Root Cause**:
+   - `AllohaRuntimeResolver` had loose URL validation where an HTML page string containing substrings was mistaken for a playable stream URL.
+   - The entire HTML string was passed to `CookieManager.getCookie()`, throwing an illegal character exception and passing invalid URLs to `HlsProxyServer`.
+   - `HlsProxyServer` returned HTTP 404 on network retry failures, causing ExoPlayer to immediately crash with `ERROR_CODE_IO_BAD_HTTP_STATUS`.
+   - Alloha translations & audio variants were not using the normalized matching logic from iOS (`allohaTranslationNamesMatch`, `findMatchingAudioVariant`), and nested `hlsSource` or complex timecode formats were not fully parsed.
 
-### 0. [ИСПРАВЛЕНО] Лаг, двойная анимация, серый фон, навигация вправо, центрирование кнопок и нативная обводка карточек
-- **Файлы**: `MainActivity.kt`, `ui/components/SlooshSideDrawer.kt`, `ui/components/SlooshFocusableCard.kt`, `ui/home/HomeScreen.kt`, `ui/search/SearchScreen.kt`, `ui/continue_watching/ContinueScreen.kt`, `ui/profile/ProfileScreen.kt`, `ui/settings/SettingsScreen.kt`
-- **Суть проблемы**:
-  1. Боковая панель переключалась через `ModalNavigationDrawer`, вызывая двойную конфликтующую анимацию смещения и расширения ширины.
-  2. Панель имела собственный серый фон `Color(0xFF0C0C0E)` и обводку, выделяясь на черном фоне экрана.
-  3. Невозможно было выйти из панели нажатием кнопки Вправо (D-pad Right) — закрытие работало только по кнопке Назад. Это происходило потому, что `focusBridge.contentFocusRequester` не был подключен к экранам, а в обработчике `KEYCODE_DPAD_RIGHT` не вызывалось закрытие панели и переключение фокуса.
-  4. Кнопки навигации («Главная», «Поиск», «Продолжить», «Избранное») находились вверху, в то время как по эргономике TV они должны быть в центре экрана.
-  5. Карточки контента использовали тяжелый непрерывный шейдер светового луча (`drawWithContent`, `PathMeasure`, тригонометрические расчеты), который переливался и нагружал процессор приставки.
-- **Решение**:
-  1. `ModalNavigationDrawer` полностью устранен. Панель встроена в единый 레이аут с плавной физикой `animateDpAsState(72.dp -> 210.dp)`.
-  2. В свернутом виде фон прозрачный, в открытом — `BackgroundDark` (`#050505`) с затемнением контента на 60%. Убран текст "sloosh" из шапки.
-  3. В `SideDrawerFocusBridge` реализован механизм `contentFocusCallback` и `requestContentFocus()`. Каждый из 5 экранов (`HomeScreen`, `SearchScreen`, `ContinueScreen`, `ProfileScreen`, `SettingsScreen`) регистрирует свой целевой фокус через `DisposableEffect`. При нажатии D-pad Right, Enter или клика панель немедленно закрывается, а фокус гарантированно передается на карточки или поисковую строку контента. На `ContinueScreen` в пустом состоянии добавлена интерактивная кнопка "В каталог".
-  4. Основной блок навигации («Главная», «Поиск», «Продолжить», «Избранное») выровнен строго по вертикальному центру боковой панели (через `Spacer(weight = 1f)` сверху и снизу), а кнопка «Настройки» зафиксирована в самом низу. Настроены плавные сквозные переходы D-pad вверх/вниз между «Избранным» и «Настройками».
-  5. В `SlooshSideDrawer` добавлен внешний обработчик потери фокуса `.onFocusChanged { if (!it.hasFocus && isOpen) onOpenChanged(false) }`, гарантирующий автоматическое сворачивание панели при любом уходе фокуса в контент.
-  6. В `SlooshFocusableCard` полностью вырезан кастомный шейдер светового луча и заменен на стандартную чистую нативную обводку Compose TV `CardDefaults.border(focusedBorder = Border(BorderStroke(2.5.dp, Color.White), shape))`. Рендеринг мгновенный, нулевая нагрузка на процессор.
-  7. В `SettingsScreen` переключатели `ExpressiveSwitch` и сегменты `SegmentedToggle` снабжены явным модификатором `.focusable()` для идеального управления с пульта.
-
-### 1. [ИСПРАВЛЕНО] `SlooshFocusableCard` — Бесконечная анимация на всех 30–50 карточках сетки
-- **Файл**: `ui/components/SlooshFocusableCard.kt`
-- **Решение**: `rememberInfiniteTransition` заменен на `Animatable(0f)` с запуском в `LaunchedEffect(isFocused)`. Анимация светового луча работает строго для сфокусированной карточки, нулевая нагрузка на CPU для всех остальных карточек.
-
-### 2. [ИСПРАВЛЕНО] `Brush` и `arrayOf(colorStops)` создаются на каждый кадр в Draw Scope
-- **Файлы**: `ui/details/DetailsScreen.kt`, `ui/continue_watching/ContinueScreen.kt`, `ui/home/HomeScreen.kt`
-- **Решение**: Все градиенты обернуты в `remember { Brush... }`.
-
-### 3. [ИСПРАВЛЕНО] Disk I/O (SharedPreferences) прямо в теле Composable-функций
-- **Файлы**: `ui/search/SearchScreen.kt`, `ui/profile/ProfileScreen.kt`
-- **Решение**: `appSettings` и `gridColumns` вынесены на верхний уровень за пределы `AnimatedContent`.
-
-### 4. [ИСПРАВЛЕНО] Раздельные кэши между экранами в `MoviesRepository`
-- **Файл**: `data/repository/MoviesRepository.kt`
-- **Решение**: `MoviesRepository.instance` сделан единым потокобезопасным синглтоном приложения. Все экраны разделяют кэши страниц и деталей.
-
-### 5. [ИСПРАВЛЕНО] Миграция на новый backend API `api-sloosh.vercel.app`
-- **Файлы**: `data/api/MoviesApi.kt`, `data/api/Models.kt`, `data/repository/MoviesRepository.kt`
-- **Решение**: Добавлены выделенные эндпоинты `api/v1/cartoons` и `api/v1/anime` (вместо хака с поиском по слову "мультфильм"), проксирование изображений TMDB для обхода блокировок в РФ (`/api/v1/images/tmdb/`).
-
----
-
-## 🎮 НАВИГАЦИЯ И УПРАВЛЕНИЕ С ПУЛЬТА — ВСЕ УСТРАНЕНО ✅
-
-### 6. [ИСПРАВЛЕНО] `ContinueScreen`: Диалог действий (удалить/отметить) недосягаем с пульта
-- **Файл**: `ui/continue_watching/ContinueScreen.kt`
-- **Решение**: Переработан на карточки 16:9 по образцу iOS `ContinueWatchingCard.swift`. Добавлена поддержка вызова меню по кнопке `KEYCODE_MENU`, долгому клику и кнопке опций. В диалоге действий установлен гарантированный захват фокуса `firstActionFocusRequester` с поддержкой `BackHandler`.
-
-### 7. [ИСПРАВЛЕНО] `DetailsScreen`: Застревание фокуса и навигация
-- **Файл**: `ui/details/DetailsScreen.kt`
-- **Решение**: Направленные переходы фокуса между кнопкой "Назад", описанием ("Ещё") и кнопками "Смотреть" / "Избранное". Добавлена секция актёров с круглыми аватарками.
-
-### 8. [ИСПРАВЛЕНО] Обработка кнопки Back на пульте для диалогов
-- **Файлы**: `ui/details/DetailsScreen.kt`, `ui/continue_watching/ContinueScreen.kt`
-- **Решение**: Добавлены `BackHandler(enabled = ...)` для закрытия диалогов и оверлеев без закрытия экрана.
-
----
-
-## 🎨 UI / UX НЕДОЧЁТЫ (Несоответствие идеалу iOS / Android TV)
-
-### 9. Отсутствие скелетонов загрузки (Shimmer)
-- **Файлы**: `ui/home/HomeScreen.kt`, `ui/search/SearchScreen.kt`, `ui/profile/ProfileScreen.kt`
-- **Суть проблемы**: При загрузке отображается дешевый `CircularProgressIndicator` вместо красивого мерцающего скелетона карточек (2:3 для постеров, 16:9 для продолжения просмотра), хотя `ShimmerPlaceholder.kt` уже написан.
-- **Решение**: Встроить `ShimmerPosterGrid` на время загрузки.
-
-### 10. [ИСПРАВЛЕНО] `SourceSelectionDialog` в виде `Dialog` вместо полноэкранного оверлея
-- **Файлы**: `ui/details/SourceSelectionDialog.kt`, `ui/details/DetailsScreen.kt`, `ui/details/DetailsViewModel.kt`, `data/repository/AllohaRepository.kt`
-- **Суть проблемы**: Компонент `Dialog` на лаунчерах Android TV вызывал сброс фокуса D-pad, потерю кадров (`HWUI Davey! duration=1087ms`) и отмену через `WindowOnBackDispatcher`. Кликабельная подложка `Box.clickable { onDismiss() }` перехватывала нажатия кнопки пульта и закрывала диалог за доли секунды.
-- **Решение**: Полностью переведено на нативный Compose-оверлей `SourceSelectionOverlay` внутри экрана деталей.
-
----
-
-## 🎬 ИСПРАВЛЕННЫЕ КРИТИЧЕСКИЕ БАГИ
-
-### ✅ [ИСПРАВЛЕНО] Зависание воспроизведения через 7-8 минут (TTL-рестарт и сброс сокетов)
-- **Файлы**:
-  - `data/alloha/HlsProxyServer.kt`
-  - `data/alloha/AllohaSessionManager.kt`
-  - `ui/player/PlayerViewModel.kt`
-  - `data/repository/AllohaRuntimeParser.kt`
-  - `data/repository/AllohaRuntimeResolver.kt`
-- **Причина**: В `AllohaSessionManager.kt` срабатывал таймер `scheduleTtlRestart` через `(ttl * 1000 - 20_000)` мс (при TTL = 480c это ровно 7 минут 40 секунд). Рестарт вызывал `oldPool.evictAll()`, закрывал активные HTTP-соединения во время скачивания сегментов, сбрасывал кэш и отправлял ExoPlayer ошибку HTTP 503 (`send503`), после чего плеер навсегда зависал.
-- **Решение**:
-  1. Воспроизведение переведено на эталонную архитектуру iOS: использование `AllohaRuntimeResolver` / `AllohaRepository.resolveStream` напрямую. Поток резолвится один раз, WebView уничтожается, таймеры TTL-рестартов полностью удалены.
-  2. `HlsProxyServer.kt` полностью переписан по образцу `HlsProxyServer.swift`: постоянный синглтон-сокет (`HlsProxyServer.shared`), изолированный `supervisorScope` для предотвращения падения цикла accept, доверительный SSL OkHttp пул (TrustAll + 5-минутный keepAlive без `evictAll`), прямое потоковое проксирование сегментов через буфер 32 КБ без перегрузки кучи JVM, полная пересылка всех заголовков авторизации/сессии к CDN, поддержка заголовков `Range`, исключение отправки кода 503, безопасное переписывание путей m3u8 (включая протокол-относительные ссылки `//`).
-  3. Переключение озвучки и качества реализовано бесшовно с мгновенным сохранением и восстановлением позиции воспроизведения (`lastPreservedPositionMs`) и без размонтирования поверхности видео (`AndroidView` остается в дереве композиции со стильным оверлеем переключения потока).
-  4. В `PlayerScreen.kt` добавлены: автоматическое однократное восстановление воспроизведения при ошибке ExoPlayer с сохранением позиции (`hasAutoRetried`), сторожевой таймер застревания буферизации (Stall Watchdog > 12c), полнофункциональный диалог ошибок с захватом фокуса на кнопке "Повторить", а также `LifecycleEventObserver` для паузы при сворачивании и гарантированного запуска прокси при возобновлении.
-  5. В `AllohaRuntimeResolver.kt` коллекция заголовков переведена на `ConcurrentHashMap` для потокобезопасности при одновременных сетевых перехватах в WebView.
-
-### ✅ [ИСПРАВЛЕНО] Вылет (FATAL EXCEPTION) на главной из-за дублирования ключей в TvLazyVerticalGrid
-- **Файлы**:
-  - `ui/home/HomeViewModel.kt`
-  - `ui/home/HomeScreen.kt`
-  - `ui/search/SearchViewModel.kt`
-  - `ui/search/SearchScreen.kt`
-  - `ui/continue_watching/ContinueScreen.kt`
-  - `ui/profile/ProfileScreen.kt`
-- **Причина**: `java.lang.IllegalArgumentException: Key "MOVIES_kp_7421341" was already used`. При пагинации (подгрузке следующей страницы каталога) или при наличии одинаковых фильмов в ответе API список `existing + newItems` не дедуплицировался. Compose требовал 100% уникальности ключей для элементов `items()`, и при совпадении идентификатора приложение моментально крашилось.
-- **Решение**:
-  1. В `HomeViewModel` и `SearchViewModel` списки элементов теперь строго дедуплицируются через `.filter { it.identifier.isNotBlank() }.distinctBy { it.identifier }`.
-  2. Во всех сетках `TvLazyVerticalGrid` и строках `TvLazyRow` (`HomeScreen`, `SearchScreen`, `ContinueScreen`, `ProfileScreen`) ключи дополнены индексом (`"${id}_$index"`), что математически гарантирует абсолютную уникальность ключа для каждого слота и делает подобные вылеты невозможными.
-
-### ✅ [ИСПРАВЛЕНО] Мигание окна загрузки и исчезновение окна выбора озвучки при нажатии «Смотреть»
-- **Файлы**:
-  - `ui/details/SourceSelectionDialog.kt`
-  - `ui/details/DetailsScreen.kt`
-  - `ui/details/DetailsViewModel.kt`
-  - `data/repository/AllohaRepository.kt`
-- **Причина**:
-  1. `SourceSelectionLoadingDialog` и `SourceSelectionDialog` использовали системный `androidx.compose.ui.window.Dialog`. На Android TV открытие отдельного системного окна вызывало конфликт с диспетчером фокуса (`WindowOnBackDispatcher: sendCancelIfRunning`), а фоновая подложка `Box.clickable { onDismiss() }` ошибочно перехватывала отпускание кнопки пульта Enter/DPAD_CENTER, моментально вызывая `onDismiss()`.
-  2. При возникновении сетевой ошибки или возврате `null` из `fetchAllohaData`, флаг `isFetchingSources` становился `false`, а `allohaData` оставался `null`. В `DetailsScreen` отсутствовала ветка для отображения ошибки, из-за чего окно загрузки просто исчезало, оставляя экран пустым.
-  3. `AllohaRepository.kt` использовал стандартный `OkHttpClient` без доверенного SSL (`TrustAllCerts`). На приставках с устаревшими корневыми сертификатами или при строгой проверке TLS вызов к `api.alloha.tv` падал с исключением и тихо возвращал `null`.
-  4. Синхронное чтение `SharedPreferences` на главном потоке внутри Composable-функции вызывало пропуск кадров (`Skipped 58 frames!`).
-- **Решение**:
-  1. Полный отказ от системных окон `Dialog` в пользу нативного полноэкранного оверлея `SourceSelectionOverlay`, анимированного через `AnimatedVisibility(fadeIn/fadeOut)`.
-  2. Устранена кликабельная подложка, перехватывавшая нажатия пульта. Закрытие оверлея осуществляется исключительно кнопкой «Назад» на пульте (`BackHandler`) или явной кнопкой закрытия.
-  3. Добавлены явные состояния и компоненты `SourceSelectionLoadingView`, `SourceSelectionErrorView` (с кнопками «Повторить» и «Закрыть») и `SourceSelectionContentView`.
-  4. В `AllohaRepository.kt` внедрён доверенный `getUnsafeOkHttpClient()` с обходом проверок самоподписанных сертификатов (аналогично iOS `TrustAllSessionDelegate`) и поддержка запросов по альтернативным идентификаторам (`kpId`, `imdbId`, `tmdbId`).
-  5. Чтение предпочтений перенесено из Compose UI в фоновый поток `Dispatchers.IO` во `ViewModel`.
-### ✅ [ИСПРАВЛЕНО] Кнопка «Пропустить заставку» не встроена в интерфейс и висела на экране
-- **Файл**: `ui/player/PlayerScreen.kt`
-- **Причина**: Кнопка «Пропустить заставку / титры» отображалась отдельным парящим элементом поверх экрана без согласованной интеграции с нижним баром управления плеера и конфликтовала с D-pad навигацией контролов.
-- **Решение**: 
-  1. Реализована двухрежимная адаптивная интеграция: когда панель управления плеера скрыта, отображается аккуратная полупрозрачная плашка TV (`[OK] Пропустить заставку`), автоматически исчезающая через 7 секунд или активируемая нажатием центральной кнопки пульта DPAD_CENTER / OK без необходимости раскрытия HUD.
-  2. Когда панель управления раскрыта пользователем, кнопка бесшовно встроена в правый нижний блок контролов над полосой перемотки (seekbar) с полноценным переходом фокуса по D-pad (Вверх с полосы перемотки → фокус на кнопке пропуска, Вниз → возврат на полосу, Влево → контролы).
-
-### ✅ [ИСПРАВЛЕНО] «Таймаут загрузки видеопотока», WebViewMethodCalledOnWrongThreadViolation и ошибка Pipe closed
-- **Файлы**:
-  - `data/repository/AllohaRuntimeResolver.kt`
-- **Причина**:
-  1. В `shouldInterceptRequest` вызывался метод `view?.url`. Так как метод перехвата сетевых запросов вызывается на фоновом пуле потоков Chromium (`ThreadPoolForeg`), вызов любого метода `WebView` приводил к `android.os.strictmode.WebViewMethodCalledOnWrongThreadViolation: at android.webkit.WebView.getUrl()` и прерывал обработку перехвата.
-  2. Headless WebView не переопределял `getDefaultVideoPoster()` в `WebChromeClient`. При попытке воспроизведения HTML5-видео внутри невидимого/однопиксельного WebView движок Skia пытался отрисовать постер и падал с ошибкой `libpng encode error: sk_write_fn cannot write to stream / Pipe closed`.
-  3. В `loadDataWithBaseURL` в качестве базового URL передавался полный `iframeUrl` (с query-параметрами) вместо чистого origin (`${protocol}://${host}/`), что приводило к нарушению Same-Origin Policy между родительской страницей обёртки и `iframe`, блокируя доступ скриптов к `iframe.contentWindow`.
-  4. Попытка клика по кнопке воспроизведения (`.allplay__play-btn`) производилась на внешнем `document`, а не внутри `iframe.contentWindow.document`. Из-за этого плеер Alloha не стартовал, не отправлял запрос к `/bnsi/` и не слал WebSocket-сообщение `config_update` с `edge_hash`.
-  5. Метод `cleanup()` вызывал `v.destroy()` мгновенно, в то время как в очереди Looper Chromium оставались невыполненные события, что приводило к ошибке `cr_AwContents: Application attempted to call on a destroyed WebView`.
-- **Решение**:
-  1. Из `shouldInterceptRequest` полностью убраны любые обращения к экземпляру `WebView` (`view?.url`); заголовок `Referer` извлекается безопасно из заголовков запроса или URI ресурса.
-  2. В `WebChromeClient` добавлен `getDefaultVideoPoster()`, возвращающий прозрачный 1x1 Bitmap, исключая сбои пайпа Skia.
-  3. Для `loadDataWithBaseURL` базовый URL теперь строго формируется как origin домена Alloha (`"$origin/"`), гарантируя одинаковое происхождение (same-origin) обёртки и фрейма.
-  4. Внедрена надёжная логика инициализации фрейма: хуки на `XMLHttpRequest`, `fetch` и `WebSocket` прикрепляются к `iframe.contentWindow` по событию `iframe.onload` и с периодической проверкой; каждые 300 мс опрашивается и нажимается кнопка `.allplay__play-btn` непосредственно внутри документа фрейма до момента готовности потока.
-  5. В `cleanup()` уничтожение WebView отложено на 2000 мс (`mainHandler.postDelayed`), гарантируя корректное завершение всех внутренних задач Chromium без вылетов.
-
-### ✅ [ИСПРАВЛЕНО] Зависание воспроизведения через ~11-12 минут (HTTP 403 vkvideo.cloud / 404) и неработающая кнопка «Повторить»
-- **Файлы**:
-  - `data/alloha/HlsProxyServer.kt`
-  - `ui/player/PlayerViewModel.kt`
-  - `ui/player/PlayerScreen.kt`
-- **Причина**:
-  1. Токены CDN Alloha / VK Video имеют ограниченный срок жизни (TTL, от 360 до 600 секунд). По истечении TTL CDN возвращает HTTP 403 Forbidden. Ранее упреждающее фоновое обновление токенов отсутствовало, из-за чего воспроизведение обрывалось ровно на 11.7 минутах (701849 мс).
-  2. В `HlsProxyServer.kt` для подписанных CDN-ссылок без расширения (`ext.isEmpty`) по умолчанию назначался суффикс `stream.ts` вместо `stream.m3u8`, а при ошибке 403 от источника прокси сразу отдавал ExoPlayer код 404, не запуская регенерацию сессии.
-  3. В `PlayerScreen.kt` кнопка «Повторить» в диалоге ошибки проверяла `if (state.errorMessage != null)`, и если ошибка пришла напрямую из ExoPlayer (`playerError`), в ветке `else` она просто вызывала `exoPlayer.seekTo(pos); exoPlayer.prepare()` на том же протухшем URL с кодом 403/404.
-- **Решение**:
-  1. В `PlayerViewModel.kt` внедрено упреждающее фоновое обновление сессии `scheduleProactiveRefresh(iframeUrl, ttlSeconds)` (по образцу iOS `AllohaSessionManager.swift`), которое за 25 секунд до истечения TTL запрашивает свежие токены в фоне, обновляет заголовки и Master URL в `HlsProxyServer.shared` без малейшего прерывания воспроизведения у пользователя.
-  2. В `HlsProxyServer.kt` добавлен реактивный триггер `onSessionExpired`: при получении HTTP 403 или 410 прокси сигнализирует `PlayerViewModel.refreshSessionSilently()` для сброса и обновления токенов, а при запросе плейлиста ожидает до 1.5 секунд обновления URL перед отправкой 404.
-  3. В `HlsProxyServer.kt` суффикс для URL без расширения заменён на `"stream.m3u8"` (аналогично iOS `HlsProxyServer.swift`), улучшено сопоставление путей плейлистов.
-  4. В `PlayerScreen.kt` и авто-восстановление при ошибке (`onPlayerError`), и кнопка «Повторить» в диалоге ошибки переведены на `viewModel.retryPlayback(pos) { newUrl -> ... }` с получением свежего URL потока и переустановкой `MediaItem` в ExoPlayer с сохранением точной миллисекунды просмотра.
-
-### ✅ [ИСПРАВЛЕНО] Полный сбой запуска воспроизведения (ошибка парсера / зависание на оверлее / Same-Origin Policy)
-- **Файлы**:
-  - `data/repository/AllohaRuntimeResolver.kt`
-  - `data/repository/AllohaRepository.kt`
-  - `data/alloha/HlsProxyServer.kt`
-  - `MainActivity.kt`
-- **Причина**:
-  1. В `AllohaRuntimeResolver.kt` вызов `loadDataWithBaseURL` передавал `"$origin/"` в качестве baseUrl, в то время как iframe загружался с полного `iframeUrl`. Движок Chromium блокировал межфреймовое взаимодействие из-за нарушения Same-Origin Policy (`Blocked a frame with origin from accessing a cross-origin frame`), что делало невозможным доступ к `iframe.contentWindow.document`.
-  2. Скрипт обёртки ожидал обязательного наступления двух событий: ответа `/bnsi/` и WebSocket авторизации (`hasAuth || hasAccept`), а также кликал только по селектору `.allplay__play-btn`. При сетевых задержках или изменениях формата сокетов срабатывал 20-секундный таймаут с ошибкой «Не удалось получить видеопоток».
-  3. В `AllohaRepository.kt` методы добавления параметров трансляции просто конкатенировали строку без очистки уже существующих query-параметров (`&translation=66&translation=66`), а для серий отсутствовала явная инъекция `season` и `episode` в `iframeUrl`.
-  4. В `HlsProxyServer.kt` при отсутствии заголовков `Referer` / `Origin` в `activeHeaders` прокси посылал запрос к CDN без них, приводя к HTTP 403 Forbidden.
-  5. В `MainActivity.kt` пустые или null названия медиа приводили к невалидным маршрутам в `NavHost` (`player/{iframeUrl}/...`), краша навигационный граф.
-- **Решение**:
-  1. В `AllohaRuntimeResolver.kt` baseUrl и historyUrl в `loadDataWithBaseURL` строго установлены в точный `iframeUrl`.
-  2. Внедрён расширенный JS-рантайм: глобальный перехват `XMLHttpRequest`, `fetch` и `WebSocket` (захват `accepts-controls`, `ttl`), циклический опрос `performance.getEntriesByType('resource')`, принудительный запуск воспроизведения тегов `<video>` и клик по кнопкам воспроизведения.
-  3. Добавлен упреждающий резолв `scheduleFallbackResolve`: при наличии `bestMasterPayload` или `bestDirectPayload` поток возвращается немедленно (через 400-2000 мс), не дожидаясь 20-секундного таймаута сокетов.
-  4. В `AllohaRepository.kt` реализовано безопасное удаление дублирующихся query-параметров перед добавлением новых и гарантированная инъекция `season` и `episode` для каждого эпизода сериала.
-  5. В `HlsProxyServer.kt` добавлен автоматический fallback для заголовков `Referer` и `Origin` из домена целевого медиа-URL.
-  6. В `MainActivity.kt` добавлен fallback для пустого заголовка (`"none"`) и безопасное Base64 URL-safe кодирование параметров маршрута.
-
-### ✅ [ИСПРАВЛЕНО] Навигация D-Pad на экранах «Поиск» и «Избранное»
-- **Файлы**:
-  - `ui/profile/ProfileScreen.kt`
-  - `ui/search/SearchScreen.kt`
-- **Причина**:
-  - При переходе со строки поиска или с табов категорий кнопка D-pad Вниз теряла фокус или не переходила к первой карточке сетки; при нажатии D-pad Вверх с первой строки карточек фокус не возвращался к строке ввода или табам.
-- **Решение**:
-  - В `ProfileScreen.kt` и `SearchScreen.kt` добавлены связанные `FocusRequester` и перехватчики `onPreviewKeyEvent`: Вниз с табов/поиска переходит к первой карточке/чипу, Вверх с первой строки возвращает фокус обратно на элементы управления.
-
-### ✅ [ИСПРАВЛЕНО] Задержка загрузки категорий на главном экране (HomeViewModel)
-- **Файл**: `ui/home/HomeViewModel.kt`
-- **Причина**: При холодном старте загружалась только первая категория «Все». Переключение на другие вкладки вызывало заметную задержку загрузки.
-- **Решение**: Добавлен параллельный асинхронный предзагрузчик `prefetchOtherCategories()` на `Dispatchers.IO` в `init` и при смене фильтра.
-
-### ✅ [ИСПРАВЛЕНО] Полный отказ воспроизведения видео: обход парсера, заморозка WebView, ошибка сопоставления плейлиста в HlsProxy и сбой Referer
-- **Файлы**:
-  - `data/repository/AllohaRuntimeResolver.kt`
-  - `SlooshApplication.kt`
-  - `data/alloha/HlsProxyServer.kt`
-  - `ui/player/PlayerScreen.kt`
-  - `ui/home/HomeScreen.kt`
-  - `ui/profile/ProfileScreen.kt`
-- **Причина**:
-  1. **Ложный обход через статический regex (`resolveViaHttpHops`)**: в `AllohaRuntimeResolver` первоочередной вызов парсил статический HTML через regex на поиск `.m3u8`/`.mp4`. Статический HTML Alloha возвращал фиктивные/неавторизованные прямые ссылки без токенов сессии (`accepts-controls`, `authorization`). Приложение полностью обходило запуск WebView, а ExoPlayer и `HlsProxyServer` получали HTTP 403 Forbidden от CDN.
-  2. **Заморозка отсоединённого WebView (Headless Throttling)**: экземпляр `WebView` создавался без прикрепления к оконной иерархии (`Activity.decorView`). На Android TV движок Chromium расценивал невидимый отсоединённый WebView как фоновый процесс и приостанавливал выполнение таймеров JS (`setInterval`), WebSockets и HTML5-видеоплеера, блокируя захват токенов.
-  3. **Междоменная изоляция (Same-Origin Policy) во фреймах**: использование внешней обёртки с `<iframe src="...">` приводило к блокировке `frames[i].contentWindow` при перенаправлениях на сторонние CDN (`DOMException: Blocked a frame with origin`), из-за чего хуки на `XMLHttpRequest` и `WebSocket` никогда не устанавливались в плеере.
-  4. **Фатальная ошибка парсинга путей в HlsProxyServer**: проверка `rawPath.lowercase().endsWith(".m3u8")` всегда возвращала `false`, так как `rawPath` имел вид `/proxy/stream.m3u8?url=...` (заканчивался query-параметром). Плейлисты без `.m3u8` в URL обрабатывались как TS-сегменты без перезаписи путей, что ломало воспроизведение дочерних чанков.
-  5. **Искажение заголовка Referer**: при локальном проксировании `videoUri.host` (`127.0.0.1`) ошибочно подставлялся как `Referer: http://127.0.0.1/` в upstream-запросы к CDN.
-  6. **Сбой Chunkless Preparation в ExoPlayer**: флаг `.setAllowChunklessPreparation(true)` в `HlsMediaSource.Factory` вызывал зависания на проксированных HLS-потоках без явных метаданных кодеков.
-  7. **Блокировка авто-восстановления на нулевой секунде**: в `onPlayerError` условие `if (!hasAutoRetried && pos > 0)` при ошибке на старте (`pos == 0`) вычислялось как `false`, сразу показывая плашку ошибки без единой попытки восстановления.
-  8. **Фокусируемость табов с пульта**: в `HomeScreen` и `ProfileScreen` на плашках категорий отсутствовал явный модификатор `.focusable()`, что затрудняло навигацию D-pad.
-### ✅ [ИСПРАВЛЕНО] «Таймаут загрузки видеопотока» (20с) из-за OkHttp-перехвата HTML, заморозки WebView (View.INVISIBLE) и отсутствия хуков Plyr
-- **Файлы**:
-  - `data/repository/AllohaRuntimeResolver.kt`
-  - `data/repository/AllohaRuntimeParser.kt`
-- **Причина**:
-  1. **Сетевой перехват HTML в `shouldInterceptRequest`**: `shouldInterceptRequest` перехватывал основной запрос HTML и выполнял его синхронно через отдельный `OkHttpClient`. OkHttp не передавал куки сессии в `CookieManager`, не имел доверительного SSL/TLS пула для всех доменов CDN, не воспроизводил браузерные заголовки и TLS fingerprint, из-за чего Cloudflare/защита от ботов блокировали запрос или отдавали ответ без `Set-Cookie`. В результате страница плеера загружалась неполноценно без авторизационных кук.
-  2. **Дублирование запросов к `/bnsi/`**: в `shouldInterceptRequest` запускался параллельный фоновый запрос через OkHttp к `/bnsi/`, в то время как скрипт плеера внутри страницы также слал запрос к `/bnsi/`. Это приводило к сбросу сессионного токена или блокировке по rate-limit на стороне сервера Alloha.
-  3. **Заморозка отсоединённого WebView (View.INVISIBLE Throttling)**: контейнер WebView добавлялся в `decorView` с `visibility = View.INVISIBLE`. На Android TV движок Chromium расценивал невидимый WebView как фоновый процесс и приостанавливал выполнение таймеров JS (`setInterval`), WebSockets и полностью блокировал автовоспроизведение HTML5-видео (`document.visibilityState == 'hidden'`), из-за чего поток так и не запрашивался.
-  4. **Пропуск клика по кнопке воспроизведения плеера Plyr**: скрипт искал только устаревшие селекторы (`.allplay__play-btn`, `#player`), в то время как плеер Alloha использует Plyr (`.plyr__control--overlaid`, `button[data-plyr="play"]`). Без клика по оверлею Plyr не инициировал создание `Hls` и запрос плейлиста `master.m3u8`.
-  5. **Неполноценный перехват WebSocket**: слушатель сообщений сокета добавлялся только при вызове `.send()`. Если сокет получал `config_update` до отправки исходящих сообщений, хук не срабатывал.
-  6. **Отсутствие упреждающего резолва до 20-секундного таймаута**: при отсутствии `bestHlsSourcePayload` или `bestMasterPayload` таймер 20 секунд в `AllohaRuntimeResolver` завершался фатальным исключением `java.lang.RuntimeException: Таймаут загрузки видеопотока`.
-- **Решение**:
-  1. **Полный отказ от OkHttp-перехвата в `shouldInterceptRequest`**: убраны любые блокирующие вызовы OkHttp. `shouldInterceptRequest` выполняет только пассивный сбор заголовков (`authorizations`, `authorization`, `accepts-controls`, `referer`) и обнаружение URL `master.m3u8`, всегда возвращая `null`, благодаря чему Chromium обрабатывает 100% сетевых запросов нативно с сохранением всех кук, сессий и TLS.
-  2. **Активный фоновый контейнер WebView на нулевом слое окна**: размер 1x1 заменён на полноценный `MATCH_PARENT` (размер 1x1 расценивался политикой Chromium как tracking pixel и блокировал автоплей видео, а также схлопывал адаптивный CSS плеера Plyr). Контейнер размещается на индексе 0 (`decorView.addView(container, 0)`), находясь строго под Compose-иерархией, с `alpha = 0.01f`, `isFocusable = false` и `importantForAccessibility = NO`, что гарантирует полноценный рендеринг видео без помех для пользователя и D-pad навигации.
-  3. **Комплексные хуки Plyr, безусловное снятие паузы и автоплей**: в `HOOK_JS` добавлен вызов `player.play()`, безусловный сброс модалки «Продолжить просмотр» (`.time_save__btn`), запуск воспроизведения `video.play()` даже при пустом/blob `src`, эмуляция клика по всем кнопкам плеера без преждевременного `break`, а также полифилл `document.visibilityState = 'visible'`.
-  4. **Глобальный перехват WebSocket (включая setter `onmessage`)**: перехвачен не только конструктор `WebSocket` и его методы (`send`, `addEventListener`), но и дескриптор сеттера свойства `onmessage` на `WebSocket.prototype`, что гарантирует захват `config_update` (`edge_hash`, `ttl`) даже при назначении обработчика через `ws.onmessage = ...`.
-  5. **Мгновенный адаптивный резолв**: при получении `hlsSource` или перехвате плейлиста `master.m3u8` в `shouldInterceptRequest` при наличии заголовков воспроизведения поток декодируется и передаётся в плеер немедленно (за 1-2 секунды) без 300-миллисекундной задержки; добавлен сторожевой таймер на 3.0 секунды для упреждающего резолва накопленных данных без ожидания таймаута.
-  6. **Идемпотентная очистка ресурсов**: метод `cleanup()` защищён атомарным флагом `isCleanedUp` от гонок при параллельной отмене корутины и успешном резолве.
-  7. **Расширенная поддержка `skipTime` в `AllohaRuntimeParser`**: добавлена поддержка формата `JSONArray` с объектами `[{"start": ..., "end": ...}]` в дополнение к строкам.
-
-### ✅ [ИСПРАВЛЕНО] Сброс фокуса на первый фильм при возврате из боковой панели (Exact Card Focus Restoration)
-- **Файлы**:
-  - `ui/home/HomeScreen.kt`
-  - `ui/search/SearchScreen.kt`
-  - `ui/continue_watching/ContinueScreen.kt`
-  - `ui/profile/ProfileScreen.kt`
-- **Причина**:
-  - На экранах с сетками карточек (`HomeScreen`, `SearchScreen`, `ContinueScreen`, `ProfileScreen`) экземпляр `FocusRequester` (`firstCardFocusRequester`, `firstResultFocusRequester`, `firstItemFocusRequester`) был статически прикреплён исключительно к карточке с `index == 0`.
-  - При выходе пользователя в боковую панель (D-pad Left) и последующем возврате в контент (D-pad Right, Enter, клик или Back), `contentFocusCallback` всегда вызывал `firstCardFocusRequester.requestFocus()`, принудительно сбрасывая фокус на самый первый фильм в списке и прокручивая сетку в начало.
-  - Аналогично при перемещении D-pad Вверх на табы категорий или строку поиска и последующем нажатии D-pad Вниз фокус также сбрасывался на элемент 0.
-  - В `ProfileScreen.kt` в обработчике D-pad Вверх была опечатка `selectedIndex` вместо `selectedCategory.ordinal`.
-- **Решение**:
-  1. Внедрена динамическая архитектура запоминания фокуса с `rememberSaveable`:
-     - `var lastFocusedCardIndex by rememberSaveable { mutableIntStateOf(0) }`
-     - `var lastFocusedArea by rememberSaveable { mutableStateOf(...) }`
-     - Единый `activeCardFocusRequester`, который динамически прикрепляется к карточке с `index == targetIndex` (`targetIndex = lastFocusedCardIndex.coerceIn(0, items.lastIndex)`).
-  2. При получении фокуса любой карточкой `lastFocusedCardIndex` мгновенно обновляется (`onFocusChanged` / `onFocus`).
-  3. При возврате из боковой панели `contentFocusCallback` восстанавливает фокус строго на `activeCardFocusRequester` на той же самой карточке. Если карточка была смещена за пределы видимой области `TvLazyVerticalGrid`, корутина выполняет `gridState.scrollToItem(safeTarget)` и гарантированно возвращает фокус.
-  4. При переходе D-pad Вниз с табов категорий или строки поиска фокус опускается ровно на ту карточку, с которой пользователь поднимался наверх.
-  5. При смене категории каталога или поискового запроса `lastFocusedCardIndex` предсказуемо сбрасывается в 0 через `LaunchedEffect`.
-  6. Исправлена опечатка `selectedIndex` в `ProfileScreen.kt` на `selectedCategory.ordinal`.
-
-### ✅ [ИСПРАВЛЕНО] На вкладке «Все» отображались только фильмы без сериалов, мультфильмов и аниме
-- **Файлы**:
-  - `data/api/MoviesApi.kt`
-  - `data/repository/MoviesRepository.kt`
-  - `ui/home/HomeViewModel.kt`
-- **Причина**:
-  - В исходной логике (унаследованной напрямую из iOS `HomeView.swift:886 case .all, .movies:`) категория `HomeCategory.ALL` была сгруппирована с фильмами и вызывала только `getPopularMovies(page)` / `getTopMovies(page)`. В результате вкладка «Все» физически содержала 100% исключительно фильмы, сериалы и аниме полностью отсутствовали в общем каталоге.
-- **Решение**:
-  1. В `MoviesApiService` и `MoviesRepository` добавлен эндпоинт `getTrending(page, window = "week")`, возвращающий всемирный трендовый контент TMDB (смесь популярных фильмов, сериалов и анимации).
-  2. В `HomeViewModel.kt` для вкладки `HomeCategory.ALL` реализовано параллельное асинхронное получение контента:
-     - Для `HomeFilter.POPULAR`: параллельно запрашиваются `getTrending(page)` (фильмы + сериалы), `getCartoons(page)` (мультфильмы) и `getAnime(page)` (аниме), после чего результаты гармонично чередуются функцией `interleaveMedia` (на каждые 4 трендовых фильма/сериала добавляется 1 мультфильм и 1 аниме).
-     - Для `HomeFilter.TOP_RATED`: параллельно запрашиваются `getTopMovies`, `getTopTv`, `getCartoons` и `getAnime(order = "RATING")`, чередуясь функцией `interleaveFour`.
-  3. Вкладка «Все» теперь содержит полноценную богатую витрину всех типов медиа, а отдельные вкладки («Фильмы», «Сериалы», «Мультфильмы», «Аниме») продолжают отдавать строго отфильтрованные категории.
-
-### ✅ [ИСПРАВЛЕНО] Ошибка сборки релизной версии (assembleRelease) в GitHub Actions при push в репозиторий
-- **Файлы**:
-  - `.github/workflows/build-apk.yml`
-  - `app/build.gradle.kts`
-  - `.gitignore`
-  - `gradlew`
-- **Причина**:
-  1. В `.github/workflows/build-apk.yml` выполнялась команда `gradle assembleRelease --stacktrace` вместо использования Gradle Wrapper (`./gradlew`). На раннере `ubuntu-latest` системный `gradle` отсутствует (`command not found`) либо конфликтует с версией Gradle Wrapper (8.6) и AGP 8.3.
-  2. Файл `gradlew` в git-индексе имел права `100644` (не исполняемый). На Linux-раннере при попытке запуска `./gradlew` возникала ошибка `Permission denied`.
-  3. В `app/build.gradle.kts` в `signingConfigs.release` при отсутствии файла хранилища `keys/slooshkey` или пароля вызывался `initWith(getByName("debug"))`. При таком наследовании имя конфигурации оставалось `"release"`, из-за чего AGP-задача `validateSigningRelease` искала `~/.android/debug.keystore` на диске и не создавала его автоматически, падая с `Keystore file not found for signing config 'release'`.
-  4. Переменные окружения для подписи (`KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`) не передавались в шаг сборки в workflow.
-  5. Шаг подготовки артефакта жестко требовал файл `app-release.apk` без поиска сгенерированного APK, а публикация релиза с тегом `latest` не учитывала версионирование для встроенного `UpdateManager`.
-- **Решение**:
-  1. В `.github/workflows/build-apk.yml` сборка переведена на `./gradlew assembleRelease --no-daemon --stacktrace` с предварительным шагом `chmod +x gradlew`.
-  2. В git-индексе для `gradlew` установлен исполняемый режим `100755` (`git update-index --chmod=+x gradlew`).
-  3. В `app/build.gradle.kts` реализован безопасный fallback: если файл `keys/slooshkey` или `KEYSTORE_PASSWORD` не заданы, `signingConfig` напрямую указывает на `signingConfigs.getByName("debug")`. В этом случае AGP автоматически генерирует временный ключ отладки на чистом раннере, и сборка релиза проходит без ошибок.
-  4. В workflow добавлен шаг декодирования секретного хранилища `KEYSTORE_BASE64` (если он задан в GitHub Secrets) и проброс переменных окружения подписи.
-  5. Добавлен динамический поиск APK в каталоге сборки (`find app/build/outputs/apk/release/ -type f -name "*.apk"`).
-  6. Внедрено авто-извлечение `versionName` из `build.gradle.kts` для создания тега релиза (например, `v1.0.5`), что гарантирует корректную работу автообновления через `UpdateManager` на телевизоре.
-  7. Папка `/keys/` и файлы `*.keystore`, `*.jks` добавлены в `.gitignore` для безопасности публичного репозитория.
+2. **Fix Implemented**:
+   - **`AllohaRuntimeParser.kt`**: Added `extractNestedHlsSourcePayload` and comprehensive timecode/skips extractor matching iOS formats.
+   - **`AllohaRepository.kt`**: Full 1:1 parity with iOS — added `normalizedAllohaTranslationName`, `detectLanguageTag`, `allohaTranslationNamesMatch`, and `findMatchingAudioVariant`.
+   - **`AllohaRuntimeResolver.kt`**: Strict `isLikelyURL` validation; added `WebViewCompat.addWebMessageListener` and `addDocumentStartJavaScript` via AndroidX WebKit; isolated resource reporting from whole-DOM string dump.
+   - **`HlsProxyServer.kt`**: Replaced fatal 404 responses with 503 (`Retry-After: 1`) on transient upstream errors so ExoPlayer retries gracefully; validated and sanitized master URLs and Cookie URLs.
+   - **`PlayerViewModel.kt`**: Integrated `findMatchingAudioVariant` for seamless track switching and pre-resolved stream URL playback.

@@ -101,8 +101,13 @@ class HlsProxyServer(
     }
 
     fun updateMasterUrl(url: String) {
-        activeMasterUrl = url
-        Log.d(TAG, "Active master URL updated: $url")
+        val trimmed = url.trim()
+        if (trimmed.isBlank() || trimmed.startsWith("<") || trimmed.startsWith("{") || trimmed.contains("\n") || trimmed.contains(" ")) {
+            Log.w(TAG, "Ignoring invalid master URL: ${trimmed.take(80)}")
+            return
+        }
+        activeMasterUrl = trimmed
+        Log.d(TAG, "Active master URL updated: $trimmed")
     }
 
     fun updateMasterUrlSilently(url: String) {
@@ -325,7 +330,8 @@ class HlsProxyServer(
             }
         }
         if (body == null) {
-            send404(out)
+            Log.w(TAG, "servePlaylist: body is null for $cleanUrl, sending 503 Retry-After: 1")
+            send503(out)
             return
         }
         val rewritten = if (body.contains("#EXT")) rewriteM3u8(body, cleanUrl) else body
@@ -340,7 +346,7 @@ class HlsProxyServer(
         val cleanUrl = if (url.startsWith("//")) "https:$url" else url
         val body = fetchText(cleanUrl)
         if (body == null) {
-            send404(out)
+            send503(out)
             return
         }
         val bytes = body.toByteArray(Charsets.UTF_8)
@@ -384,7 +390,8 @@ class HlsProxyServer(
                 onSessionExpired?.invoke()
             }
             response?.close()
-            send404(out)
+            Log.w(TAG, "serveSegment: upstream failed ($code) for ${cleanUrl.take(80)}, sending 503 Retry-After: 1")
+            send503(out)
             return
         }
 
@@ -559,9 +566,11 @@ class HlsProxyServer(
         }
 
         try {
-            val cookie = CookieManager.getInstance().getCookie(cleanUrl)
-            if (!cookie.isNullOrBlank()) builder.header("Cookie", cookie)
-        } catch (_: Exception) {}
+            if (cleanUrl.startsWith("http://") || cleanUrl.startsWith("https://")) {
+                val cookie = CookieManager.getInstance().getCookie(cleanUrl)
+                if (!cookie.isNullOrBlank()) builder.header("Cookie", cookie)
+            }
+        } catch (_: Throwable) {}
         return builder
     }
 
@@ -570,7 +579,20 @@ class HlsProxyServer(
             val response = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
             out.write(response.toByteArray(Charsets.UTF_8))
             out.flush()
-        } catch (_: Exception) {}
+        } catch (_: Throwable) {}
+    }
+
+    /**
+     * Sends HTTP 503 Service Unavailable with Retry-After: 1.
+     * Tells ExoPlayer that the playlist/segment is temporarily unavailable,
+     * prompting an automatic retry after 1s rather than fatal termination.
+     */
+    private fun send503(out: OutputStream) {
+        try {
+            val response = "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nRetry-After: 1\r\nConnection: close\r\n\r\n"
+            out.write(response.toByteArray(Charsets.UTF_8))
+            out.flush()
+        } catch (_: Throwable) {}
     }
 
     private fun resolveContentType(url: String, resp: okhttp3.Response): String {
