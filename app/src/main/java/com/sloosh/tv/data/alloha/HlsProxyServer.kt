@@ -509,6 +509,8 @@ class HlsProxyServer(
         }
     }
 
+    fun fetchPlaylistText(url: String): String? = fetchText(url)
+
     private fun fetchText(url: String): String? {
         val cleanUrl = if (url.startsWith("//")) "https:$url" else url
         if (cleanUrl.contains("token_movie=") || cleanUrl.contains("<") || cleanUrl.contains("\n")) {

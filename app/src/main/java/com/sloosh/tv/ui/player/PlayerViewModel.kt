@@ -240,24 +240,19 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 if (qualities.size <= 1 && resolvedStream.videoUrl.contains(".m3u8", ignoreCase = true)) {
                     launch(Dispatchers.IO) {
                         try {
-                            val reqBuilder = Request.Builder().url(resolvedStream.videoUrl)
-                            resolvedStream.headers.forEach { (k, v) -> reqBuilder.header(k, v) }
-                            val resp = httpClient.newCall(reqBuilder.build()).execute()
-                            if (resp.isSuccessful) {
-                                val body = resp.body?.string()
-                                if (!body.isNullOrBlank()) {
-                                    val parsedQualities = AllohaRuntimeParser.parseMasterPlaylistQualities(body, resolvedStream.videoUrl)
-                                    if (parsedQualities.isNotEmpty()) {
-                                        val updatedQualities = parsedQualities.sortedByDescending {
-                                            it.label.removeSuffix("p").toIntOrNull() ?: 0
-                                        }
-                                        val currentStream = _uiState.value.resolvedStream
-                                        if (currentStream != null) {
-                                            _uiState.value = _uiState.value.copy(
-                                                resolvedStream = currentStream.copy(qualityVariants = updatedQualities),
-                                                currentQuality = updatedQualities.firstOrNull()
-                                            )
-                                        }
+                            val body = HlsProxyServer.shared.fetchPlaylistText(resolvedStream.videoUrl)
+                            if (!body.isNullOrBlank()) {
+                                val parsedQualities = AllohaRuntimeParser.parseMasterPlaylistQualities(body, resolvedStream.videoUrl)
+                                if (parsedQualities.isNotEmpty()) {
+                                    val updatedQualities = parsedQualities.sortedByDescending {
+                                        it.label.removeSuffix("p").toIntOrNull() ?: 0
+                                    }
+                                    val currentStream = _uiState.value.resolvedStream
+                                    if (currentStream != null) {
+                                        _uiState.value = _uiState.value.copy(
+                                            resolvedStream = currentStream.copy(qualityVariants = updatedQualities),
+                                            currentQuality = updatedQualities.firstOrNull()
+                                        )
                                     }
                                 }
                             }
