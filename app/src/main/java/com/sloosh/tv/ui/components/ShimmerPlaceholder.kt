@@ -4,7 +4,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -15,30 +15,38 @@ import com.kyant.capsule.ContinuousCapsule
 import com.kyant.capsule.ContinuousRoundedRectangle
 
 @Composable
-fun ShimmerEffect(modifier: Modifier = Modifier) {
-    val shimmerColors = listOf(
-        Color.White.copy(alpha = 0.05f),
-        Color.White.copy(alpha = 0.20f),
-        Color.White.copy(alpha = 0.05f)
-    )
+fun rememberShimmerBrush(): Brush {
+    val shimmerColors = remember {
+        listOf(
+            Color.White.copy(alpha = 0.04f),
+            Color.White.copy(alpha = 0.16f),
+            Color.White.copy(alpha = 0.04f)
+        )
+    }
 
     val transition = rememberInfiniteTransition(label = "shimmer_transition")
-    val translateAnim = transition.animateFloat(
+    val translateAnim by transition.animateFloat(
         initialValue = 0f,
-        targetValue = 1000f,
+        targetValue = 1800f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1200, easing = LinearEasing),
+            animation = tween(durationMillis = 1400, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "shimmer_translate"
     )
 
-    val brush = Brush.linearGradient(
+    return Brush.linearGradient(
         colors = shimmerColors,
-        start = Offset(translateAnim.value - 200f, translateAnim.value - 200f),
-        end = Offset(translateAnim.value, translateAnim.value)
+        start = Offset(translateAnim - 400f, translateAnim - 400f),
+        end = Offset(translateAnim, translateAnim)
     )
+}
 
+@Composable
+fun ShimmerEffect(
+    modifier: Modifier = Modifier,
+    brush: Brush = rememberShimmerBrush()
+) {
     Box(
         modifier = modifier
             .background(brush)
@@ -46,7 +54,67 @@ fun ShimmerEffect(modifier: Modifier = Modifier) {
 }
 
 @Composable
+fun PosterGridShimmer(
+    gridColumns: Int = 5,
+    itemCount: Int = 12,
+    isCompact: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    val brush = rememberShimmerBrush()
+    val gridSpacing = if (isCompact) 12.dp else 16.dp
+
+    androidx.tv.foundation.lazy.grid.TvLazyVerticalGrid(
+        columns = androidx.tv.foundation.lazy.grid.TvGridCells.Fixed(gridColumns),
+        horizontalArrangement = Arrangement.spacedBy(gridSpacing),
+        verticalArrangement = Arrangement.spacedBy(gridSpacing),
+        contentPadding = PaddingValues(top = 16.dp, bottom = 80.dp),
+        modifier = modifier.fillMaxSize()
+    ) {
+        items(itemCount) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(2f / 3f)
+                    .clip(ContinuousRoundedRectangle(16.dp))
+                    .background(Color.White.copy(alpha = 0.06f))
+            ) {
+                ShimmerEffect(modifier = Modifier.fillMaxSize(), brush = brush)
+            }
+        }
+    }
+}
+
+@Composable
+fun ContinueGridShimmer(
+    itemCount: Int = 6,
+    modifier: Modifier = Modifier
+) {
+    val brush = rememberShimmerBrush()
+
+    androidx.tv.foundation.lazy.grid.TvLazyVerticalGrid(
+        columns = androidx.tv.foundation.lazy.grid.TvGridCells.Fixed(3),
+        horizontalArrangement = Arrangement.spacedBy(24.dp),
+        verticalArrangement = Arrangement.spacedBy(24.dp),
+        contentPadding = PaddingValues(bottom = 40.dp),
+        modifier = modifier.fillMaxSize()
+    ) {
+        items(itemCount) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(210.dp)
+                    .clip(ContinuousRoundedRectangle(18.dp))
+                    .background(Color.White.copy(alpha = 0.06f))
+            ) {
+                ShimmerEffect(modifier = Modifier.fillMaxSize(), brush = brush)
+            }
+        }
+    }
+}
+
+@Composable
 fun CatalogRowShimmer(title: String) {
+    val brush = rememberShimmerBrush()
     Column(modifier = Modifier.padding(bottom = 24.dp)) {
         Box(
             modifier = Modifier
@@ -67,7 +135,7 @@ fun CatalogRowShimmer(title: String) {
                         .clip(ContinuousRoundedRectangle(12.dp))
                         .background(Color.White.copy(alpha = 0.08f))
                 ) {
-                    ShimmerEffect(modifier = Modifier.fillMaxSize())
+                    ShimmerEffect(modifier = Modifier.fillMaxSize(), brush = brush)
                 }
             }
         }

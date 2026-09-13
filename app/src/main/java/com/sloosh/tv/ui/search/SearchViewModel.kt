@@ -24,7 +24,7 @@ data class SearchUiState(
 
 class SearchViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository = MoviesRepository()
+    private val repository = MoviesRepository.instance
     private val searchHistoryDao = AppDatabase.getDatabase(application).searchHistoryDao()
 
     private val _uiState = MutableStateFlow(SearchUiState())
@@ -55,7 +55,8 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         searchJob = viewModelScope.launch {
             delay(500) // Debounce
             _uiState.value = _uiState.value.copy(isLoading = true)
-            val results = repository.searchMovies(newQuery.trim())
+            val rawResults = repository.searchMovies(newQuery.trim())
+            val results = rawResults.filter { it.identifier.isNotBlank() }.distinctBy { it.identifier }
             _uiState.value = _uiState.value.copy(isLoading = false, results = results)
             if (newQuery.trim().length >= 2) {
                 searchHistoryDao.insertSearch(SearchHistoryEntity(query = newQuery.trim()))
@@ -70,6 +71,12 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     fun deleteHistoryQuery(query: String) {
         viewModelScope.launch {
             searchHistoryDao.deleteSearch(query)
+        }
+    }
+
+    fun clearAllHistory() {
+        viewModelScope.launch {
+            searchHistoryDao.clearAllSearchHistory()
         }
     }
 }

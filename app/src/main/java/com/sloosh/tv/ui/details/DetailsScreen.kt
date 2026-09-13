@@ -1,9 +1,12 @@
 package com.sloosh.tv.ui.details
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -66,6 +69,11 @@ fun DetailsScreen(
     val state by viewModel.uiState.collectAsState()
     val watchButtonFocusRequester = remember { FocusRequester() }
 
+    // Dismiss source sheet when Back button is pressed on TV remote
+    androidx.activity.compose.BackHandler(enabled = state.showSourceSheet) {
+        viewModel.dismissSourceSheet()
+    }
+
     LaunchedEffect(mediaId) {
         viewModel.loadDetails(mediaId)
     }
@@ -110,45 +118,26 @@ fun DetailsScreen(
             state = state,
             viewModel = viewModel,
             watchButtonFocusRequester = watchButtonFocusRequester,
-            onPlayClick = onPlayClick,
             onBackClick = onBackClick
         )
 
-        // ─── Source Selection Sheet ───────────────────────────────────────────
-        when {
-            state.showSourceSheet && state.isFetchingSources -> {
-                SourceSelectionLoadingDialog(
-                    title = details.title ?: details.originalTitle ?: "",
-                    onDismiss = { viewModel.dismissSourceSheet() }
-                )
-            }
-            state.showSourceSheet && state.allohaData != null -> {
-                val alloha = state.allohaData!!
-                val savedVoiceover = kpId?.let { viewModel.allohaRepository.getLastVoiceover(it) }
-                val globalLastVoiceover = viewModel.allohaRepository.getLastTranslation()
-                val lastSeason = kpId?.let { viewModel.allohaRepository.getLastSeason(it) }
-                val lastEpisode = kpId?.let { viewModel.allohaRepository.getLastEpisode(it) }
-
-                SourceSelectionDialog(
-                    allohaData = alloha,
-                    kpId = kpId,
-                    savedVoiceover = savedVoiceover,
-                    globalLastVoiceover = globalLastVoiceover,
-                    lastSeason = lastSeason ?: state.progress?.season,
-                    lastEpisode = lastEpisode ?: state.progress?.episode,
-                    onSelect = { result ->
-                        // Save last-played preferences
-                        if (kpId != null) {
-                            viewModel.allohaRepository.saveLastVoiceover(kpId, result.translation.name)
-                            viewModel.allohaRepository.saveLastPlayed(kpId, result.season, result.episode)
-                        }
-                        viewModel.allohaRepository.saveLastTranslation(result.translation.name)
-                        viewModel.dismissSourceSheet()
-                        onPlayClick(result.translation.iframeUrl, result.season, result.episode, details.displayTitle)
-                    },
-                    onDismiss = { viewModel.dismissSourceSheet() }
-                )
-            }
+        // ─── Source Selection Sheet (In-hierarchy full-screen overlay) ─────────
+        AnimatedVisibility(
+            visible = state.showSourceSheet,
+            enter = fadeIn(animationSpec = tween(200)),
+            exit = fadeOut(animationSpec = tween(200))
+        ) {
+            SourceSelectionOverlay(
+                state = state,
+                title = details.title ?: details.originalTitle ?: "",
+                onSelect = { result ->
+                    viewModel.saveLastPlaybackChoice(kpId, result.translation.name, result.season, result.episode)
+                    viewModel.dismissSourceSheet()
+                    onPlayClick(result.translation.iframeUrl, result.season, result.episode, details.displayTitle)
+                },
+                onRetry = { viewModel.openSourceSheet() },
+                onDismiss = { viewModel.dismissSourceSheet() }
+            )
         }
     }
 }
@@ -161,7 +150,6 @@ private fun SidePosterDetailsLayout(
     state: DetailsUiState,
     viewModel: DetailsViewModel,
     watchButtonFocusRequester: FocusRequester,
-    onPlayClick: (String, Int?, Int?, String) -> Unit,
     onBackClick: (() -> Unit)? = null
 ) {
     val scrollState = rememberScrollState()
@@ -180,6 +168,31 @@ private fun SidePosterDetailsLayout(
         fallbackUrl = posterUrl
     )
 
+    val depthGradient = remember(ambientColor) {
+        Brush.horizontalGradient(
+            colorStops = arrayOf(
+                0.0f to ambientColor,
+                0.25f to ambientColor.copy(alpha = 0.90f),
+                0.45f to ambientColor.copy(alpha = 0.60f),
+                0.65f to ambientColor.copy(alpha = 0.25f),
+                0.85f to Color.Transparent
+            )
+        )
+    }
+
+    val fadeGradientStops = remember {
+        arrayOf(
+            0.0f to Color.Transparent,
+            0.15f to Color.Black.copy(alpha = 0.03f),
+            0.30f to Color.Black.copy(alpha = 0.12f),
+            0.45f to Color.Black.copy(alpha = 0.30f),
+            0.60f to Color.Black.copy(alpha = 0.55f),
+            0.75f to Color.Black.copy(alpha = 0.80f),
+            0.90f to Color.Black.copy(alpha = 0.96f),
+            1.0f to Color.Black
+        )
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -189,17 +202,7 @@ private fun SidePosterDetailsLayout(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.horizontalGradient(
-                        colorStops = arrayOf(
-                            0.0f to ambientColor,
-                            0.25f to ambientColor.copy(alpha = 0.90f),
-                            0.45f to ambientColor.copy(alpha = 0.60f),
-                            0.65f to ambientColor.copy(alpha = 0.25f),
-                            0.85f to Color.Transparent
-                        )
-                    )
-                )
+                .background(depthGradient)
         )
 
         // Native aspect-ratio backdrop shifted to the right, with ultra-smooth alpha fade on its left edge
@@ -219,16 +222,7 @@ private fun SidePosterDetailsLayout(
                         drawContent()
                         drawRect(
                             brush = Brush.horizontalGradient(
-                                colorStops = arrayOf(
-                                    0.0f to Color.Transparent,
-                                    0.15f to Color.Black.copy(alpha = 0.03f),
-                                    0.30f to Color.Black.copy(alpha = 0.12f),
-                                    0.45f to Color.Black.copy(alpha = 0.30f),
-                                    0.60f to Color.Black.copy(alpha = 0.55f),
-                                    0.75f to Color.Black.copy(alpha = 0.80f),
-                                    0.90f to Color.Black.copy(alpha = 0.96f),
-                                    1.0f to Color.Black
-                                ),
+                                colorStops = fadeGradientStops,
                                 startX = 0f,
                                 endX = size.width * 0.72f
                             ),
@@ -311,17 +305,30 @@ private fun SidePosterDetailsLayout(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            RatingsRow(
-                kp = details.ratings?.kp,
-                tmdb = details.ratings?.tmdb,
-                imdb = details.ratings?.imdb ?: details.ratings?.kp,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
-
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                val kpRating = details.ratings?.kp
+                if (kpRating != null && kpRating > 0) {
+                    Box(
+                        modifier = Modifier
+                            .clip(ContinuousRoundedRectangle(7.dp))
+                            .background(ratingColor(kpRating))
+                            .padding(horizontal = 6.5.dp, vertical = 2.5.dp)
+                    ) {
+                        Text(
+                            text = String.format(java.util.Locale.US, "%.1f", kpRating),
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 13.5.sp,
+                                letterSpacing = (-0.2).sp
+                            ),
+                            color = Color.White
+                        )
+                    }
+                }
+
                 if (details.year != null) {
                     Text(
                         text = "${details.year}",
@@ -597,98 +604,65 @@ private fun SidePosterDetailsLayout(
                 }
             }
 
-            // ─── TV Series Seasons & Episodes Section ─────────────────────────
-            val seriesData = state.allohaData
-            if (seriesData != null && seriesData.isSerial && seriesData.seasons.isNotEmpty()) {
-                val seasons = seriesData.seasons
-                var selectedSeasonIndex by remember { mutableStateOf(0) }
-                val currentSeason = seasons.getOrNull(selectedSeasonIndex) ?: seasons.firstOrNull()
-
-                if (currentSeason != null) {
-                    Spacer(modifier = Modifier.height(28.dp))
-
-                    Text(
-                        text = "Сезоны и серии",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 20.sp
-                        ),
-                        color = Color.White,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
-
-                    // Seasons Tabs Row
-                    if (seasons.size > 1) {
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            contentPadding = PaddingValues(bottom = 14.dp)
+            // ─── Cast / Actors Section ────────────────────────────────────
+            val cast = details.cast
+            if (!cast.isNullOrEmpty()) {
+                Spacer(modifier = Modifier.height(28.dp))
+                Text(
+                    text = "В главных ролях",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp,
+                        letterSpacing = (-0.2).sp
+                    ),
+                    color = Color.White
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(end = 24.dp)
+                ) {
+                    items(cast.take(12)) { actor ->
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.width(80.dp)
                         ) {
-                            items(seasons) { s ->
-                                val sIdx = seasons.indexOf(s)
-                                val isSelected = selectedSeasonIndex == sIdx
-
-                                SlooshFocusableCard(
-                                    onClick = { selectedSeasonIndex = sIdx },
-                                    shape = ContinuousCapsule,
-                                    modifier = Modifier.wrapContentSize()
-                                ) { isFocused ->
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(ContinuousCapsule)
-                                            .background(
-                                                if (isSelected && isFocused) Color.White
-                                                else if (isSelected) Color.White.copy(alpha = 0.90f)
-                                                else if (isFocused) Color.White.copy(alpha = 0.25f)
-                                                else Color.White.copy(alpha = 0.08f)
-                                            )
-                                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "Сезон ${s.season}",
-                                            style = MaterialTheme.typography.labelMedium.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 13.5.sp
-                                            ),
-                                            color = if (isSelected) Color.Black else Color.White
-                                        )
-                                    }
+                            Box(
+                                modifier = Modifier
+                                    .size(68.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.08f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                val photoUrl = actor.getDisplayPhotoUrl()
+                                if (!photoUrl.isNullOrEmpty()) {
+                                    AsyncImage(
+                                        model = photoUrl,
+                                        contentDescription = actor.name,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Text(
+                                        text = actor.name.take(1),
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = Color.White.copy(alpha = 0.7f)
+                                    )
                                 }
                             }
-                        }
-                    }
-
-                    // Episodes Horizontal Row
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        contentPadding = PaddingValues(bottom = 16.dp, end = 24.dp)
-                    ) {
-                        items(currentSeason.episodes) { ep ->
-                            val validId = details.id?.replace("kp_", "") ?: ""
-                            val episodeStillUrl = "https://api.neome.uk/api/v1/images/screens/$validId/${currentSeason.season}/${ep.episode}/large"
-
-                            val isCurrentWatching = state.progress?.season == currentSeason.season && state.progress?.episode == ep.episode
-
-                            DetailsEpisodeCard(
-                                season = currentSeason.season,
-                                episode = ep.episode,
-                                stillUrl = episodeStillUrl,
-                                fallbackArtworkUrl = backdropUrl,
-                                isCurrentWatching = isCurrentWatching,
-                                progressFraction = if (isCurrentWatching) state.progress?.progressFraction ?: 0f else 0f,
-                                onClick = {
-                                    val firstTranslation = ep.translations.firstOrNull()
-                                    if (firstTranslation != null) {
-                                        onPlayClick(
-                                            firstTranslation.iframeUrl,
-                                            currentSeason.season,
-                                            ep.episode,
-                                            details.displayTitle
-                                        )
-                                    } else {
-                                        viewModel.openSourceSheet()
-                                    }
-                                }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = actor.name,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 12.sp,
+                                    lineHeight = 14.sp,
+                                    textAlign = TextAlign.Center
+                                ),
+                                color = Color.White.copy(alpha = 0.88f),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -699,192 +673,4 @@ private fun SidePosterDetailsLayout(
         }
     }
 }
-
-@Composable
-private fun RatingsRow(
-    kp: Double?,
-    tmdb: Double?,
-    imdb: Double?,
-    modifier: Modifier = Modifier
-) {
-    val hasKp = kp != null && kp > 0
-    val hasTmdb = tmdb != null && tmdb > 0
-    val hasImdb = imdb != null && imdb > 0
-
-    if (!hasKp && !hasTmdb && !hasImdb) return
-
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (hasKp) {
-            RatingBadge(
-                logoBg = Color(0xFFFF6A00),
-                logoText = "KP",
-                rating = kp!!
-            )
-        }
-        if (hasTmdb) {
-            RatingBadge(
-                logoBg = Color(0xFF01D277),
-                logoText = "TMDB",
-                rating = tmdb!!
-            )
-        }
-        if (hasImdb) {
-            RatingBadge(
-                logoBg = Color(0xFFF5C518),
-                logoText = "IMDb",
-                rating = imdb!!,
-                textColor = Color.Black
-            )
-        }
-    }
-}
-
-@Composable
-private fun RatingBadge(
-    logoBg: Color,
-    logoText: String,
-    rating: Double,
-    textColor: Color = Color.White
-) {
-    Box(
-        modifier = Modifier
-            .clip(ContinuousCapsule)
-            .background(Color.White.copy(alpha = 0.12f))
-            .border(
-                width = 1.dp,
-                color = Color.White.copy(alpha = 0.12f),
-                shape = ContinuousCapsule
-            )
-            .padding(horizontal = 8.dp, vertical = 4.dp)
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .clip(ContinuousRoundedRectangle(4.dp))
-                    .background(logoBg)
-                    .padding(horizontal = 4.dp, vertical = 1.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = logoText,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Black,
-                    color = textColor
-                )
-            }
-            Text(
-                text = String.format(java.util.Locale.US, "%.1f", rating),
-                fontSize = 12.5.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-        }
-    }
-}
-
-@Composable
-private fun DetailsEpisodeCard(
-    season: Int,
-    episode: Int,
-    stillUrl: String,
-    fallbackArtworkUrl: String?,
-    isCurrentWatching: Boolean,
-    progressFraction: Float,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    SlooshFocusableCard(
-        onClick = onClick,
-        modifier = modifier
-            .width(220.dp)
-            .height(124.dp),
-        shape = ContinuousRoundedRectangle(14.dp)
-    ) { isFocused ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(ContinuousRoundedRectangle(14.dp))
-        ) {
-            AsyncImage(
-                model = stillUrl.ifEmpty { fallbackArtworkUrl },
-                contentDescription = "Серия $episode",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-
-            // Dark gradient overlay
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colorStops = arrayOf(
-                                0.20f to Color.Transparent,
-                                1.0f to Color.Black.copy(alpha = 0.90f)
-                            )
-                        )
-                    )
-            )
-
-            // Play indicator on focus
-            if (isFocused) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(38.dp)
-                        .clip(ContinuousCapsule)
-                        .background(Color.White),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = "Смотреть",
-                        tint = Color.Black,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-            }
-
-            // Info Content
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-            ) {
-                Text(
-                    text = "Серия $episode",
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
-                    ),
-                    color = Color.White,
-                    maxLines = 1
-                )
-
-                if (isCurrentWatching && progressFraction > 0.01f) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    LinearProgressIndicator(
-                        progress = { progressFraction },
-                        color = Color.White,
-                        trackColor = Color.White.copy(alpha = 0.22f),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(2.5.dp)
-                            .clip(ContinuousCapsule)
-                    )
-                }
-            }
-        }
-    }
-}
-
-
 

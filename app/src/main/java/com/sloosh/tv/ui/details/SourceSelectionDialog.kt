@@ -1,16 +1,16 @@
 package com.sloosh.tv.ui.details
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.*
@@ -22,13 +22,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.tv.material3.Border
-import androidx.tv.material3.Button
-import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.kyant.capsule.ContinuousCapsule
@@ -36,6 +32,7 @@ import com.kyant.capsule.ContinuousRoundedRectangle
 import com.sloosh.tv.data.api.AllohaApiResult
 import com.sloosh.tv.data.api.AllohaTranslation
 import com.sloosh.tv.data.repository.allohaTranslationNamesMatch
+import com.sloosh.tv.ui.components.SlooshButton
 import com.sloosh.tv.ui.components.SlooshFocusableCard
 
 // ─── Data class for dialog result ────────────────────────────────────────────
@@ -112,15 +109,62 @@ private fun preferredTranslation(
     return translations.first()
 }
 
-// ─── Main composable ─────────────────────────────────────────────────────────
+// ─── Primary Full-Screen Overlay ─────────────────────────────────────────────
+
+@Composable
+fun SourceSelectionOverlay(
+    state: DetailsUiState,
+    title: String,
+    onSelect: (SourceSelectionResult) -> Unit,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.82f))
+            .padding(horizontal = 48.dp, vertical = 28.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        when {
+            state.isFetchingSources -> {
+                SourceSelectionLoadingView(
+                    title = title,
+                    onDismiss = onDismiss
+                )
+            }
+            state.sourceFetchError != null || (state.allohaData != null && state.allohaData.isSerial && state.allohaData.seasons.isEmpty()) || (state.allohaData != null && !state.allohaData.isSerial && state.allohaData.movie?.translations.isNullOrEmpty()) -> {
+                SourceSelectionErrorView(
+                    title = title,
+                    errorMessage = state.sourceFetchError ?: "Источники для воспроизведения не найдены",
+                    onRetry = onRetry,
+                    onDismiss = onDismiss
+                )
+            }
+            state.allohaData != null -> {
+                SourceSelectionContentView(
+                    allohaData = state.allohaData,
+                    savedVoiceover = state.savedVoiceover,
+                    globalLastVoiceover = state.globalLastVoiceover,
+                    lastSeason = state.lastSeason ?: state.progress?.season,
+                    lastEpisode = state.lastEpisode ?: state.progress?.episode,
+                    onSelect = onSelect,
+                    onDismiss = onDismiss
+                )
+            }
+        }
+    }
+}
+
+// ─── Content View (Translation, Season, Episode Pickers) ──────────────────────
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SourceSelectionDialog(
+fun SourceSelectionContentView(
     allohaData: AllohaApiResult,
-    kpId: Int?,
-    savedVoiceover: String?,          // per-show last voiceover
-    globalLastVoiceover: String?,     // global alloha_last_translation_name
+    savedVoiceover: String?,
+    globalLastVoiceover: String?,
     lastSeason: Int?,
     lastEpisode: Int?,
     onSelect: (SourceSelectionResult) -> Unit,
@@ -131,7 +175,6 @@ fun SourceSelectionDialog(
     val allTranslations = remember(allohaData) { allTranslationNames(allohaData) }
     val allSeasons = remember(allohaData) { allohaData.seasons.map { it.season } }
 
-    // ─── Initial selection setup (mirrors setupInitialSelection() in iOS) ────
     var selectedSeason by remember {
         mutableStateOf(
             if (isSerial) {
@@ -179,18 +222,14 @@ fun SourceSelectionDialog(
         else true
     }
 
-    // ─── Selection actions (mirrors iOS selectTranslation/Season/Episode) ────
-
     fun selectTranslation(name: String) {
         selectedTranslationName = name
         if (isSerial) {
-            // If current season doesn't have this translation, switch to first season that does
             val curSeason = selectedSeason
             if (curSeason != null && !seasonHasTranslation(allohaData, curSeason, name)) {
                 val newSeason = allohaData.seasons.firstOrNull { seasonHasTranslation(allohaData, it.season, name) }
                 if (newSeason != null) selectedSeason = newSeason.season
             }
-            // If current episode doesn't have this translation, switch to first that does
             val s = selectedSeason
             val e = selectedEpisode
             if (s != null && e != null && !episodeHasTranslation(allohaData, s, e, name)) {
@@ -250,216 +289,371 @@ fun SourceSelectionDialog(
         }
     }
 
-    // ─── Focus management ────────────────────────────────────────────────────
     val playButtonFocusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) {
-        try { playButtonFocusRequester.requestFocus() } catch (e: Exception) {}
+        try {
+            playButtonFocusRequester.requestFocus()
+        } catch (_: Exception) {}
     }
 
-    // ─── UI ─────────────────────────────────────────────────────────────────
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+    Column(
+        modifier = Modifier
+            .widthIn(max = 940.dp)
+            .fillMaxHeight()
+            .clip(ContinuousRoundedRectangle(24.dp))
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color(0xFF1C1C1E), Color(0xFF141416))
+                )
+            )
+            .border(1.dp, Color.White.copy(alpha = 0.12f), ContinuousRoundedRectangle(24.dp))
     ) {
-        Box(
+        // ─── Header ─────────────────────────────────────────
+        Row(
             modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.75f))
-                .padding(horizontal = 48.dp, vertical = 36.dp)
-                .clickable(
-                    indication = null,
-                    interactionSource = remember { MutableInteractionSource() }
-                ) { onDismiss() },
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .padding(start = 36.dp, end = 28.dp, top = 24.dp, bottom = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(
-                modifier = Modifier
-                    .widthIn(max = 940.dp)
-                    .fillMaxHeight()
-                    .clip(ContinuousRoundedRectangle(28.dp))
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color(0xFF1C1C1E), Color(0xFF141416))
-                        )
-                    )
-                    .border(1.dp, Color.White.copy(alpha = 0.12f), ContinuousRoundedRectangle(28.dp))
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() }
-                    ) { /* absorb clicks */ }
-            ) {
-                // ─── Header ─────────────────────────────────────────
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 36.dp, end = 36.dp, top = 28.dp, bottom = 0.dp)
-                ) {
-                    Text(
-                        text = allohaData.title,
-                        style = MaterialTheme.typography.headlineMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 24.sp,
-                            letterSpacing = (-0.5).sp
-                        ),
-                        color = Color.White
-                    )
-                    Text(
-                        text = if (isSerial) "Выбор озвучки, сезона и серии" else "Выбор озвучки",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
-                        color = Color.White.copy(alpha = 0.50f),
-                        modifier = Modifier.padding(top = 4.dp, bottom = 20.dp)
-                    )
-                }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = allohaData.title,
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 24.sp,
+                        letterSpacing = (-0.5).sp
+                    ),
+                    color = Color.White
+                )
+                Text(
+                    text = if (isSerial) "Выбор озвучки, сезона и серии" else "Выбор озвучки",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
+                    color = Color.White.copy(alpha = 0.50f),
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
 
-                // ─── Scrollable sections with multi-line FlowRow ──────
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 36.dp)
-                ) {
-                    // ── Translations ─────────────────────────────────
-                    if (allTranslations.isNotEmpty()) {
-                        SectionLabel("Озвучка")
-                        Spacer(Modifier.height(12.dp))
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 24.dp)
-                        ) {
-                            allTranslations.forEach { tName ->
-                                val isSelected = selectedTranslationName == tName
-                                val isAvailable = isTranslationAvailable(allohaData, tName, selectedSeason, selectedEpisode)
-                                SelectorChip(
-                                    label = com.sloosh.tv.ui.util.cleanTranslationName(tName),
-                                    isSelected = isSelected,
-                                    isAvailable = isAvailable,
-                                    onClick = { selectTranslation(tName) }
-                                )
-                            }
-                        }
-                    }
-
-                    // ── Seasons ──────────────────────────────────────
-                    if (isSerial && allSeasons.isNotEmpty()) {
-                        SectionLabel("Сезон")
-                        Spacer(Modifier.height(12.dp))
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 24.dp)
-                        ) {
-                            allSeasons.forEach { sNum ->
-                                val isSelected = selectedSeason == sNum
-                                val isAvailable = isSeasonAvailable(allohaData, sNum, selectedTranslationName)
-                                SelectorChip(
-                                    label = "$sNum сезон",
-                                    isSelected = isSelected,
-                                    isAvailable = isAvailable,
-                                    onClick = { selectSeason(sNum) }
-                                )
-                            }
-                        }
-                    }
-
-                    // ── Episodes ─────────────────────────────────────
-                    if (isSerial && currentEpisodes.isNotEmpty()) {
-                        SectionLabel("Серия")
-                        Spacer(Modifier.height(12.dp))
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 24.dp)
-                        ) {
-                            currentEpisodes.forEach { eNum ->
-                                val isSelected = selectedEpisode == eNum
-                                val isAvailable = isEpisodeAvailable(allohaData, selectedSeason, eNum, selectedTranslationName)
-                                SelectorChip(
-                                    label = "$eNum серия",
-                                    isSelected = isSelected,
-                                    isAvailable = isAvailable,
-                                    onClick = { selectEpisode(eNum) }
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(Modifier.height(4.dp))
-                }
-
-                // ─── Bottom "Смотреть" button ────────────────────────
+            SlooshFocusableCard(
+                onClick = onDismiss,
+                shape = CircleShape,
+                modifier = Modifier.size(40.dp)
+            ) { isFocused ->
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 36.dp, vertical = 20.dp)
+                        .fillMaxSize()
+                        .clip(CircleShape)
+                        .background(if (isFocused) Color.White else Color.White.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
                 ) {
-                    PlayButton(
-                        isReadyToPlay = isReadyToPlay,
-                        focusRequester = playButtonFocusRequester,
-                        onClick = { if (isReadyToPlay) finishAction() }
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Закрыть",
+                        tint = if (isFocused) Color.Black else Color.White,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
+        }
+
+        // ─── Scrollable sections with multi-line FlowRow ──────
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 36.dp)
+        ) {
+            // ── Translations ─────────────────────────────────
+            if (allTranslations.isNotEmpty()) {
+                SectionLabel("Озвучка")
+                Spacer(Modifier.height(12.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 24.dp)
+                ) {
+                    allTranslations.forEach { tName ->
+                        val isSelected = selectedTranslationName == tName
+                        val isAvailable = isTranslationAvailable(allohaData, tName, selectedSeason, selectedEpisode)
+                        SelectorChip(
+                            label = com.sloosh.tv.ui.util.cleanTranslationName(tName),
+                            isSelected = isSelected,
+                            isAvailable = isAvailable,
+                            onClick = { selectTranslation(tName) }
+                        )
+                    }
+                }
+            }
+
+            // ── Seasons ──────────────────────────────────────
+            if (isSerial && allSeasons.isNotEmpty()) {
+                SectionLabel("Сезон")
+                Spacer(Modifier.height(12.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 24.dp)
+                ) {
+                    allSeasons.forEach { sNum ->
+                        val isSelected = selectedSeason == sNum
+                        val isAvailable = isSeasonAvailable(allohaData, sNum, selectedTranslationName)
+                        SelectorChip(
+                            label = "$sNum сезон",
+                            isSelected = isSelected,
+                            isAvailable = isAvailable,
+                            onClick = { selectSeason(sNum) }
+                        )
+                    }
+                }
+            }
+
+            // ── Episodes ─────────────────────────────────────
+            if (isSerial && currentEpisodes.isNotEmpty()) {
+                SectionLabel("Серия")
+                Spacer(Modifier.height(12.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 24.dp)
+                ) {
+                    currentEpisodes.forEach { eNum ->
+                        val isSelected = selectedEpisode == eNum
+                        val isAvailable = isEpisodeAvailable(allohaData, selectedSeason, eNum, selectedTranslationName)
+                        SelectorChip(
+                            label = "$eNum серия",
+                            isSelected = isSelected,
+                            isAvailable = isAvailable,
+                            onClick = { selectEpisode(eNum) }
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(4.dp))
+        }
+
+        // ─── Bottom "Смотреть" button ────────────────────────
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 36.dp, vertical = 20.dp)
+        ) {
+            PlayButton(
+                isReadyToPlay = isReadyToPlay,
+                focusRequester = playButtonFocusRequester,
+                onClick = { if (isReadyToPlay) finishAction() }
+            )
         }
     }
 }
 
-// ─── Loading state dialog ─────────────────────────────────────────────────────
+// ─── Loading State View ──────────────────────────────────────────────────────
 
 @Composable
-fun SourceSelectionLoadingDialog(title: String, onDismiss: () -> Unit) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+fun SourceSelectionLoadingView(title: String, onDismiss: () -> Unit) {
+    val cancelFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        try {
+            cancelFocusRequester.requestFocus()
+        } catch (_: Exception) {}
+    }
+
+    Column(
+        modifier = Modifier
+            .width(460.dp)
+            .clip(ContinuousRoundedRectangle(24.dp))
+            .background(Color(0xFF1C1C1E))
+            .border(1.dp, Color.White.copy(alpha = 0.12f), ContinuousRoundedRectangle(24.dp))
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        CircularProgressIndicator(
+            color = Color.White,
+            strokeWidth = 2.5.dp,
+            modifier = Modifier.size(38.dp)
+        )
+        Spacer(Modifier.height(18.dp))
+        Text(
+            text = "Загрузка источников…",
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold
+            ),
+            color = Color.White
+        )
+        if (title.isNotEmpty()) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+                color = Color.White.copy(alpha = 0.5f),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+        }
+        Spacer(Modifier.height(24.dp))
+        SlooshButton(
+            text = "Отмена",
+            onClick = onDismiss,
+            isWhite = false,
+            modifier = Modifier
+                .focusRequester(cancelFocusRequester)
+                .fillMaxWidth(0.6f)
+        )
+    }
+}
+
+// ─── Error State View ────────────────────────────────────────────────────────
+
+@Composable
+fun SourceSelectionErrorView(
+    title: String,
+    errorMessage: String,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val retryFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        try {
+            retryFocusRequester.requestFocus()
+        } catch (_: Exception) {}
+    }
+
+    Column(
+        modifier = Modifier
+            .width(480.dp)
+            .clip(ContinuousRoundedRectangle(24.dp))
+            .background(Color(0xFF1C1C1E))
+            .border(1.dp, Color.White.copy(alpha = 0.12f), ContinuousRoundedRectangle(24.dp))
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.75f))
-                .padding(horizontal = 48.dp, vertical = 36.dp)
-                .clickable(
-                    indication = null,
-                    interactionSource = remember { MutableInteractionSource() }
-                ) { onDismiss() },
+                .size(48.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.10f)),
             contentAlignment = Alignment.Center
         ) {
-            Column(
-                modifier = Modifier
-                    .width(480.dp)
-                    .clip(ContinuousRoundedRectangle(28.dp))
-                    .background(Color(0xFF1C1C1E))
-                    .border(1.dp, Color.White.copy(alpha = 0.12f), ContinuousRoundedRectangle(28.dp))
-                    .padding(36.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                CircularProgressIndicator(
-                    color = Color.White,
-                    strokeWidth = 2.5.dp,
-                    modifier = Modifier.size(36.dp)
-                )
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    text = "Загрузка источников…",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp),
-                    color = Color.White.copy(alpha = 0.7f)
-                )
-                if (title.isNotEmpty()) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                        color = Color.White.copy(alpha = 0.4f),
-                        modifier = Modifier.padding(top = 6.dp)
-                    )
-                }
-            }
+            Icon(
+                imageVector = Icons.Default.Warning,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(24.dp)
+            )
         }
+
+        Spacer(Modifier.height(16.dp))
+
+        Text(
+            text = "Источники не найдены",
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            ),
+            color = Color.White
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        Text(
+            text = errorMessage,
+            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
+            color = Color.White.copy(alpha = 0.60f),
+            textAlign = TextAlign.Center
+        )
+
+        if (title.isNotEmpty()) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                color = Color.White.copy(alpha = 0.40f),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+
+        Spacer(Modifier.height(28.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            SlooshButton(
+                text = "Повторить",
+                onClick = onRetry,
+                isWhite = true,
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = null,
+                        tint = Color.Black,
+                        modifier = Modifier.size(18.dp)
+                    )
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .focusRequester(retryFocusRequester)
+            )
+
+            SlooshButton(
+                text = "Закрыть",
+                onClick = onDismiss,
+                isWhite = false,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+// ─── Backward-compatible Dialog wrappers ─────────────────────────────────────
+
+@Composable
+fun SourceSelectionDialog(
+    allohaData: AllohaApiResult,
+    kpId: Int? = null,
+    savedVoiceover: String? = null,
+    globalLastVoiceover: String? = null,
+    lastSeason: Int? = null,
+    lastEpisode: Int? = null,
+    onSelect: (SourceSelectionResult) -> Unit,
+    onDismiss: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.82f))
+            .padding(horizontal = 48.dp, vertical = 28.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        SourceSelectionContentView(
+            allohaData = allohaData,
+            savedVoiceover = savedVoiceover,
+            globalLastVoiceover = globalLastVoiceover,
+            lastSeason = lastSeason,
+            lastEpisode = lastEpisode,
+            onSelect = onSelect,
+            onDismiss = onDismiss
+        )
+    }
+}
+
+@Composable
+fun SourceSelectionLoadingDialog(title: String, onDismiss: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.82f))
+            .padding(horizontal = 48.dp, vertical = 28.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        SourceSelectionLoadingView(title = title, onDismiss = onDismiss)
     }
 }
 

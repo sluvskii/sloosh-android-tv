@@ -1,10 +1,16 @@
 package com.sloosh.tv.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
@@ -15,195 +21,306 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.DrawerValue
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.NavigationDrawerItem
-import androidx.tv.material3.NavigationDrawerItemDefaults
-import androidx.tv.material3.NavigationDrawerScope
 import androidx.tv.material3.Text
+import com.kyant.capsule.ContinuousCapsule
+import com.sloosh.tv.LocalSideDrawerFocusBridge
+import com.sloosh.tv.ui.theme.BackgroundDark
 
 enum class NavSection {
     HOME, SEARCH, CONTINUE, FAVORITES, SETTINGS
 }
 
 @Composable
-fun NavigationDrawerScope.SlooshSideDrawer(
+fun SlooshSideDrawer(
     selectedSection: NavSection,
-    drawerValue: DrawerValue,
+    isOpen: Boolean,
+    onOpenChanged: (Boolean) -> Unit,
     onSectionSelected: (NavSection) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isClosed = drawerValue == DrawerValue.Closed
+    val focusBridge = LocalSideDrawerFocusBridge.current
+    val coroutineScope = rememberCoroutineScope()
+
+    // Close on remote Back button
+    BackHandler(enabled = isOpen) {
+        onOpenChanged(false)
+        val handled = focusBridge.requestContentFocus()
+        if (!handled) {
+            coroutineScope.launch {
+                delay(30)
+                focusBridge.requestContentFocus()
+            }
+        }
+    }
+
+    val drawerWidth by animateDpAsState(
+        targetValue = if (isOpen) 210.dp else 72.dp,
+        animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+        label = "drawerWidth"
+    )
+
+    val textAlpha by animateFloatAsState(
+        targetValue = if (isOpen) 1f else 0f,
+        animationSpec = tween(durationMillis = 140),
+        label = "drawerTextAlpha"
+    )
+
+    val drawerBgAlpha by animateFloatAsState(
+        targetValue = if (isOpen) 0.98f else 0.0f,
+        animationSpec = tween(durationMillis = 180),
+        label = "drawerBgAlpha"
+    )
 
     Box(
         modifier = modifier
             .fillMaxHeight()
-            .padding(vertical = 24.dp, horizontal = 12.dp)
+            .width(drawerWidth)
+            .background(BackgroundDark.copy(alpha = drawerBgAlpha))
+            .onFocusChanged { drawerFocusState ->
+                if (!drawerFocusState.hasFocus && isOpen) {
+                    onOpenChanged(false)
+                }
+            }
+            .padding(vertical = 32.dp, horizontal = 10.dp)
     ) {
         Column(
             modifier = Modifier.fillMaxHeight(),
-            verticalArrangement = Arrangement.Center,
+            verticalArrangement = Arrangement.SpaceBetween,
             horizontalAlignment = Alignment.Start
         ) {
+            // Top spacer pushes main navigation items to exact vertical center
+            Spacer(modifier = Modifier.weight(1f))
+
+            // Navigation Items (Centered group: Главная, Поиск, Продолжить, Избранное)
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalAlignment = Alignment.Start
+            ) {
+                DrawerNavItem(
+                    section = NavSection.HOME,
+                    icon = Icons.Default.Home,
+                    label = "Главная",
+                    isSelected = selectedSection == NavSection.HOME,
+                    isOpen = isOpen,
+                    textAlpha = textAlpha,
+                    onClick = { onSectionSelected(NavSection.HOME) },
+                    onFocused = { onOpenChanged(true) },
+                    onClose = { onOpenChanged(false) }
+                )
+
+                DrawerNavItem(
+                    section = NavSection.SEARCH,
+                    icon = Icons.Default.Search,
+                    label = "Поиск",
+                    isSelected = selectedSection == NavSection.SEARCH,
+                    isOpen = isOpen,
+                    textAlpha = textAlpha,
+                    onClick = { onSectionSelected(NavSection.SEARCH) },
+                    onFocused = { onOpenChanged(true) },
+                    onClose = { onOpenChanged(false) }
+                )
+
+                DrawerNavItem(
+                    section = NavSection.CONTINUE,
+                    icon = Icons.Default.Schedule,
+                    label = "Продолжить",
+                    isSelected = selectedSection == NavSection.CONTINUE,
+                    isOpen = isOpen,
+                    textAlpha = textAlpha,
+                    onClick = { onSectionSelected(NavSection.CONTINUE) },
+                    onFocused = { onOpenChanged(true) },
+                    onClose = { onOpenChanged(false) }
+                )
+
+                DrawerNavItem(
+                    section = NavSection.FAVORITES,
+                    icon = Icons.Default.Favorite,
+                    label = "Избранное",
+                    isSelected = selectedSection == NavSection.FAVORITES,
+                    isOpen = isOpen,
+                    textAlpha = textAlpha,
+                    onClick = { onSectionSelected(NavSection.FAVORITES) },
+                    onFocused = { onOpenChanged(true) },
+                    onClose = { onOpenChanged(false) }
+                )
+            }
+
+            // Bottom spacer between center items and bottom Settings
+            Spacer(modifier = Modifier.weight(1f))
+
+            // Bottom Settings Item
             DrawerNavItem(
-                icon = Icons.Default.Home,
-                label = "Главная",
-                isSelected = selectedSection == NavSection.HOME,
-                isClosed = isClosed,
-                onClick = { onSectionSelected(NavSection.HOME) }
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            DrawerNavItem(
-                icon = Icons.Default.Search,
-                label = "Поиск",
-                isSelected = selectedSection == NavSection.SEARCH,
-                isClosed = isClosed,
-                onClick = { onSectionSelected(NavSection.SEARCH) }
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            DrawerNavItem(
-                icon = Icons.Default.Schedule,
-                label = "Продолжить",
-                isSelected = selectedSection == NavSection.CONTINUE,
-                isClosed = isClosed,
-                onClick = { onSectionSelected(NavSection.CONTINUE) }
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            DrawerNavItem(
-                icon = Icons.Default.Favorite,
-                label = "Избранное",
-                isSelected = selectedSection == NavSection.FAVORITES,
-                isClosed = isClosed,
-                onClick = { onSectionSelected(NavSection.FAVORITES) }
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            DrawerNavItem(
+                section = NavSection.SETTINGS,
                 icon = Icons.Default.Settings,
                 label = "Настройки",
                 isSelected = selectedSection == NavSection.SETTINGS,
-                isClosed = isClosed,
-                onClick = { onSectionSelected(NavSection.SETTINGS) }
+                isOpen = isOpen,
+                textAlpha = textAlpha,
+                onClick = { onSectionSelected(NavSection.SETTINGS) },
+                onFocused = { onOpenChanged(true) },
+                onClose = { onOpenChanged(false) }
             )
         }
     }
 }
 
 @Composable
-private fun NavigationDrawerScope.DrawerNavItem(
+private fun DrawerNavItem(
+    section: NavSection,
     icon: ImageVector,
     label: String,
     isSelected: Boolean,
-    isClosed: Boolean,
-    onClick: () -> Unit
+    isOpen: Boolean,
+    textAlpha: Float,
+    onClick: () -> Unit,
+    onFocused: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
+    val focusBridge = LocalSideDrawerFocusBridge.current
+    val itemFocusRequester = focusBridge.drawerNavFocusRequesters[section]
+    val coroutineScope = rememberCoroutineScope()
     var isFocused by remember { mutableStateOf(false) }
 
-    // Differentiated states: Focused (1.0) vs Selected-unfocused (0.70) vs Inactive (0.32)
-    val targetAlpha = when {
-        isFocused -> 1.0f
-        isSelected -> 0.68f
-        else -> 0.32f
+    fun handleExitOrSelect() {
+        onClose()
+        if (isSelected) {
+            val handled = focusBridge.requestContentFocus()
+            if (!handled) {
+                coroutineScope.launch {
+                    delay(30)
+                    focusBridge.requestContentFocus()
+                }
+            }
+        } else {
+            onClick()
+        }
     }
 
-    val targetScale = when {
-        isFocused -> 1.14f
-        else -> 1.0f
+    val containerColor = when {
+        isFocused -> Color.White
+        isSelected -> Color.White.copy(alpha = 0.12f)
+        else -> Color.Transparent
+    }
+    val contentColor = when {
+        isFocused -> Color.Black
+        isSelected -> Color.White
+        else -> Color.White.copy(alpha = 0.50f)
     }
 
-    val animatedScale by animateFloatAsState(
-        targetValue = targetScale,
-        animationSpec = tween(durationMillis = 160),
-        label = "drawerItemScale"
+    val itemScale by animateFloatAsState(
+        targetValue = if (isFocused) 1.04f else 1.0f,
+        animationSpec = tween(120),
+        label = "navItemScale"
     )
 
-    val animatedAlpha by animateFloatAsState(
-        targetValue = targetAlpha,
-        animationSpec = tween(durationMillis = 160),
-        label = "drawerItemAlpha"
-    )
-
-    NavigationDrawerItem(
-        selected = isSelected,
-        onClick = onClick,
-        modifier = Modifier
-            .height(38.dp)
-            .onFocusChanged { isFocused = it.isFocused },
-        leadingContent = {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(46.dp)
+            .graphicsLayer {
+                scaleX = itemScale
+                scaleY = itemScale
+            }
+            .clip(ContinuousCapsule)
+            .background(containerColor)
+            .then(if (itemFocusRequester != null) Modifier.focusRequester(itemFocusRequester) else Modifier)
+            .onPreviewKeyEvent { keyEvent ->
+                if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                    when (keyEvent.nativeKeyEvent.keyCode) {
+                        android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                            handleExitOrSelect()
+                            true
+                        }
+                        android.view.KeyEvent.KEYCODE_DPAD_CENTER,
+                        android.view.KeyEvent.KEYCODE_ENTER -> {
+                            handleExitOrSelect()
+                            true
+                        }
+                        android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
+                            true
+                        }
+                        android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
+                            if (section == NavSection.FAVORITES) {
+                                try {
+                                    focusBridge.drawerNavFocusRequesters[NavSection.SETTINGS]?.requestFocus()
+                                    true
+                                } catch (e: Exception) {
+                                    false
+                                }
+                            } else false
+                        }
+                        android.view.KeyEvent.KEYCODE_DPAD_UP -> {
+                            if (section == NavSection.SETTINGS) {
+                                try {
+                                    focusBridge.drawerNavFocusRequesters[NavSection.FAVORITES]?.requestFocus()
+                                    true
+                                } catch (e: Exception) {
+                                    false
+                                }
+                            } else false
+                        }
+                        else -> false
+                    }
+                } else false
+            }
+            .onFocusChanged {
+                isFocused = it.isFocused
+                if (it.isFocused) {
+                    onFocused()
+                }
+            }
+            .focusable()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = { handleExitOrSelect() }
+            )
+            .padding(horizontal = 12.dp),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxHeight()
+        ) {
             Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .graphicsLayer {
-                        scaleX = animatedScale
-                        scaleY = animatedScale
-                    },
+                modifier = Modifier.size(28.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = label,
-                    tint = Color.White.copy(alpha = animatedAlpha),
+                    tint = contentColor,
                     modifier = Modifier.size(22.dp)
                 )
             }
-        },
-        colors = NavigationDrawerItemDefaults.colors(
-            containerColor = Color.Transparent,
-            contentColor = Color.White.copy(alpha = 0.32f),
-            focusedContainerColor = Color.Transparent,
-            focusedContentColor = Color.White,
-            selectedContainerColor = Color.Transparent,
-            selectedContentColor = Color.White.copy(alpha = 0.68f),
-            focusedSelectedContainerColor = Color.Transparent,
-            focusedSelectedContentColor = Color.White
-        ),
-        shape = NavigationDrawerItemDefaults.shape(
-            shape = RectangleShape
-        ),
-        scale = NavigationDrawerItemDefaults.scale(focusedScale = 1.0f)
-    ) {
-        AnimatedVisibility(
-            visible = !isClosed,
-            enter = fadeIn(animationSpec = tween(140)),
-            exit = fadeOut(animationSpec = tween(90))
-        ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontWeight = when {
-                        isFocused -> FontWeight.Bold
-                        isSelected -> FontWeight.SemiBold
-                        else -> FontWeight.Normal
-                    },
-                    fontSize = if (isFocused) 15.5.sp else 14.5.sp
-                ),
-                color = Color.White.copy(alpha = animatedAlpha),
-                modifier = Modifier
-                    .padding(start = 6.dp, end = 12.dp)
-                    .graphicsLayer {
-                        scaleX = if (isFocused) 1.04f else 1.0f
-                        scaleY = if (isFocused) 1.04f else 1.0f
-                        transformOrigin = TransformOrigin(0f, 0.5f)
-                    },
-                maxLines = 1
-            )
+
+            if (textAlpha > 0.02f) {
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontWeight = if (isFocused || isSelected) FontWeight.Bold else FontWeight.Medium,
+                        fontSize = 15.sp,
+                        letterSpacing = (-0.2).sp
+                    ),
+                    color = contentColor,
+                    maxLines = 1,
+                    modifier = Modifier.graphicsLayer { alpha = textAlpha }
+                )
+            }
         }
     }
 }

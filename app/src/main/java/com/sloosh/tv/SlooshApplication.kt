@@ -1,6 +1,8 @@
 package com.sloosh.tv
 
+import android.app.Activity
 import android.app.Application
+import android.os.Bundle
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
@@ -11,9 +13,37 @@ import java.util.concurrent.TimeUnit
 
 class SlooshApplication : Application(), ImageLoaderFactory {
 
+    companion object {
+        var currentActivity: Activity? = null
+            private set
+    }
+
     override fun onCreate() {
         super.onCreate()
         AppDatabase.getDatabase(this)
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
+                currentActivity = activity
+            }
+            override fun onActivityStarted(activity: Activity) {
+                currentActivity = activity
+            }
+            override fun onActivityResumed(activity: Activity) {
+                currentActivity = activity
+            }
+            override fun onActivityPaused(activity: Activity) {}
+            override fun onActivityStopped(activity: Activity) {
+                if (currentActivity === activity) {
+                    currentActivity = null
+                }
+            }
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+            override fun onActivityDestroyed(activity: Activity) {
+                if (currentActivity === activity) {
+                    currentActivity = null
+                }
+            }
+        })
     }
 
     override fun newImageLoader(): ImageLoader {
@@ -36,7 +66,7 @@ class SlooshApplication : Application(), ImageLoaderFactory {
                     .maxSizeBytes(200L * 1024 * 1024)
                     .build()
             }
-            .crossfade(140)
+            .crossfade(false)
             .allowHardware(true)
             .allowRgb565(true)
             .respectCacheHeaders(false)

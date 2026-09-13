@@ -14,7 +14,12 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import org.json.JSONArray
+import android.util.Log
+import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 
 /**
  * Normalizes an Alloha translation name to a clean, human-readable string.
@@ -86,13 +91,29 @@ fun allohaTranslationNamesMatch(lhs: String?, rhs: String?, exactOnly: Boolean =
 }
 
 /**
- * Injects a ?translation=<id> query parameter into an iframe URL.
+ * Injects a ?translation=<id> query parameter into an iframe URL, safely replacing any existing translation parameter.
  */
 fun injectTranslationId(id: String, urlString: String): String {
     return try {
-        val sep = if (urlString.contains("?")) "&" else "?"
-        "$urlString${sep}translation=$id"
-    } catch (e: Exception) {
+        val clean = urlString.replace(Regex("[?&]translation=[^&]*"), "")
+        val sep = if (clean.contains("?")) "&" else "?"
+        "$clean${sep}translation=$id"
+    } catch (_: Exception) {
+        urlString
+    }
+}
+
+/**
+ * Injects ?season=<season>&episode=<episode> query parameters into an iframe URL, safely replacing any existing ones.
+ */
+fun injectSeasonEpisode(season: Int, episode: Int, urlString: String): String {
+    return try {
+        val clean = urlString
+            .replace(Regex("[?&]season=[^&]*"), "")
+            .replace(Regex("[?&]episode=[^&]*"), "")
+        val sep = if (clean.contains("?")) "&" else "?"
+        "$clean${sep}season=$season&episode=$episode"
+    } catch (_: Exception) {
         urlString
     }
 }
@@ -103,51 +124,98 @@ class AllohaRepository(private val context: Context) {
         context.getSharedPreferences("alloha_prefs", Context.MODE_PRIVATE)
     }
 
-    // 5-minute in-memory cache
-    private val cache = mutableMapOf<Int, Pair<AllohaApiResult, Long>>()
+    // 5-minute in-memory cache keyed by identifier string
+    private val cache = mutableMapOf<String, Pair<AllohaApiResult, Long>>()
     private val cacheTtlMs = 5 * 60 * 1000L
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        .build()
+    private val client: OkHttpClient by lazy {
+        getUnsafeOkHttpClient()
+    }
+
+    private fun getUnsafeOkHttpClient(): OkHttpClient {
+        val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
+            override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+            override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+        })
+        val sslContext = SSLContext.getInstance("SSL")
+        sslContext.init(null, trustAllCerts, java.security.SecureRandom())
+        val sslSocketFactory = sslContext.socketFactory
+
+        return OkHttpClient.Builder()
+            .sslSocketFactory(sslSocketFactory, trustAllCerts[0] as X509TrustManager)
+            .hostnameVerifier { _, _ -> true }
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .build()
+    }
 
     private val token = "ffbd312217e27c4245f2678afe1881"
 
     private val userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) " +
         "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1"
 
-    suspend fun fetchAllohaData(mediaId: String, explicitKpId: Int? = null): AllohaApiResult? = withContext(Dispatchers.IO) {
-        val kpId = explicitKpId ?: mediaId.replace("kp_", "").trim().toIntOrNull() ?: return@withContext null
+    suspend fun fetchAllohaData(
+        mediaId: String,
+        explicitKpId: Int? = null,
+        imdbId: String? = null,
+        tmdbId: Int? = null
+    ): AllohaApiResult? = withContext(Dispatchers.IO) {
+        val kpId = explicitKpId ?: mediaId.replace("kp_", "").trim().toIntOrNull()
+        val queryParam = when {
+            kpId != null -> "kp=$kpId"
+            !imdbId.isNullOrBlank() -> "imdb=$imdbId"
+            tmdbId != null -> "tmdb=$tmdbId"
+            else -> {
+                Log.w("AllohaRepository", "No valid ID for Alloha lookup (mediaId=$mediaId)")
+                return@withContext null
+            }
+        }
 
-        // Check cache
-        val cached = cache[kpId]
+        val cacheKey = queryParam
+        val cached = cache[cacheKey]
         if (cached != null && System.currentTimeMillis() - cached.second < cacheTtlMs) {
+            Log.d("AllohaRepository", "Returning cached Alloha result for $queryParam")
             return@withContext cached.first
         }
 
         try {
-            val url = "https://api.alloha.tv/?token=$token&kp=$kpId"
+            val url = "https://api.alloha.tv/?token=$token&$queryParam"
+            Log.d("AllohaRepository", "Fetching Alloha catalog: $url")
             val request = Request.Builder()
                 .url(url)
                 .addHeader("User-Agent", userAgent)
                 .build()
 
             val response = client.newCall(request).execute()
-            if (!response.isSuccessful) return@withContext null
+            Log.d("AllohaRepository", "Alloha API HTTP response: ${response.code} for $queryParam")
+            if (!response.isSuccessful) {
+                Log.w("AllohaRepository", "Alloha request unsuccessful: ${response.code} ${response.message}")
+                return@withContext null
+            }
 
-            val body = response.body?.string() ?: return@withContext null
+            val body = response.body?.string() ?: run {
+                Log.w("AllohaRepository", "Alloha response body is empty")
+                return@withContext null
+            }
             val json = JSONObject(body)
-            val data = json.optJSONObject("data") ?: return@withContext null
+            val data = json.optJSONObject("data") ?: run {
+                Log.w("AllohaRepository", "Alloha response has no 'data' object: $body")
+                return@withContext null
+            }
 
             val title = data.optString("name", "Фильм")
             val result = parseAllohaData(title, data)
 
             if (result != null) {
-                cache[kpId] = Pair(result, System.currentTimeMillis())
+                cache[cacheKey] = Pair(result, System.currentTimeMillis())
+                Log.d("AllohaRepository", "Successfully parsed Alloha data: title=${result.title}, isSerial=${result.isSerial}, seasons=${result.seasons.size}, movieTranslations=${result.movie?.translations?.size}")
+            } else {
+                Log.w("AllohaRepository", "Failed to parse valid stream sources from Alloha data")
             }
             result
         } catch (e: Exception) {
+            Log.e("AllohaRepository", "Exception fetching Alloha catalog for $queryParam", e)
             null
         }
     }
@@ -167,7 +235,9 @@ class AllohaRepository(private val context: Context) {
                 for (eKey in episodesObj.keys()) {
                     val episodeNum = eKey.toIntOrNull() ?: continue
                     val eDict = episodesObj.optJSONObject(eKey) ?: continue
-                    val parsedTrans = parseTranslations(eDict).sortedBy { it.name }
+                    val parsedTrans = parseTranslations(eDict).map { t ->
+                        t.copy(iframeUrl = injectSeasonEpisode(seasonNum, episodeNum, t.iframeUrl))
+                    }.sortedBy { it.name }
                     if (parsedTrans.isNotEmpty()) {
                         parsedEpisodes.add(AllohaEpisode(season = seasonNum, episode = episodeNum, translations = parsedTrans))
                     }
@@ -181,6 +251,10 @@ class AllohaRepository(private val context: Context) {
             }
 
             val sortedSeasons = parsedSeasons.sortedBy { it.season }
+            if (sortedSeasons.isEmpty()) {
+                Log.w("AllohaRepository", "Serial seasons parsed to empty list")
+                return null
+            }
             return AllohaApiResult(title = title, isSerial = true, movie = null, seasons = sortedSeasons)
         }
 

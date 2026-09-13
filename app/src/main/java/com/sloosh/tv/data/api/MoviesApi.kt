@@ -25,10 +25,40 @@ interface MoviesApiService {
         @Query("page") page: Int = 1
     ): ApiEnvelope<MediaResponse>
 
+    @GET("api/v1/cartoons")
+    suspend fun getCartoons(
+        @Query("page") page: Int = 1
+    ): ApiEnvelope<MediaResponse>
+
+    @GET("api/v1/anime")
+    suspend fun getAnime(
+        @Query("page") page: Int = 1,
+        @Query("order") order: String? = null
+    ): ApiEnvelope<MediaResponse>
+
+    @GET("api/v1/trending")
+    suspend fun getTrending(
+        @Query("page") page: Int = 1,
+        @Query("window") window: String = "week"
+    ): ApiEnvelope<MediaResponse>
+
     @GET("api/v2/movie/{id}")
-    suspend fun getDetails(
-        @Path("id") id: String
+    suspend fun getMovieDetails(
+        @Path("id") id: String,
+        @Query("v") version: String = "5"
     ): ApiEnvelope<MediaDetailsDto>
+
+    @GET("api/v2/tv/{id}")
+    suspend fun getTvDetails(
+        @Path("id") id: String,
+        @Query("v") version: String = "5"
+    ): ApiEnvelope<MediaDetailsDto>
+
+    @GET("api/v1/tv/{id}/season/{season}")
+    suspend fun getSeason(
+        @Path("id") id: String,
+        @Path("season") season: Int
+    ): ApiEnvelope<TvSeasonDto>
 
     @GET("api/v1/tv/{id}/season/{season}/episode/{episode}")
     suspend fun getEpisodeDetails(
@@ -45,7 +75,8 @@ interface MoviesApiService {
 }
 
 object MoviesApi {
-    private const val BASE_URL = "https://api.neome.uk/"
+    const val BASE_URL = "https://api-sloosh.vercel.app/"
+    const val API_KEY = "sloosh_app_sec_v1_8f93e14b2d07"
 
     private val okHttpClient: OkHttpClient by lazy {
         val logging = HttpLoggingInterceptor().apply {
@@ -54,6 +85,12 @@ object MoviesApi {
         OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
+            .addInterceptor { chain ->
+                val request = chain.request().newBuilder()
+                    .header("X-API-Key", API_KEY)
+                    .build()
+                chain.proceed(request)
+            }
             .addInterceptor(logging)
             .build()
     }

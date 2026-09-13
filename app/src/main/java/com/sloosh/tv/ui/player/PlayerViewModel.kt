@@ -5,18 +5,26 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.sloosh.tv.data.alloha.AllohaSessionHolder
-import com.sloosh.tv.data.alloha.AllohaSessionManager
+import com.sloosh.tv.data.alloha.HlsProxyServer
 import com.sloosh.tv.data.api.*
 import com.sloosh.tv.data.db.ProgressEntity
 import com.sloosh.tv.data.repository.AllohaRepository
+import com.sloosh.tv.data.repository.AllohaRuntimeParser
+import com.sloosh.tv.data.repository.AllohaRuntimeResolver
 import com.sloosh.tv.data.repository.MoviesRepository
 import com.sloosh.tv.data.repository.PlaybackProgressStore
 import com.sloosh.tv.data.repository.allohaTranslationNamesMatch
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.util.concurrent.TimeUnit
 
 private const val TAG = "PlayerViewModel"
 
@@ -41,13 +49,17 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val progressStore = PlaybackProgressStore(application)
     private val moviesRepository = MoviesRepository()
 
-    private var allohaSession: AllohaSessionManager? = null
-
     private val _uiState = MutableStateFlow(PlayerUiState())
     val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
 
     private var currentMediaId: String = ""
     private var currentIframeUrl: String = ""
+
+    private val httpClient = OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
+        .followRedirects(true)
+        .build()
 
     fun initPlayer(
         iframeUrl: String,
@@ -105,82 +117,139 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 val savedProgress = progressStore.getProgress(mediaId)
                 val savedPosition = savedProgress?.positionSec ?: 0.0
 
-                if (allohaSession == null) {
-                    allohaSession = AllohaSessionManager(getApplication())
+                // Resolve stream using AllohaRuntimeResolver (mirrors iOS architecture)
+                val resolvedStream = allohaRepository.resolveStream(iframeUrl)
+                if (resolvedStream.videoUrl.isBlank()) {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        errorMessage = "Не удалось получить видеопоток"
+                    )
+                    return@launch
                 }
-                val session = allohaSession!!
-                session.ensureInitialized()
-                AllohaSessionHolder.session = session
 
-                session.onStreamReady = { qualityMap, defaultUrl ->
-                    val proxyUrl = "${session.proxyMasterUrl}?v=${System.currentTimeMillis()}"
-                    Log.d(TAG, "Alloha stream ready: proxyUrl=$proxyUrl, qualities=${qualityMap.keys}")
+                val proxy = HlsProxyServer.shared
+                proxy.start(resolvedStream.headers)
+                proxy.updateHeaders(resolvedStream.headers)
+                proxy.updateMasterUrl(resolvedStream.videoUrl)
+                proxy.onSessionExpired = {
+                    refreshSessionSilently()
+                }
+                val proxyUrl = if (resolvedStream.videoUrl.contains("127.0.0.1") || resolvedStream.videoUrl.contains("localhost")) {
+                    resolvedStream.videoUrl
+                } else {
+                    proxy.proxyUrl(resolvedStream.videoUrl)
+                }
 
-                    val qualities = qualityMap.map { (k, v) ->
-                        QualityVariant(label = "${k}p", url = v)
-                    }.sortedByDescending { it.label.removeSuffix("p").toIntOrNull() ?: 0 }
+                val ttl = resolvedStream.headers["x-neo-config-ttl"]?.toIntOrNull() ?: 360
+                scheduleProactiveRefresh(iframeUrl, ttl)
 
-                    val activeQuality = qualities.firstOrNull { it.label.removeSuffix("p") == session.lastSelectedQuality }
-                        ?: qualities.firstOrNull()
+                Log.d(TAG, "Stream resolved: masterUrl=${resolvedStream.videoUrl}, proxyUrl=$proxyUrl, ttl=$ttl")
 
-                    // Gather available audio translations from catalog
-                    val allohaResult = _uiState.value.allohaData
-                    val audioVariants = mutableListOf<AudioVariant>()
-                    if (allohaResult != null) {
-                        if (season != null && episode != null) {
-                            val ep = allohaResult.seasons.firstOrNull { it.season == season }
-                                ?.episodes?.firstOrNull { it.episode == episode }
-                            ep?.translations?.forEach { tr ->
-                                audioVariants.add(AudioVariant(id = tr.id, title = tr.name, url = tr.iframeUrl, qualityVariants = qualities))
-                            }
-                        } else {
-                            allohaResult.movie?.translations?.forEach { tr ->
-                                audioVariants.add(AudioVariant(id = tr.id, title = tr.name, url = tr.iframeUrl, qualityVariants = qualities))
-                            }
+                // Virtual subtitles via local proxy
+                if (resolvedStream.subtitles.isNotEmpty()) {
+                    proxy.subtitleTracks = resolvedStream.subtitles.map {
+                        Triple(it.language, it.label, it.url)
+                    }
+                }
+
+                val subtitleTracks = proxy.subtitleTracks.mapIndexed { index, triple ->
+                    SubtitleTrack(
+                        label = triple.second,
+                        language = triple.first,
+                        url = "http://127.0.0.1:${proxy.port}/sub/$index.vtt"
+                    )
+                }.ifEmpty { resolvedStream.subtitles }
+
+                val qualities = resolvedStream.qualityVariants
+                    .sortedByDescending { it.label.removeSuffix("p").toIntOrNull() ?: 0 }
+                    .toMutableList()
+
+                if (qualities.isEmpty()) {
+                    qualities.add(QualityVariant(label = "Авто", url = resolvedStream.videoUrl))
+                }
+
+                val activeQuality = qualities.firstOrNull()
+
+                // Gather available audio translations from catalog
+                val allohaResult = _uiState.value.allohaData
+                val audioVariants = mutableListOf<AudioVariant>()
+                if (allohaResult != null) {
+                    if (season != null && episode != null) {
+                        val ep = allohaResult.seasons.firstOrNull { it.season == season }
+                            ?.episodes?.firstOrNull { it.episode == episode }
+                        ep?.translations?.forEach { tr ->
+                            audioVariants.add(AudioVariant(id = tr.id, title = tr.name, url = tr.iframeUrl, qualityVariants = qualities))
+                        }
+                    } else {
+                        allohaResult.movie?.translations?.forEach { tr ->
+                            audioVariants.add(AudioVariant(id = tr.id, title = tr.name, url = tr.iframeUrl, qualityVariants = qualities))
                         }
                     }
-
-                    // Subtitles from proxy if present
-                    val subtitleTracks = session.hlsProxy?.subtitleTracks?.mapIndexed { index, triple ->
-                        SubtitleTrack(
-                            label = triple.second,
-                            language = triple.first,
-                            url = "http://127.0.0.1:${session.hlsProxy?.port}/sub/$index.m3u8"
-                        )
-                    } ?: emptyList()
-
-                    val resolvedStream = AllohaResolvedStream(
-                        videoUrl = proxyUrl,
-                        qualityVariants = qualities,
-                        audioVariants = audioVariants,
-                        subtitles = subtitleTracks,
-                        headers = session.activeHeaders
-                    )
-
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        resolvedStream = resolvedStream,
-                        currentVideoUrl = proxyUrl,
-                        currentQuality = activeQuality,
-                        currentAudio = audioVariants.firstOrNull { it.url == iframeUrl } ?: audioVariants.firstOrNull(),
-                        currentSubtitle = null,
-                        startPositionSec = savedPosition
-                    )
+                }
+                if (audioVariants.isEmpty() && resolvedStream.audioVariants.isNotEmpty()) {
+                    audioVariants.addAll(resolvedStream.audioVariants)
                 }
 
-                session.onError = { errorMsg ->
-                    Log.e(TAG, "Alloha session error: $errorMsg")
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        errorMessage = errorMsg
-                    )
+                val kpIdInt = mediaId.removePrefix("kp_").toIntOrNull()
+                val savedVoice = kpIdInt?.let { allohaRepository.getLastVoiceover(it) } ?: allohaRepository.getLastTranslation()
+                val chosenAudio = audioVariants.firstOrNull { it.url == iframeUrl }
+                    ?: audioVariants.firstOrNull { allohaTranslationNamesMatch(it.title, savedVoice) }
+                    ?: audioVariants.firstOrNull()
+
+                if (chosenAudio != null) {
+                    allohaRepository.saveLastTranslation(chosenAudio.title)
+                    if (kpIdInt != null) {
+                        allohaRepository.saveLastVoiceover(kpIdInt, chosenAudio.title)
+                    }
                 }
 
-                session.onM3u8Updated = { newUrl ->
-                    Log.d(TAG, "Alloha upstream M3U8 updated: $newUrl")
-                }
+                val streamWithProxy = resolvedStream.copy(
+                    videoUrl = proxyUrl,
+                    qualityVariants = qualities,
+                    audioVariants = audioVariants,
+                    subtitles = subtitleTracks
+                )
 
-                session.startSession(iframeUrl)
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    resolvedStream = streamWithProxy,
+                    currentVideoUrl = proxyUrl,
+                    currentQuality = activeQuality,
+                    currentAudio = chosenAudio,
+                    currentSubtitle = null,
+                    startPositionSec = savedPosition
+                )
+
+                // If quality variants are not provided in metadata, parse them from HLS master playlist in background
+                if (qualities.size <= 1 && resolvedStream.videoUrl.contains(".m3u8", ignoreCase = true)) {
+                    launch(Dispatchers.IO) {
+                        try {
+                            val reqBuilder = Request.Builder().url(resolvedStream.videoUrl)
+                            resolvedStream.headers.forEach { (k, v) -> reqBuilder.header(k, v) }
+                            val resp = httpClient.newCall(reqBuilder.build()).execute()
+                            if (resp.isSuccessful) {
+                                val body = resp.body?.string()
+                                if (!body.isNullOrBlank()) {
+                                    val parsedQualities = AllohaRuntimeParser.parseMasterPlaylistQualities(body, resolvedStream.videoUrl)
+                                    if (parsedQualities.isNotEmpty()) {
+                                        val updatedQualities = parsedQualities.sortedByDescending {
+                                            it.label.removeSuffix("p").toIntOrNull() ?: 0
+                                        }
+                                        val currentStream = _uiState.value.resolvedStream
+                                        if (currentStream != null) {
+                                            _uiState.value = _uiState.value.copy(
+                                                resolvedStream = currentStream.copy(qualityVariants = updatedQualities),
+                                                currentQuality = updatedQualities.firstOrNull()
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to parse master playlist qualities: ${e.message}")
+                        }
+                    }
+                }
 
             } catch (e: Exception) {
                 Log.e(TAG, "initPlayer error: ${e.message}", e)
@@ -193,66 +262,107 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun selectAudioTrack(audio: AudioVariant) {
-        if (audio.url == currentIframeUrl) return
+        if (audio.url == currentIframeUrl && _uiState.value.currentAudio?.id == audio.id) return
         currentIframeUrl = audio.url
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 isLoading = true,
                 currentAudio = audio
             )
-            val session = allohaSession ?: AllohaSessionManager(getApplication()).also { allohaSession = it }
-            session.ensureInitialized()
-            session.onStreamReady = { qualityMap, defaultUrl ->
-                val proxyUrl = "${session.proxyMasterUrl}?v=${System.currentTimeMillis()}"
-                val qualities = qualityMap.map { (k, v) ->
-                    QualityVariant(label = "${k}p", url = v)
-                }.sortedByDescending { it.label.removeSuffix("p").toIntOrNull() ?: 0 }
+            try {
+                allohaRepository.saveLastTranslation(audio.title)
+                val kpIdInt = currentMediaId.removePrefix("kp_").toIntOrNull()
+                if (kpIdInt != null) {
+                    allohaRepository.saveLastVoiceover(kpIdInt, audio.title)
+                }
 
-                val activeQuality = qualities.firstOrNull { it.label.removeSuffix("p") == session.lastSelectedQuality }
-                    ?: qualities.firstOrNull()
-
-                val subtitleTracks = session.hlsProxy?.subtitleTracks?.mapIndexed { index, triple ->
-                    SubtitleTrack(
-                        label = triple.second,
-                        language = triple.first,
-                        url = "http://127.0.0.1:${session.hlsProxy?.port}/sub/$index.m3u8"
+                // 1. If audio.url is already a direct playable stream URL
+                if (audio.url.contains(".m3u8", ignoreCase = true)) {
+                    val proxy = HlsProxyServer.shared
+                    proxy.updateMasterUrl(audio.url)
+                    val newUrl = proxy.proxyUrl(audio.url)
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        currentVideoUrl = newUrl
                     )
-                } ?: emptyList()
+                    return@launch
+                }
 
-                val resolvedStream = _uiState.value.resolvedStream?.copy(
-                    videoUrl = proxyUrl,
-                    qualityVariants = qualities,
-                    subtitles = subtitleTracks
-                ) ?: AllohaResolvedStream(
-                    videoUrl = proxyUrl,
-                    qualityVariants = qualities,
-                    audioVariants = _uiState.value.resolvedStream?.audioVariants ?: emptyList(),
-                    subtitles = subtitleTracks,
-                    headers = session.activeHeaders
-                )
+                // 2. Resolve iframe URL for the new translation
+                AllohaRuntimeResolver.invalidateCache(audio.url)
+                val resolvedStream = allohaRepository.resolveStream(audio.url)
+                if (resolvedStream.videoUrl.isNotBlank()) {
+                    val proxy = HlsProxyServer.shared
+                    proxy.updateHeaders(resolvedStream.headers)
+                    proxy.updateMasterUrl(resolvedStream.videoUrl)
+                    proxy.onSessionExpired = {
+                        refreshSessionSilently()
+                    }
+                    val newUrl = proxy.proxyUrl(resolvedStream.videoUrl)
+                    val ttl = resolvedStream.headers["x-neo-config-ttl"]?.toIntOrNull() ?: 360
+                    scheduleProactiveRefresh(audio.url, ttl)
 
+                    if (resolvedStream.subtitles.isNotEmpty()) {
+                        proxy.subtitleTracks = resolvedStream.subtitles.map {
+                            Triple(it.language, it.label, it.url)
+                        }
+                    }
+
+                    val subtitleTracks = proxy.subtitleTracks.mapIndexed { index, triple ->
+                        SubtitleTrack(
+                            label = triple.second,
+                            language = triple.first,
+                            url = "http://127.0.0.1:${proxy.port}/sub/$index.vtt"
+                        )
+                    }.ifEmpty { resolvedStream.subtitles }
+
+                    val qualities = resolvedStream.qualityVariants
+                        .sortedByDescending { it.label.removeSuffix("p").toIntOrNull() ?: 0 }
+                        .ifEmpty { listOf(QualityVariant(label = "Авто", url = resolvedStream.videoUrl)) }
+
+                    val activeQuality = qualities.firstOrNull { it.label == _uiState.value.currentQuality?.label }
+                        ?: qualities.firstOrNull()
+
+                    val updatedResolved = _uiState.value.resolvedStream?.copy(
+                        videoUrl = newUrl,
+                        qualityVariants = qualities,
+                        subtitles = subtitleTracks
+                    ) ?: resolvedStream.copy(
+                        videoUrl = newUrl,
+                        qualityVariants = qualities,
+                        subtitles = subtitleTracks
+                    )
+
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        resolvedStream = updatedResolved,
+                        currentVideoUrl = newUrl,
+                        currentQuality = activeQuality
+                    )
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        errorMessage = "Не удалось сменить озвучку"
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "selectAudioTrack error: ${e.message}", e)
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    resolvedStream = resolvedStream,
-                    currentVideoUrl = proxyUrl,
-                    currentQuality = activeQuality
+                    errorMessage = e.localizedMessage ?: "Ошибка переключения озвучки"
                 )
             }
-            session.startSession(audio.url)
         }
     }
 
     fun selectQuality(quality: QualityVariant) {
-        val session = allohaSession ?: return
-        val resolution = quality.label.removeSuffix("p")
-        val switched = session.switchQuality(resolution)
-        if (switched) {
-            val newUrl = "${session.proxyMasterUrl}?q=$resolution&v=${System.currentTimeMillis()}"
-            _uiState.value = _uiState.value.copy(
-                currentQuality = quality,
-                currentVideoUrl = newUrl
-            )
-        }
+        val proxy = HlsProxyServer.shared
+        proxy.updateMasterUrl(quality.url)
+        val newUrl = proxy.proxyUrl(quality.url)
+        _uiState.value = _uiState.value.copy(
+            currentQuality = quality,
+            currentVideoUrl = newUrl
+        )
     }
 
     fun selectSubtitle(sub: SubtitleTrack?) {
@@ -341,10 +451,112 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    private var proactiveRefreshJob: Job? = null
+    private var lastSilentRefreshTime = 0L
+
+    fun scheduleProactiveRefresh(iframeUrl: String, ttlSeconds: Int) {
+        proactiveRefreshJob?.cancel()
+        proactiveRefreshJob = viewModelScope.launch(Dispatchers.IO) {
+            val safeTtl = ttlSeconds.coerceIn(60, 600)
+            val delayMs = ((safeTtl - 25).coerceAtLeast(safeTtl / 2) * 1000L)
+            Log.d(TAG, "Scheduling proactive stream refresh in ${delayMs / 1000}s (TTL=${safeTtl}s)")
+            delay(delayMs)
+            if (!isActive) return@launch
+
+            Log.i(TAG, "Proactive stream refresh starting for: $iframeUrl")
+            try {
+                AllohaRuntimeResolver.invalidateCache(iframeUrl)
+                val refreshed = allohaRepository.resolveStream(iframeUrl)
+                if (refreshed.videoUrl.isNotBlank()) {
+                    val proxy = HlsProxyServer.shared
+                    proxy.updateHeaders(refreshed.headers)
+                    proxy.updateMasterUrl(refreshed.videoUrl)
+                    Log.i(TAG, "Proactive stream refresh successful. Master URL updated: ${refreshed.videoUrl}")
+                    val nextTtl = refreshed.headers["x-neo-config-ttl"]?.toIntOrNull() ?: safeTtl
+                    scheduleProactiveRefresh(iframeUrl, nextTtl)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Proactive stream refresh failed: ${e.message}")
+                delay(15_000)
+                if (isActive) {
+                    scheduleProactiveRefresh(iframeUrl, 60)
+                }
+            }
+        }
+    }
+
+    fun refreshSessionSilently() {
+        val now = System.currentTimeMillis()
+        if (now - lastSilentRefreshTime < 5000) return
+        lastSilentRefreshTime = now
+        val iframe = currentIframeUrl ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            Log.i(TAG, "Refreshing session silently due to proxy signal...")
+            try {
+                AllohaRuntimeResolver.invalidateCache(iframe)
+                val refreshed = allohaRepository.resolveStream(iframe)
+                if (refreshed.videoUrl.isNotBlank()) {
+                    val proxy = HlsProxyServer.shared
+                    proxy.updateHeaders(refreshed.headers)
+                    proxy.updateMasterUrl(refreshed.videoUrl)
+                    Log.i(TAG, "Silent session refresh successful. Master URL updated: ${refreshed.videoUrl}")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Silent session refresh failed: ${e.message}")
+            }
+        }
+    }
+
+    fun retryPlayback(positionMs: Long, onReady: ((String) -> Unit)? = null) {
+        val iframe = currentIframeUrl ?: return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+            try {
+                AllohaRuntimeResolver.invalidateCache(iframe)
+                val refreshed = allohaRepository.resolveStream(iframe)
+                if (refreshed.videoUrl.isNotBlank()) {
+                    val proxy = HlsProxyServer.shared
+                    proxy.updateHeaders(refreshed.headers)
+                    proxy.updateMasterUrl(refreshed.videoUrl)
+                    proxy.onSessionExpired = {
+                        refreshSessionSilently()
+                    }
+                    val proxyUrl = if (refreshed.videoUrl.contains("127.0.0.1") || refreshed.videoUrl.contains("localhost")) {
+                        refreshed.videoUrl
+                    } else {
+                        proxy.proxyUrl(refreshed.videoUrl)
+                    }
+
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        errorMessage = null,
+                        currentVideoUrl = proxyUrl,
+                        startPositionSec = positionMs / 1000.0
+                    )
+
+                    val ttl = refreshed.headers["x-neo-config-ttl"]?.toIntOrNull() ?: 360
+                    scheduleProactiveRefresh(iframe, ttl)
+
+                    onReady?.invoke(proxyUrl)
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        errorMessage = "Не удалось обновить видеопоток"
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    errorMessage = e.localizedMessage ?: "Ошибка обновления потока"
+                )
+            }
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
-        allohaSession?.release()
-        allohaSession = null
+        proactiveRefreshJob?.cancel()
+        HlsProxyServer.shared.onSessionExpired = null
         AllohaSessionHolder.clear()
     }
 }

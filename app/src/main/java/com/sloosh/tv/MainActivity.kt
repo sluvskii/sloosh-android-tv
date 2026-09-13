@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -16,8 +17,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.compose.ui.focus.FocusRequester
 import androidx.navigation.navArgument
-import androidx.tv.material3.NavigationDrawer
 import com.sloosh.tv.ui.components.NavSection
 import com.sloosh.tv.ui.components.SlooshSideDrawer
 import com.sloosh.tv.ui.continue_watching.ContinueScreen
@@ -30,10 +31,32 @@ import com.sloosh.tv.ui.search.SearchScreen
 import com.sloosh.tv.ui.settings.SettingsScreen
 import com.sloosh.tv.ui.theme.BackgroundDark
 import com.sloosh.tv.ui.theme.SlooshTVTheme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+
+class SideDrawerFocusBridge(
+    val drawerNavFocusRequesters: Map<NavSection, FocusRequester> = emptyMap()
+) {
+    var isDrawerOpen: Boolean = false
+    var contentFocusCallback: (() -> Unit)? = null
+
+    fun requestContentFocus(): Boolean {
+        val cb = contentFocusCallback ?: return false
+        return try {
+            cb()
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+}
+
+val LocalSideDrawerFocusBridge = compositionLocalOf {
+    SideDrawerFocusBridge()
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -58,6 +81,24 @@ class MainActivity : ComponentActivity() {
 
                 var selectedSection by remember { mutableStateOf(NavSection.HOME) }
 
+                val homeFocusRequester = remember { FocusRequester() }
+                val searchFocusRequester = remember { FocusRequester() }
+                val continueFocusRequester = remember { FocusRequester() }
+                val favoritesFocusRequester = remember { FocusRequester() }
+                val settingsFocusRequester = remember { FocusRequester() }
+
+                val focusBridge = remember {
+                    SideDrawerFocusBridge(
+                        drawerNavFocusRequesters = mapOf(
+                            NavSection.HOME to homeFocusRequester,
+                            NavSection.SEARCH to searchFocusRequester,
+                            NavSection.CONTINUE to continueFocusRequester,
+                            NavSection.FAVORITES to favoritesFocusRequester,
+                            NavSection.SETTINGS to settingsFocusRequester
+                        )
+                    )
+                }
+
                 LaunchedEffect(currentRoute) {
                     when (currentRoute) {
                         "home" -> selectedSection = NavSection.HOME
@@ -69,77 +110,93 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val showDrawer = currentRoute in listOf("home", "search", "continue", "favorites", "settings")
+                var isDrawerOpen by remember { mutableStateOf(false) }
+                focusBridge.isDrawerOpen = isDrawerOpen
 
-                val drawerState = androidx.tv.material3.rememberDrawerState(androidx.tv.material3.DrawerValue.Closed)
-                val isDrawerOpen = drawerState.currentValue == androidx.tv.material3.DrawerValue.Open
-                val scrimAlpha by androidx.compose.animation.core.animateFloatAsState(
-                    targetValue = if (isDrawerOpen) 0.40f else 0.0f,
-                    animationSpec = androidx.compose.animation.core.tween(durationMillis = 200),
-                    label = "drawerScrim"
-                )
+                LaunchedEffect(currentRoute) {
+                    isDrawerOpen = false
+                }
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(BackgroundDark)
-                ) {
-                    // Native NavigationDrawer Layer
-                    if (showDrawer) {
-                        NavigationDrawer(
-                            drawerState = drawerState,
-                            drawerContent = { drawerValue ->
-                                SlooshSideDrawer(
-                                    selectedSection = selectedSection,
-                                    drawerValue = drawerValue,
-                                    onSectionSelected = { section ->
-                                        selectedSection = section
-                                        val targetRoute = when (section) {
-                                            NavSection.HOME -> "home"
-                                            NavSection.SEARCH -> "search"
-                                            NavSection.CONTINUE -> "continue"
-                                            NavSection.FAVORITES -> "favorites"
-                                            NavSection.SETTINGS -> "settings"
-                                        }
-                                        navController.navigate(targetRoute) {
-                                            popUpTo("home") { saveState = true }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
-                                    }
-                                )
-                            },
-                            modifier = Modifier.fillMaxSize()
+                CompositionLocalProvider(LocalSideDrawerFocusBridge provides focusBridge) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(BackgroundDark)
+                    ) {
+                        // 1. Content Layer (AppNavHost permanently mounted, padded 72dp on tab screens)
+                        val drawerDockWidth = 72.dp
+                        val contentStartPadding = if (showDrawer) drawerDockWidth else 0.dp
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(start = contentStartPadding)
                         ) {
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                AppNavHost(navController = navController)
-                                if (scrimAlpha > 0.01f) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(Color.Black.copy(alpha = scrimAlpha))
-                                    )
-                                }
+                            AppNavHost(navController = navController)
+                        }
+
+                        // 2. Cinematic Scrim over Content when Sidebar is Open
+                        if (showDrawer) {
+                            val scrimAlpha by androidx.compose.animation.core.animateFloatAsState(
+                                targetValue = if (isDrawerOpen) 0.60f else 0.0f,
+                                animationSpec = androidx.compose.animation.core.tween(180),
+                                label = "drawerScrim"
+                            )
+                            if (scrimAlpha > 0.01f) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(start = 72.dp)
+                                        .background(Color.Black.copy(alpha = scrimAlpha))
+                                )
                             }
                         }
-                    } else {
-                        AppNavHost(navController = navController)
-                    }
 
-                    // ─── Global App Update Dialog ─────────────────────
-                    availableUpdate?.let { updateInfo ->
-                        com.sloosh.tv.ui.components.UpdateDialog(
-                            updateInfo = updateInfo,
-                            onDismiss = { availableUpdate = null },
-                            onStartUpdate = { onProgress, onError ->
-                                coroutineScope.launch {
-                                    updateManager.downloadAndInstall(
-                                        downloadUrl = updateInfo.downloadUrl,
-                                        onProgress = onProgress,
-                                        onError = onError
-                                    )
+                        // 3. Side Navigation Rail Layer (Seamless background, smooth in-place expansion)
+                        if (showDrawer) {
+                            SlooshSideDrawer(
+                                selectedSection = selectedSection,
+                                isOpen = isDrawerOpen,
+                                onOpenChanged = { isDrawerOpen = it },
+                                onSectionSelected = { section ->
+                                    selectedSection = section
+                                    isDrawerOpen = false
+                                    val targetRoute = when (section) {
+                                        NavSection.HOME -> "home"
+                                        NavSection.SEARCH -> "search"
+                                        NavSection.CONTINUE -> "continue"
+                                        NavSection.FAVORITES -> "favorites"
+                                        NavSection.SETTINGS -> "settings"
+                                    }
+                                    navController.navigate(targetRoute) {
+                                        popUpTo("home") { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                    coroutineScope.launch {
+                                        delay(50)
+                                        focusBridge.requestContentFocus()
+                                    }
                                 }
-                            }
-                        )
+                            )
+                        }
+
+                        // ─── Global App Update Dialog ─────────────────────
+                        availableUpdate?.let { updateInfo ->
+                            com.sloosh.tv.ui.components.UpdateDialog(
+                                updateInfo = updateInfo,
+                                onDismiss = { availableUpdate = null },
+                                onStartUpdate = { onProgress, onError ->
+                                    coroutineScope.launch {
+                                        updateManager.downloadAndInstall(
+                                            downloadUrl = updateInfo.downloadUrl,
+                                            onProgress = onProgress,
+                                            onError = onError
+                                        )
+                                    }
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -235,11 +292,12 @@ private fun AppNavHost(
                 onPlayClick = { iframeUrl, season, episode, movieTitle ->
                     val encodedUrl = android.util.Base64.encodeToString(
                         iframeUrl.toByteArray(StandardCharsets.UTF_8),
-                        android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP
+                        android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
                     )
+                    val safeTitle = if (movieTitle.isBlank()) "none" else movieTitle
                     val encodedTitle = android.util.Base64.encodeToString(
-                        movieTitle.toByteArray(StandardCharsets.UTF_8),
-                        android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP
+                        safeTitle.toByteArray(StandardCharsets.UTF_8),
+                        android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
                     )
                     val seasonParam = season ?: -1
                     val epParam = episode ?: -1
@@ -255,7 +313,7 @@ private fun AppNavHost(
                 navArgument("mediaId") { type = NavType.StringType },
                 navArgument("season") { type = NavType.IntType; defaultValue = -1 },
                 navArgument("episode") { type = NavType.IntType; defaultValue = -1 },
-                navArgument("title") { type = NavType.StringType; defaultValue = "" }
+                navArgument("title") { type = NavType.StringType; defaultValue = "none" }
             )
         ) { backStack ->
             val rawUrlParam = backStack.arguments?.getString("iframeUrl") ?: ""
@@ -271,9 +329,10 @@ private fun AppNavHost(
             }
             val decodedTitle = try {
                 val bytes = android.util.Base64.decode(rawTitleParam, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP)
-                String(bytes, StandardCharsets.UTF_8)
+                val str = String(bytes, StandardCharsets.UTF_8)
+                if (str == "none" || str.isBlank()) "Просмотр" else str
             } catch (e: Exception) {
-                rawTitleParam
+                if (rawTitleParam == "none" || rawTitleParam.isBlank()) "Просмотр" else rawTitleParam
             }
 
             PlayerScreen(

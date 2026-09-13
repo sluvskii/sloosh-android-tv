@@ -1,10 +1,14 @@
 package com.sloosh.tv.ui.player
 
 import android.net.Uri
+import android.util.Log
 import android.view.KeyEvent
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.annotation.OptIn
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
@@ -51,6 +55,7 @@ import com.kyant.capsule.ContinuousRoundedRectangle
 import com.sloosh.tv.ui.components.SlooshButton
 import com.sloosh.tv.ui.components.SlooshFocusableCard
 import com.sloosh.tv.ui.theme.*
+import com.sloosh.tv.data.alloha.HlsProxyServer
 import kotlinx.coroutines.delay
 
 enum class PlayerHudState {
@@ -88,6 +93,9 @@ fun PlayerScreen(
     val backFocusRequester = remember { FocusRequester() }
     val rootFocusRequester = remember { FocusRequester() }
     val modalFocusRequester = remember { FocusRequester() }
+    val errorFocusRequester = remember { FocusRequester() }
+
+    var hasAutoRetried by remember { mutableStateOf(false) }
 
     LaunchedEffect(iframeUrl, season, episode, title) {
         viewModel.initPlayer(iframeUrl, mediaId, season, episode, title)
@@ -136,15 +144,50 @@ fun PlayerScreen(
     var currentPositionMs by remember { mutableStateOf(0L) }
     var durationMs by remember { mutableStateOf(0L) }
     var playerError by remember { mutableStateOf<String?>(null) }
+    val activeError = state.errorMessage ?: playerError
 
     val displayTitle = state.mediaTitle?.takeIf { it.isNotBlank() }
         ?: title.takeIf { it != "Просмотр" && it.isNotBlank() }
         ?: state.allohaData?.title
         ?: "Просмотр"
 
-    // Trap focus inside modal when opened, or restore to play/pause when controls appear
-    LaunchedEffect(showControls, isAnyModalOpen) {
-        if (isAnyModalOpen) {
+    val skipActionFocusRequester = remember { FocusRequester() }
+    var hasSkippedIntroForCurrentSession by remember(state.currentVideoUrl) { mutableStateOf(false) }
+    var showIntroPrompt by remember { mutableStateOf(false) }
+
+    val introRange = state.resolvedStream?.introRange
+    val outroRange = state.resolvedStream?.outroRange
+    val posSec = currentPositionMs / 1000.0
+    val isInIntro = introRange != null && posSec in introRange.start..introRange.end && !hasSkippedIntroForCurrentSession
+    val isInOutro = outroRange != null && posSec in outroRange.start..outroRange.end
+    val hasSkipAction = isInIntro || (isInOutro && outroRange != null)
+
+    // Reset skipped flag if user rewinds back before intro start
+    LaunchedEffect(posSec, introRange) {
+        if (introRange != null && posSec < introRange.start) {
+            hasSkippedIntroForCurrentSession = false
+        }
+    }
+
+    // Auto-prompt for Skip Intro on TV (shows for 7 seconds when entering intro while watching)
+    LaunchedEffect(isInIntro, showControls) {
+        if (isInIntro && !showControls && !hasSkippedIntroForCurrentSession) {
+            showIntroPrompt = true
+            delay(7000)
+            showIntroPrompt = false
+        } else if (!isInIntro || showControls) {
+            showIntroPrompt = false
+        }
+    }
+
+    // Trap focus inside error dialog or modal when opened, or restore to play/pause when controls appear
+    LaunchedEffect(showControls, isAnyModalOpen, activeError) {
+        if (activeError != null) {
+            delay(120)
+            try {
+                errorFocusRequester.requestFocus()
+            } catch (e: Exception) {}
+        } else if (isAnyModalOpen) {
             delay(120)
             try {
                 modalFocusRequester.requestFocus()
@@ -162,15 +205,56 @@ fun PlayerScreen(
         }
     }
 
-    // Position tracker
+    // Position tracker and buffering watchdog
     LaunchedEffect(exoPlayer) {
+        var bufferingSeconds = 0
         while (true) {
             currentPositionMs = exoPlayer.currentPosition
             durationMs = exoPlayer.duration.coerceAtLeast(0L)
             if (durationMs > 0) {
                 viewModel.saveProgress(currentPositionMs, durationMs)
             }
+
+            // Watchdog: detect if playback is stalled in buffering for > 12s
+            if (exoPlayer.playbackState == androidx.media3.common.Player.STATE_BUFFERING && exoPlayer.playWhenReady) {
+                bufferingSeconds++
+                if (bufferingSeconds >= 12) {
+                    bufferingSeconds = 0
+                    val pos = exoPlayer.currentPosition
+                    Log.w("PlayerScreen", "Buffering watchdog: stalled for 12s, kicking ExoPlayer at $pos ms")
+                    exoPlayer.seekTo(pos)
+                    exoPlayer.prepare()
+                }
+            } else {
+                bufferingSeconds = 0
+            }
+
             delay(1000)
+        }
+    }
+
+    // Lifecycle observer: pause on background and ensure proxy is alive on resume
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, exoPlayer) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE,
+                Lifecycle.Event.ON_STOP -> {
+                    if (exoPlayer.isPlaying) {
+                        exoPlayer.pause()
+                        isPlaying = false
+                    }
+                    viewModel.saveProgress(exoPlayer.currentPosition, exoPlayer.duration, force = true)
+                }
+                Lifecycle.Event.ON_RESUME -> {
+                    HlsProxyServer.shared.start()
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
@@ -190,16 +274,35 @@ fun PlayerScreen(
         }
     }
 
-    // Player events listener
+    // Player events listener with auto-recovery
     DisposableEffect(exoPlayer) {
         val listener = object : androidx.media3.common.Player.Listener {
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                playerError = error.localizedMessage ?: "Ошибка воспроизведения видео"
+                Log.w("PlayerScreen", "ExoPlayer error: ${error.errorCodeName} - ${error.message}")
+                val pos = exoPlayer.currentPosition
+                if (!hasAutoRetried) {
+                    hasAutoRetried = true
+                    val resumePos = pos.coerceAtLeast(0L)
+                    lastPreservedPositionMs = resumePos
+                    Log.i("PlayerScreen", "Auto-recovering playback once at position $resumePos ms...")
+                    viewModel.retryPlayback(resumePos) { newUrl ->
+                        val mediaItem = androidx.media3.common.MediaItem.fromUri(newUrl)
+                        exoPlayer.setMediaItem(mediaItem, resumePos)
+                        exoPlayer.prepare()
+                        exoPlayer.playWhenReady = true
+                    }
+                } else {
+                    playerError = error.localizedMessage ?: "Ошибка воспроизведения видео"
+                }
             }
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
             }
             override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == androidx.media3.common.Player.STATE_READY) {
+                    hasAutoRetried = false
+                    playerError = null
+                }
                 if (playbackState == androidx.media3.common.Player.STATE_ENDED) {
                     if (viewModel.getNextEpisode() != null) {
                         viewModel.playNextEpisode()
@@ -255,10 +358,10 @@ fun PlayerScreen(
             val streamReferer = state.resolvedStream?.headers?.entries?.firstOrNull { it.key.equals("referer", ignoreCase = true) }?.value
 
             val finalReferer = when {
-                !streamReferer.isNullOrBlank() && !streamReferer.contains("about:blank") -> streamReferer
-                videoUri?.host != null -> "${videoUri.scheme ?: "https"}://${videoUri.host}/"
-                iframeUri?.host != null -> "${iframeUri.scheme ?: "https"}://${iframeUri.host}/"
-                else -> iframeUrl
+                !streamReferer.isNullOrBlank() && !streamReferer.contains("about:blank") && !streamReferer.contains("127.0.0.1") && !streamReferer.contains("localhost") -> streamReferer
+                videoUri?.host != null && videoUri.host != "127.0.0.1" && videoUri.host != "localhost" -> "${videoUri.scheme ?: "https"}://${videoUri.host}/"
+                iframeUri?.host != null && iframeUri.host != "127.0.0.1" && iframeUri.host != "localhost" -> "${iframeUri.scheme ?: "https"}://${iframeUri.host}/"
+                else -> "https://alloha.tv/"
             }
             customHeaders["Referer"] = finalReferer
 
@@ -290,7 +393,7 @@ fun PlayerScreen(
         val isHls = videoUrl.contains(".m3u8", ignoreCase = true)
         val mediaSource = if (isHls) {
             androidx.media3.exoplayer.hls.HlsMediaSource.Factory(dataSourceFactory)
-                .setAllowChunklessPreparation(true)
+                .setAllowChunklessPreparation(false)
                 .createMediaSource(mediaItemBuilder.build())
         } else {
             androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
@@ -331,6 +434,7 @@ fun PlayerScreen(
             showAudioDialog -> showAudioDialog = false
             showQualityDialog -> showQualityDialog = false
             showSubtitleDialog -> showSubtitleDialog = false
+            activeError != null -> onBack()
             showControls -> showControls = false
             else -> onBack()
         }
@@ -346,13 +450,21 @@ fun PlayerScreen(
                 if (keyEvent.type == KeyEventType.KeyDown) {
                     val keyCode = keyEvent.nativeKeyEvent.keyCode
 
-                    if (!showControls && !isAnyModalOpen) {
+                    if (!showControls && !isAnyModalOpen && activeError == null) {
                         when (keyCode) {
                             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
-                                isPlaying = !isPlaying
-                                exoPlayer.playWhenReady = isPlaying
-                                hudState = if (isPlaying) PlayerHudState.PLAY else PlayerHudState.PAUSE
-                                true
+                                if (showIntroPrompt && introRange != null) {
+                                    introRange.let { exoPlayer.seekTo((it.end * 1000).toLong() + 500) }
+                                    hasSkippedIntroForCurrentSession = true
+                                    showIntroPrompt = false
+                                    hudState = PlayerHudState.FORWARD
+                                    true
+                                } else {
+                                    isPlaying = !isPlaying
+                                    exoPlayer.playWhenReady = isPlaying
+                                    hudState = if (isPlaying) PlayerHudState.PLAY else PlayerHudState.PAUSE
+                                    true
+                                }
                             }
                             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
                                 showControls = true
@@ -410,72 +522,78 @@ fun PlayerScreen(
                 } else false
             }
     ) {
-        val activeError = state.errorMessage ?: playerError
-
-        if (state.isLoading) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(52.dp))
-                    Spacer(modifier = Modifier.height(18.dp))
-                    Text(
-                        text = "Загрузка видеопотока...",
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium,
-                        color = Color.White.copy(alpha = 0.85f)
-                    )
-                }
-            }
-        } else if (activeError != null && state.currentVideoUrl == null) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .width(440.dp)
-                        .clip(ContinuousRoundedRectangle(24.dp))
-                        .background(GlassSurfaceDark)
-                        .padding(32.dp)
+        if (state.currentVideoUrl == null) {
+            if (activeError != null) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Warning,
-                        contentDescription = null,
-                        tint = Color(0xFFFF5252),
-                        modifier = Modifier.size(52.dp)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "Не удалось загрузить видео",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = activeError,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.6f)
-                    )
-                    Spacer(modifier = Modifier.height(24.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        SlooshButton(
-                            text = "Повторить",
-                            isWhite = true,
-                            onClick = { viewModel.initPlayer(iframeUrl, mediaId, season, episode, displayTitle) }
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .width(440.dp)
+                            .clip(ContinuousRoundedRectangle(24.dp))
+                            .background(GlassSurfaceDark)
+                            .border(1.dp, Color.White.copy(alpha = 0.15f), ContinuousRoundedRectangle(24.dp))
+                            .padding(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(52.dp)
                         )
-                        SlooshButton(
-                            text = "Назад",
-                            onClick = onBack
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Не удалось загрузить видео",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = activeError,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White.copy(alpha = 0.6f),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            SlooshButton(
+                                text = "Повторить",
+                                isWhite = true,
+                                onClick = {
+                                    playerError = null
+                                    viewModel.initPlayer(iframeUrl, mediaId, season, episode, displayTitle)
+                                },
+                                modifier = Modifier.focusRequester(errorFocusRequester)
+                            )
+                            SlooshButton(
+                                text = "Назад",
+                                onClick = onBack
+                            )
+                        }
+                    }
+                }
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(52.dp))
+                        Spacer(modifier = Modifier.height(18.dp))
+                        Text(
+                            text = "Загрузка видеопотока...",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.White.copy(alpha = 0.85f)
                         )
                     }
                 }
             }
         } else {
-            // ─── Video View Surface ───────────────────────────────────
+            // ─── Video View Surface (Persistent when videoUrl is available) ───
             AndroidView(
                 factory = { ctx ->
                     PlayerView(ctx).apply {
@@ -491,6 +609,106 @@ fun PlayerScreen(
                 },
                 modifier = Modifier.fillMaxSize()
             )
+
+            // Stream transition overlay pill
+            if (state.isLoading) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .clip(ContinuousCapsule)
+                        .background(Color.Black.copy(alpha = 0.85f))
+                        .border(1.dp, Color.White.copy(alpha = 0.15f), ContinuousCapsule)
+                        .padding(horizontal = 24.dp, vertical = 14.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            color = Color.White,
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Text(
+                            text = "Переключение видеопотока...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+
+            // Interactive error overlay (when playback error occurs during active playback)
+            if (activeError != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.85f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .width(440.dp)
+                            .clip(ContinuousRoundedRectangle(24.dp))
+                            .background(GlassSurfaceDark)
+                            .border(1.dp, Color.White.copy(alpha = 0.15f), ContinuousRoundedRectangle(24.dp))
+                            .padding(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(52.dp)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Ошибка воспроизведения",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = activeError,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White.copy(alpha = 0.6f),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            SlooshButton(
+                                text = "Повторить",
+                                isWhite = true,
+                                onClick = {
+                                    playerError = null
+                                    hasAutoRetried = false
+                                    val pos = currentPositionMs.takeIf { it > 0 }
+                                        ?: lastPreservedPositionMs
+                                        ?: (state.startPositionSec * 1000).toLong()
+                                    lastPreservedPositionMs = pos
+                                    if (state.errorMessage != null) {
+                                        viewModel.initPlayer(iframeUrl, mediaId, season, episode, displayTitle)
+                                    } else {
+                                        viewModel.retryPlayback(pos) { newUrl ->
+                                            val mediaItem = androidx.media3.common.MediaItem.fromUri(newUrl)
+                                            exoPlayer.setMediaItem(mediaItem, pos)
+                                            exoPlayer.prepare()
+                                            exoPlayer.playWhenReady = true
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.focusRequester(errorFocusRequester)
+                            )
+                            SlooshButton(
+                                text = "Назад",
+                                onClick = onBack
+                            )
+                        }
+                    }
+                }
+            }
 
             // ─── Resume Indicator Toast ───────────────────────────────
             AnimatedVisibility(
@@ -570,51 +788,50 @@ fun PlayerScreen(
                 }
             }
 
-            // ─── Floating Skip Intro / Outro Buttons ───────────────────
-            val introRange = state.resolvedStream?.introRange
-            val outroRange = state.resolvedStream?.outroRange
-            val posSec = currentPositionMs / 1000.0
-            val isInIntro = introRange != null && posSec in introRange.start..introRange.end
-            val isInOutro = (outroRange != null && posSec in outroRange.start..outroRange.end) ||
-                (durationMs > 60000 && (currentPositionMs.toFloat() / durationMs.toFloat()) >= 0.96f && viewModel.getNextEpisode() != null)
-
+            // ─── Unobtrusive TV Prompt: Skip Intro while watching (Auto-fades after 7s) ───
             AnimatedVisibility(
-                visible = isInIntro && !isAnyModalOpen,
-                enter = fadeIn() + slideInHorizontally { it },
-                exit = fadeOut(),
+                visible = showIntroPrompt && !showControls && !isAnyModalOpen,
+                enter = fadeIn(tween(250)) + slideInHorizontally(initialOffsetX = { it / 2 }),
+                exit = fadeOut(tween(250)) + slideOutHorizontally(targetOffsetX = { it / 2 }),
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 48.dp, bottom = 130.dp)
+                    .padding(end = 48.dp, bottom = 48.dp)
             ) {
-                SlooshButton(
-                    text = "Пропустить заставку",
-                    isWhite = true,
-                    onClick = {
-                        introRange?.let { exoPlayer.seekTo((it.end * 1000).toLong()) }
-                    }
-                )
-            }
-
-            AnimatedVisibility(
-                visible = isInOutro && !isInIntro && !isAnyModalOpen,
-                enter = fadeIn() + slideInHorizontally { it },
-                exit = fadeOut(),
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 48.dp, bottom = 130.dp)
-            ) {
-                val nextEp = viewModel.getNextEpisode()
-                SlooshButton(
-                    text = if (nextEp != null) "Следующая серия ▶" else "Пропустить титры",
-                    isWhite = true,
-                    onClick = {
-                        if (nextEp != null) {
-                            viewModel.playNextEpisode()
-                        } else {
-                            outroRange?.let { exoPlayer.seekTo((it.end * 1000).toLong()) }
+                Box(
+                    modifier = Modifier
+                        .clip(ContinuousCapsule)
+                        .background(GlassSurfaceDark.copy(alpha = 0.90f))
+                        .border(1.dp, Color.White.copy(alpha = 0.20f), ContinuousCapsule)
+                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .clip(ContinuousCapsule)
+                                .background(Color.White)
+                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "OK",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp
+                                ),
+                                color = Color.Black
+                            )
                         }
+                        Text(
+                            text = "Пропустить заставку",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = Color.White
+                        )
                     }
-                )
+                }
             }
 
             // ─── Top Bar & Title ──────────────────────────────────────
@@ -652,7 +869,7 @@ fun PlayerScreen(
                                     .focusRequester(backFocusRequester)
                                     .focusProperties {
                                         canFocus = !isAnyModalOpen
-                                        down = seekbarFocusRequester
+                                        down = if (hasSkipAction) skipActionFocusRequester else seekbarFocusRequester
                                     }
                             ) { isFocused ->
                                 Box(
@@ -730,7 +947,7 @@ fun PlayerScreen(
             // ─── Floating Next Episode Auto-Countdown Overlay ─────────────────────────
             val nextEp = viewModel.getNextEpisode()
             val remainingSec = if (durationMs > 0) ((durationMs - currentPositionMs) / 1000).toInt() else 0
-            val showNextEpisodeBadge = nextEp != null && durationMs > 30_000L && remainingSec in 1..20 && !isAnyModalOpen
+            val showNextEpisodeBadge = nextEp != null && durationMs > 30_000L && remainingSec in 1..20 && !isAnyModalOpen && !showControls
 
             AnimatedVisibility(
                 visible = showNextEpisodeBadge,
@@ -738,7 +955,7 @@ fun PlayerScreen(
                 exit = fadeOut(tween(250)) + slideOutHorizontally(targetOffsetX = { it / 2 }),
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 48.dp, bottom = if (showControls) 130.dp else 48.dp)
+                    .padding(end = 48.dp, bottom = 48.dp)
             ) {
                 if (nextEp != null) {
                     val (nextSeason, nextEpisodeObj) = nextEp
@@ -820,7 +1037,7 @@ fun PlayerScreen(
                         .padding(horizontal = 48.dp, vertical = 24.dp)
                 ) {
                     Column {
-                        // Timeline Time Labels
+                        // Timeline Time Labels & Integrated Skip Action Button
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -837,17 +1054,129 @@ fun PlayerScreen(
                             else
                                 String.format("%02d:%02d", durSec / 60, durSec % 60)
 
-                            Text(
-                                text = curStr,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = Color.White,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = durStr,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = TextSecondaryDark
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = curStr,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = Color.White,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = "/",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = TextMutedDark
+                                )
+                                Text(
+                                    text = durStr,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = TextSecondaryDark
+                                )
+                            }
+
+                            // Integrated Skip Action inside HUD (Never dangles)
+                            if (isInIntro) {
+                                SlooshFocusableCard(
+                                    onClick = {
+                                        introRange?.let { exoPlayer.seekTo((it.end * 1000).toLong() + 500) }
+                                        hasSkippedIntroForCurrentSession = true
+                                    },
+                                    shape = ContinuousCapsule,
+                                    modifier = Modifier
+                                        .height(34.dp)
+                                        .focusRequester(skipActionFocusRequester)
+                                        .focusProperties {
+                                            canFocus = !isAnyModalOpen
+                                            down = seekbarFocusRequester
+                                            up = backFocusRequester
+                                        }
+                                ) { isFocused ->
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxHeight()
+                                            .background(
+                                                if (isFocused) Color.White else Color.White.copy(alpha = 0.12f),
+                                                ContinuousCapsule
+                                            )
+                                            .border(
+                                                1.dp,
+                                                Color.White.copy(alpha = if (isFocused) 0.5f else 0.15f),
+                                                ContinuousCapsule
+                                            )
+                                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.FastForward,
+                                                contentDescription = null,
+                                                tint = if (isFocused) Color.Black else Color.White,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Text(
+                                                text = "Пропустить заставку",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = if (isFocused) Color.Black else Color.White
+                                            )
+                                        }
+                                    }
+                                }
+                            } else if (isInOutro && outroRange != null) {
+                                SlooshFocusableCard(
+                                    onClick = {
+                                        outroRange.let { exoPlayer.seekTo((it.end * 1000).toLong() + 500) }
+                                    },
+                                    shape = ContinuousCapsule,
+                                    modifier = Modifier
+                                        .height(34.dp)
+                                        .focusRequester(skipActionFocusRequester)
+                                        .focusProperties {
+                                            canFocus = !isAnyModalOpen
+                                            down = seekbarFocusRequester
+                                            up = backFocusRequester
+                                        }
+                                ) { isFocused ->
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxHeight()
+                                            .background(
+                                                if (isFocused) Color.White else Color.White.copy(alpha = 0.12f),
+                                                ContinuousCapsule
+                                            )
+                                            .border(
+                                                1.dp,
+                                                Color.White.copy(alpha = if (isFocused) 0.5f else 0.15f),
+                                                ContinuousCapsule
+                                            )
+                                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.FastForward,
+                                                contentDescription = null,
+                                                tint = if (isFocused) Color.Black else Color.White,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Text(
+                                                text = "Пропустить титры",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = if (isFocused) Color.Black else Color.White
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         Spacer(modifier = Modifier.height(6.dp))
@@ -870,7 +1199,7 @@ fun PlayerScreen(
                                 .focusRequester(seekbarFocusRequester)
                                 .focusProperties {
                                     canFocus = !isAnyModalOpen
-                                    up = backFocusRequester
+                                    up = if (hasSkipAction) skipActionFocusRequester else backFocusRequester
                                     down = playFocusRequester
                                 }
                                 .focusable(interactionSource = seekInteractionSource)

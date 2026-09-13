@@ -30,15 +30,15 @@ fun SlooshButton(
 
     SlooshFocusableCard(
         onClick = onClick,
-        modifier = modifier.wrapContentSize(),
+        modifier = modifier,
         shape = shape,
         focusedScale = 1.05f
     ) { isFocused ->
         val bgColor = when {
             isFocused && isSolidWhite -> Color.White
             isFocused -> Color.White.copy(alpha = 0.35f)
-            isSolidWhite -> Color.White
-            else -> Color.White.copy(alpha = 0.25f)
+            isSolidWhite -> Color.White.copy(alpha = 0.92f)
+            else -> Color.White.copy(alpha = 0.16f)
         }
         val textColor = when {
             isSolidWhite -> Color.Black
@@ -48,9 +48,10 @@ fun SlooshButton(
 
         Box(
             modifier = Modifier
+                .fillMaxWidth()
                 .clip(shape)
                 .background(bgColor)
-                .padding(horizontal = 18.dp, vertical = 9.dp),
+                .padding(horizontal = 18.dp, vertical = 10.dp),
             contentAlignment = Alignment.Center
         ) {
             Row(

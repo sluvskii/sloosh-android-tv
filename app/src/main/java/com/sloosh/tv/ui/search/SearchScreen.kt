@@ -2,7 +2,6 @@ package com.sloosh.tv.ui.search
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
@@ -33,8 +32,13 @@ import com.sloosh.tv.ui.theme.*
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.tv.foundation.lazy.grid.rememberTvLazyGridState
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 
 @Composable
@@ -44,7 +48,76 @@ fun SearchScreen(
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.uiState.collectAsState()
-    val firstResultFocusRequester = remember { FocusRequester() }
+    val coroutineScope = rememberCoroutineScope()
+    val searchInputFocusRequester = remember { FocusRequester() }
+    val activeRecentFocusRequester = remember { FocusRequester() }
+    val activeResultFocusRequester = remember { FocusRequester() }
+    val focusBridge = com.sloosh.tv.LocalSideDrawerFocusBridge.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val appSettings = remember { com.sloosh.tv.data.repository.AppSettings(context) }
+    val gridColumns = appSettings.gridColumns
+    val isCompact = gridColumns >= 6
+    val gridSpacing = if (isCompact) 12.dp else 16.dp
+    val resultsGridState = rememberTvLazyGridState()
+
+    var lastFocusedArea by rememberSaveable { mutableStateOf("input") }
+    var lastFocusedResultIndex by rememberSaveable { mutableIntStateOf(0) }
+    var lastFocusedRecentIndex by rememberSaveable { mutableIntStateOf(0) }
+
+    // Initial autofocus on search input field
+    LaunchedEffect(Unit) {
+        try {
+            searchInputFocusRequester.requestFocus()
+        } catch (e: Exception) {
+            // ignore
+        }
+    }
+
+    // Reset result focus index on query change
+    LaunchedEffect(state.query) {
+        lastFocusedResultIndex = 0
+    }
+
+    DisposableEffect(focusBridge, lastFocusedArea, state.results.isNotEmpty(), state.recentSearches.isNotEmpty(), lastFocusedResultIndex, lastFocusedRecentIndex) {
+        focusBridge.contentFocusCallback = {
+            var focused = false
+            if (lastFocusedArea == "result" && state.results.isNotEmpty()) {
+                val safeTarget = lastFocusedResultIndex.coerceIn(0, state.results.lastIndex)
+                try {
+                    activeResultFocusRequester.requestFocus()
+                    focused = true
+                } catch (e: Exception) {
+                    coroutineScope.launch {
+                        try {
+                            resultsGridState.scrollToItem(safeTarget)
+                            delay(32)
+                            activeResultFocusRequester.requestFocus()
+                        } catch (_: Exception) {}
+                    }
+                    focused = true
+                }
+            } else if (lastFocusedArea == "recent" && state.recentSearches.isNotEmpty()) {
+                try {
+                    activeRecentFocusRequester.requestFocus()
+                    focused = true
+                } catch (e: Exception) {
+                    // fall back
+                }
+            }
+            if (!focused) {
+                try {
+                    searchInputFocusRequester.requestFocus()
+                } catch (e: Exception) {
+                    // ignore
+                }
+            }
+        }
+        onDispose {
+            if (focusBridge.contentFocusCallback != null) {
+                focusBridge.contentFocusCallback = null
+            }
+        }
+    }
 
     Box(
         modifier = modifier
@@ -54,7 +127,7 @@ fun SearchScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 4.dp, top = 36.dp, end = 16.dp, bottom = 24.dp)
+                .padding(start = 16.dp, top = 36.dp, end = 24.dp, bottom = 24.dp)
         ) {
 
             // ─── Search Title ─────────────────────────────────────────
@@ -117,15 +190,45 @@ fun SearchScreen(
                 shape = ContinuousRoundedRectangle(18.dp),
                 modifier = Modifier
                     .fillMaxWidth(0.65f)
+                    .focusRequester(searchInputFocusRequester)
+                    .onFocusChanged { if (it.isFocused) lastFocusedArea = "input" }
                     .onPreviewKeyEvent { keyEvent ->
-                        if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
-                            keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN
-                        ) {
-                            try {
-                                firstResultFocusRequester.requestFocus()
-                                true
-                            } catch (e: Exception) {
-                                false
+                        if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                            when (keyEvent.nativeKeyEvent.keyCode) {
+                                android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                    try {
+                                        if (state.query.isEmpty() && state.recentSearches.isNotEmpty()) {
+                                            activeRecentFocusRequester.requestFocus()
+                                            true
+                                        } else if (state.results.isNotEmpty()) {
+                                            val safeTarget = lastFocusedResultIndex.coerceIn(0, state.results.lastIndex)
+                                            try {
+                                                activeResultFocusRequester.requestFocus()
+                                                true
+                                            } catch (e: Exception) {
+                                                coroutineScope.launch {
+                                                    try {
+                                                        resultsGridState.scrollToItem(safeTarget)
+                                                        delay(32)
+                                                        activeResultFocusRequester.requestFocus()
+                                                    } catch (_: Exception) {}
+                                                }
+                                                true
+                                            }
+                                        } else false
+                                    } catch (e: Exception) {
+                                        false
+                                    }
+                                }
+                                android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
+                                    try {
+                                        focusBridge.drawerNavFocusRequesters[com.sloosh.tv.ui.components.NavSection.SEARCH]?.requestFocus()
+                                        true
+                                    } catch (e: Exception) {
+                                        false
+                                    }
+                                }
+                                else -> false
                             }
                         } else false
                     }
@@ -154,25 +257,86 @@ fun SearchScreen(
                     0 -> {
                         // Recent searches
                         Column(modifier = Modifier.fillMaxSize()) {
-                            Text(
-                                text = "Недавние запросы",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = Color.White,
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
                                 modifier = Modifier.padding(bottom = 14.dp)
-                            )
+                            ) {
+                                Text(
+                                    text = "Недавние запросы",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = Color.White
+                                )
+                                SlooshFocusableCard(
+                                    onClick = { viewModel.clearAllHistory() },
+                                    shape = ContinuousCapsule,
+                                    modifier = Modifier.wrapContentSize()
+                                ) { isFocused ->
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(ContinuousCapsule)
+                                            .background(if (isFocused) Color.White else Color.White.copy(alpha = 0.10f))
+                                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "Очистить всё",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Medium
+                                            ),
+                                            color = if (isFocused) Color.Black else Color.White.copy(alpha = 0.65f)
+                                        )
+                                    }
+                                }
+                            }
                             TvLazyRow(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 contentPadding = PaddingValues(end = 32.dp)
                             ) {
-                                items(state.recentSearches.size, key = { state.recentSearches[it].query }) { idx ->
+                                items(state.recentSearches.size, key = { "${state.recentSearches[it].query}_$it" }) { idx ->
                                     val history = state.recentSearches[idx]
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
+                                        val targetRecentIndex = lastFocusedRecentIndex.coerceIn(0, (state.recentSearches.size - 1).coerceAtLeast(0))
+                                        val isTargetRecent = (idx == targetRecentIndex)
+                                        val btnModifier = (if (isTargetRecent) Modifier.focusRequester(activeRecentFocusRequester) else Modifier)
+                                            .onFocusChanged {
+                                                if (it.isFocused) {
+                                                    lastFocusedArea = "recent"
+                                                    lastFocusedRecentIndex = idx
+                                                }
+                                            }
                                         SlooshButton(
                                             text = history.query,
-                                            onClick = { viewModel.selectHistoryQuery(history.query) }
+                                            onClick = { viewModel.selectHistoryQuery(history.query) },
+                                            modifier = btnModifier.onPreviewKeyEvent { keyEvent ->
+                                                if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                                                    when (keyEvent.nativeKeyEvent.keyCode) {
+                                                        android.view.KeyEvent.KEYCODE_DPAD_UP -> {
+                                                            try {
+                                                                searchInputFocusRequester.requestFocus()
+                                                                true
+                                                            } catch (e: Exception) {
+                                                                false
+                                                            }
+                                                        }
+                                                        android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
+                                                            if (idx == 0) {
+                                                                try {
+                                                                    focusBridge.drawerNavFocusRequesters[com.sloosh.tv.ui.components.NavSection.SEARCH]?.requestFocus()
+                                                                    true
+                                                                } catch (e: Exception) {
+                                                                    false
+                                                                }
+                                                            } else false
+                                                        }
+                                                        else -> false
+                                                    }
+                                                } else false
+                                            }
                                         )
                                         SlooshFocusableCard(
                                             onClick = { viewModel.deleteHistoryQuery(history.query) },
@@ -225,20 +389,19 @@ fun SearchScreen(
                         }
                     }
                     2 -> {
-                        // Loading
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                CircularProgressIndicator(color = Color.White)
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Text(
-                                    text = "Ищем...",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = TextSecondaryDark
-                                )
-                            }
+                        // Loading shimmer
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            Text(
+                                text = "Ищем...",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = TextMutedDark,
+                                modifier = Modifier.padding(bottom = 14.dp)
+                            )
+                            com.sloosh.tv.ui.components.PosterGridShimmer(
+                                gridColumns = gridColumns,
+                                isCompact = isCompact,
+                                itemCount = 10
+                            )
                         }
                     }
                     3 -> {
@@ -271,12 +434,6 @@ fun SearchScreen(
                     }
                     4 -> {
                         // Results grid
-                        val context = androidx.compose.ui.platform.LocalContext.current
-                        val appSettings = remember { com.sloosh.tv.data.repository.AppSettings(context) }
-                        val gridColumns = appSettings.gridColumns
-                        val isCompact = gridColumns >= 6
-                        val gridSpacing = if (isCompact) 12.dp else 16.dp
-
                         Column(modifier = Modifier.fillMaxSize()) {
                             Text(
                                 text = "Результаты: ${state.results.size}",
@@ -285,24 +442,65 @@ fun SearchScreen(
                                 modifier = Modifier.padding(bottom = 14.dp)
                             )
                             TvLazyVerticalGrid(
+                                state = resultsGridState,
                                 columns = TvGridCells.Fixed(gridColumns),
                                 horizontalArrangement = Arrangement.spacedBy(gridSpacing),
                                 verticalArrangement = Arrangement.spacedBy(gridSpacing),
                                 contentPadding = PaddingValues(bottom = 80.dp),
                                 modifier = Modifier.fillMaxSize()
                             ) {
-                                items(state.results.size, key = { state.results[it].identifier }) { index ->
+                                items(state.results.size, key = { index -> "${state.results[index].identifier}_$index" }) { index ->
                                     val item = state.results[index]
-                                    val cardModifier = if (index == 0) {
-                                        Modifier.focusRequester(firstResultFocusRequester)
-                                    } else Modifier
+                                    val isFirstColumn = index % gridColumns == 0
+                                    val isTopRow = index < gridColumns
+                                    val targetResultIndex = lastFocusedResultIndex.coerceIn(0, (state.results.size - 1).coerceAtLeast(0))
+                                    val isTargetResult = (index == targetResultIndex)
+
+                                    val cardModifier = Modifier
+                                        .then(if (isTargetResult) Modifier.focusRequester(activeResultFocusRequester) else Modifier)
+                                        .onFocusChanged {
+                                            if (it.isFocused) {
+                                                lastFocusedArea = "result"
+                                                lastFocusedResultIndex = index
+                                            }
+                                        }
+                                        .onPreviewKeyEvent { keyEvent ->
+                                            if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                                                when (keyEvent.nativeKeyEvent.keyCode) {
+                                                    android.view.KeyEvent.KEYCODE_DPAD_UP -> {
+                                                        if (isTopRow) {
+                                                            try {
+                                                                searchInputFocusRequester.requestFocus()
+                                                                true
+                                                            } catch (e: Exception) {
+                                                                false
+                                                            }
+                                                        } else false
+                                                    }
+                                                    android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
+                                                        if (isFirstColumn) {
+                                                            try {
+                                                                focusBridge.drawerNavFocusRequesters[com.sloosh.tv.ui.components.NavSection.SEARCH]?.requestFocus()
+                                                                true
+                                                            } catch (e: Exception) {
+                                                                false
+                                                            }
+                                                        } else false
+                                                    }
+                                                    else -> false
+                                                }
+                                            } else false
+                                        }
 
                                     MediaCard(
                                         item = item,
                                         onClick = { onMediaSelected(item.identifier) },
                                         compact = isCompact,
                                         modifier = cardModifier,
-                                        onFocus = {}
+                                        onFocus = {
+                                            lastFocusedArea = "result"
+                                            lastFocusedResultIndex = index
+                                        }
                                     )
                                 }
                             }

@@ -11,13 +11,15 @@ data class ApiEnvelope<T>(
 data class MediaResponse(
     @SerializedName("page") val page: Int?,
     @SerializedName("results") val results: List<MediaDto>?,
+    @SerializedName("items") val items: List<MediaDto>? = null,
     @SerializedName("pages") val pages: Int?,
     @SerializedName("total") val total: Int?,
     @SerializedName("total_pages") val totalPages: Int?,
     @SerializedName("total_results") val totalResults: Int?
 ) {
+    val allItems: List<MediaDto> get() = items ?: results ?: emptyList()
     val effectiveTotalPages: Int get() = pages ?: totalPages ?: 1
-    val effectiveTotalResults: Int get() = total ?: totalResults ?: (results?.size ?: 0)
+    val effectiveTotalResults: Int get() = total ?: totalResults ?: allItems.size
 }
 
 data class MediaDto(
@@ -26,20 +28,24 @@ data class MediaDto(
     @SerializedName("originalTitle") val originalTitle: String?,
     @SerializedName("year") val year: Any?,
     @SerializedName("rating") val rating: Double?,
-    @SerializedName("posterUrl") val posterUrl: String?,
-    @SerializedName("description") val description: String?,
-    @SerializedName("type") val type: String?,
-    @SerializedName("genres") val genres: List<GenreDto>?,
-    @SerializedName("externalIds") val externalIds: ExternalIdsDto?,
-    @SerializedName("name") val name: String?,
-    @SerializedName("poster_path") val posterPath: String?
+    @SerializedName("ratings") val ratings: RatingsV2Dto? = null,
+    @SerializedName("poster") val poster: String? = null,
+    @SerializedName("posterUrl") val posterUrl: String? = null,
+    @SerializedName("description") val description: String? = null,
+    @SerializedName("type") val type: String? = null,
+    @SerializedName("genres") val genres: List<GenreDto>? = null,
+    @SerializedName("externalIds") val externalIds: ExternalIdsDto? = null,
+    @SerializedName("name") val name: String? = null,
+    @SerializedName("poster_path") val posterPath: String? = null,
+    @SerializedName("backdrop") val backdrop: String? = null,
+    @SerializedName("backdrop_path") val backdropPath: String? = null
 ) {
     val identifier: String
         get() {
             if (!originalId.isNullOrEmpty()) return originalId
             val titlePart = (title ?: name ?: originalTitle ?: "unknown").trim().lowercase()
             val yearPart = year?.toString() ?: ""
-            val posterPart = (posterUrl ?: posterPath ?: "").trim().lowercase()
+            val posterPart = (poster ?: posterUrl ?: posterPath ?: "").trim().lowercase()
             val typePart = (type ?: "unknown").lowercase()
             return "fallback|$typePart|$titlePart|$yearPart|$posterPart"
         }
@@ -52,8 +58,13 @@ data class MediaDto(
     }
 
     fun getDisplayPosterUrl(isLowQuality: Boolean = false): String? {
-        val rawUrl = posterUrl ?: posterPath
+        val rawUrl = poster ?: posterUrl ?: posterPath
         return normalizeImageUrl(path = rawUrl, id = originalId, isLowQuality = isLowQuality)
+    }
+
+    fun getDisplayBackdropUrl(isLowQuality: Boolean = false): String? {
+        val rawUrl = backdrop ?: backdropPath
+        return normalizeImageUrl(path = rawUrl, id = originalId, isLowQuality = isLowQuality) ?: getDisplayPosterUrl(isLowQuality)
     }
 
     val isTvSeries: Boolean
@@ -89,32 +100,60 @@ data class MediaDetailsDto(
     @SerializedName("duration") val duration: Int?,
     @SerializedName("poster") val poster: String?,
     @SerializedName("backdrop") val backdrop: String?,
-    @SerializedName("ratings") val ratings: RatingsV2Dto?,
-    @SerializedName("ids") val ids: IdsDto?
+    @SerializedName("backdrops") val backdrops: List<String>? = null,
+    @SerializedName("logo") val logo: String? = null,
+    @SerializedName("cast") val cast: List<CastMemberDto>? = null,
+    @SerializedName("directors") val directors: List<CrewMemberDto>? = null,
+    @SerializedName("writers") val writers: List<CrewMemberDto>? = null,
+    @SerializedName("crew") val crew: List<CrewMemberDto>? = null,
+    @SerializedName("similar") val similar: List<MediaDto>? = null,
+    @SerializedName("seasons") val seasons: List<TvSeasonSummaryDto>? = null,
+    @SerializedName("ratings") val ratings: RatingsV2Dto? = null,
+    @SerializedName("ids") val ids: IdsDto? = null,
+    @SerializedName("externalIds") val externalIds: ExternalIdsDto? = null,
+    @SerializedName("budget") val budget: Long? = null,
+    @SerializedName("revenue") val revenue: Long? = null,
+    @SerializedName("status") val status: String? = null
 ) {
     val displayTitle: String get() = title ?: originalTitle ?: "Без названия"
+    val rating: Double? get() = ratings?.kp ?: ratings?.imdb ?: ratings?.tmdb
+    val yearString: String get() = year?.toString() ?: ""
 
     fun getDisplayPosterUrl(isLowQuality: Boolean = false): String? {
         return normalizeImageUrl(path = poster, id = id, isLowQuality = isLowQuality)
     }
 
     fun getDisplayBackdropUrl(isLowQuality: Boolean = false): String? {
+        if (!backdrop.isNullOrEmpty()) {
+            return normalizeImageUrl(path = backdrop, id = id, isLowQuality = isLowQuality) ?: backdrop
+        }
+        if (!poster.isNullOrEmpty()) {
+            return normalizeImageUrl(path = poster, id = id, isLowQuality = isLowQuality) ?: poster
+        }
         val validId = id?.replace("kp_", "")?.trim() ?: return null
         if (validId.isEmpty()) return null
-        val size = if (isLowQuality) "large" else "original"
-        return "https://api.neome.uk/api/v1/images/backdrops/$validId/$size"
+        return "https://api-sloosh.vercel.app/api/v1/images/backdrops/$validId/original"
     }
 
     fun getPreviewBackdropUrl(): String? {
+        if (!backdrop.isNullOrEmpty()) {
+            return normalizeImageUrl(path = backdrop, id = id, isLowQuality = true) ?: backdrop
+        }
+        if (!poster.isNullOrEmpty()) {
+            return normalizeImageUrl(path = poster, id = id, isLowQuality = true) ?: poster
+        }
         val validId = id?.replace("kp_", "")?.trim() ?: return null
         if (validId.isEmpty()) return null
-        return "https://api.neome.uk/api/v1/images/backdrops/$validId/small"
+        return "https://api-sloosh.vercel.app/api/v1/images/backdrops/$validId/small"
     }
 
     fun getDisplayLogoUrl(): String? {
+        if (!logo.isNullOrEmpty()) {
+            return normalizeImageUrl(path = logo, id = id) ?: logo
+        }
         val validId = id?.replace("kp_", "")?.trim() ?: return null
         if (validId.isEmpty()) return null
-        return "https://api.neome.uk/api/v1/images/logos/$validId/original"
+        return "https://api-sloosh.vercel.app/api/v1/images/logos/$validId/original"
     }
 }
 
@@ -139,6 +178,66 @@ data class IdsDto(
     @SerializedName("kp") val kp: Int?,
     @SerializedName("imdb") val imdb: String?,
     @SerializedName("tmdb") val tmdb: Int?
+)
+
+data class CastMemberDto(
+    @SerializedName("id") val id: Int,
+    @SerializedName("name") val name: String,
+    @SerializedName("originalName") val originalName: String? = null,
+    @SerializedName("character") val character: String? = null,
+    @SerializedName("photo") val photo: String? = null
+) {
+    fun getDisplayPhotoUrl(): String? {
+        val p = photo ?: return null
+        return adjustExternalImageUrl(p, isLowQuality = false)
+    }
+}
+
+data class CrewMemberDto(
+    @SerializedName("id") val id: Int,
+    @SerializedName("name") val name: String,
+    @SerializedName("originalName") val originalName: String? = null,
+    @SerializedName("role") val role: String? = null,
+    @SerializedName("photo") val photo: String? = null
+)
+
+data class TvSeasonSummaryDto(
+    @SerializedName("id") val id: Int?,
+    @SerializedName("seasonNumber") val seasonNumber: Int?,
+    @SerializedName("name") val name: String?,
+    @SerializedName("episodeCount") val episodeCount: Int?,
+    @SerializedName("airDate") val airDate: String?,
+    @SerializedName("poster") val poster: String?
+)
+
+data class TvSeasonEpisodeDto(
+    @SerializedName("id") val id: Int?,
+    @SerializedName("name") val name: String?,
+    @SerializedName("overview") val overview: String?,
+    @SerializedName("airDate") val airDate: String?,
+    @SerializedName("episodeNumber") val episodeNumber: Int?,
+    @SerializedName("seasonNumber") val seasonNumber: Int?,
+    @SerializedName("stillPath") val stillPath: String?,
+    @SerializedName("voteAverage") val voteAverage: Double?,
+    @SerializedName("duration") val duration: Int?
+) {
+    fun getDisplayStillUrl(): String? {
+        if (!stillPath.isNullOrEmpty()) {
+            if (stillPath.startsWith("http")) return stillPath
+            return "https://api-sloosh.vercel.app/api/v1/images/tmdb/w500$stillPath"
+        }
+        return null
+    }
+}
+
+data class TvSeasonDto(
+    @SerializedName("id") val id: Int?,
+    @SerializedName("name") val name: String?,
+    @SerializedName("overview") val overview: String?,
+    @SerializedName("seasonNumber") val seasonNumber: Int?,
+    @SerializedName("poster") val poster: String?,
+    @SerializedName("airDate") val airDate: String?,
+    @SerializedName("episodes") val episodes: List<TvSeasonEpisodeDto>?
 )
 
 data class TvEpisodeDetailsDto(
@@ -238,6 +337,7 @@ fun adjustExternalImageUrl(urlStr: String, isLowQuality: Boolean): String {
         } else {
             result.replace("/w342/", "/w500/")
         }
+        result = result.replace("https://image.tmdb.org/t/p/", "https://api-sloosh.vercel.app/api/v1/images/tmdb/")
     } else {
         result = if (isLowQuality) {
             if (result.contains("/kp/")) result.replace("/kp/", "/kp_small/") else result
@@ -249,22 +349,29 @@ fun adjustExternalImageUrl(urlStr: String, isLowQuality: Boolean): String {
 }
 
 fun normalizeImageUrl(path: String?, id: String? = null, isLowQuality: Boolean = false): String? {
-    val baseUrl = "https://api.neome.uk"
+    if (path != null && path.contains("no-poster")) return null
+    val baseUrl = "https://api-sloosh.vercel.app"
     var rawUrl = path
     if (rawUrl != null) {
+        if (rawUrl.contains("no-poster")) return null
         rawUrl = adjustExternalImageUrl(rawUrl, isLowQuality)
     }
 
     val trimmed = rawUrl?.trim()
     if (!trimmed.isNullOrEmpty()) {
+        if (trimmed.contains("no-poster")) return null
         if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-            return encodeUrl(trimmed)
+            return trimmed.replace("https://image.tmdb.org/t/p/", "$baseUrl/api/v1/images/tmdb/")
         }
         if (trimmed.startsWith("/")) {
-            return encodeUrl(baseUrl + trimmed)
+            if (trimmed.endsWith(".jpg") || trimmed.endsWith(".png") || trimmed.endsWith(".jpeg") || trimmed.endsWith(".webp")) {
+                val size = if (isLowQuality) "w342" else "w500"
+                return "$baseUrl/api/v1/images/tmdb/$size$trimmed"
+            }
+            return "$baseUrl$trimmed"
         }
         if (trimmed.startsWith("api/")) {
-            return encodeUrl("$baseUrl/$trimmed")
+            return "$baseUrl/$trimmed"
         }
     }
 
@@ -272,12 +379,4 @@ fun normalizeImageUrl(path: String?, id: String? = null, isLowQuality: Boolean =
     if (!sanitizedId.all { it.isDigit() }) return null
     val qualityPath = if (isLowQuality) "kp_small" else "kp"
     return "$baseUrl/api/v1/images/$qualityPath/$sanitizedId?fallback=true"
-}
-
-private fun encodeUrl(url: String): String {
-    return try {
-        url // Java URL/URLEncoder or keep as-is if already safe
-    } catch (e: Exception) {
-        url
-    }
 }

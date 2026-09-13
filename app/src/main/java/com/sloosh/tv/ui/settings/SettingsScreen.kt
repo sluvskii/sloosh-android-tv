@@ -8,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -65,6 +66,34 @@ fun SettingsScreen(
 
     val categoryFocusRequesters = remember { Array(SettingsCategory.values().size) { FocusRequester() } }
     val firstActionFocusRequester = remember { FocusRequester() }
+    val focusBridge = com.sloosh.tv.LocalSideDrawerFocusBridge.current
+
+    // Initial autofocus on first category
+    LaunchedEffect(Unit) {
+        try {
+            categoryFocusRequesters[0].requestFocus()
+        } catch (e: Exception) {
+            // ignore
+        }
+    }
+
+    // Drawer exit focus callback
+    DisposableEffect(focusBridge, selectedCategory) {
+        focusBridge.contentFocusCallback = {
+            try {
+                categoryFocusRequesters[selectedCategory.ordinal].requestFocus()
+            } catch (e: Exception) {
+                try {
+                    categoryFocusRequesters[0].requestFocus()
+                } catch (e2: Exception) {}
+            }
+        }
+        onDispose {
+            if (focusBridge.contentFocusCallback != null) {
+                focusBridge.contentFocusCallback = null
+            }
+        }
+    }
 
     // Auto-clear status message
     LaunchedEffect(statusMessage) {
@@ -164,6 +193,14 @@ fun SettingsScreen(
                                             android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
                                                 try {
                                                     firstActionFocusRequester.requestFocus()
+                                                    true
+                                                } catch (e: Exception) {
+                                                    false
+                                                }
+                                            }
+                                            android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
+                                                try {
+                                                    focusBridge.drawerNavFocusRequesters[com.sloosh.tv.ui.components.NavSection.SETTINGS]?.requestFocus()
                                                     true
                                                 } catch (e: Exception) {
                                                     false
@@ -639,13 +676,14 @@ fun ExpressiveSwitch(
             )
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .onFocusChanged { isFocused = it.isFocused }
+            .focusable()
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
             ) {
                 onCheckedChange(!checked)
             }
-            .onPreviewKeyEvent { keyEvent ->
+            .onPreviewKeyEvent { keyEvent: androidx.compose.ui.input.key.KeyEvent ->
                 if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
                     when (keyEvent.nativeKeyEvent.keyCode) {
                         android.view.KeyEvent.KEYCODE_DPAD_CENTER,
@@ -718,13 +756,14 @@ private fun SegmentedToggle(
                             else Modifier
                         )
                         .onFocusChanged { isFocused = it.isFocused }
+                        .focusable()
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
                         ) {
                             onSelect(index)
                         }
-                        .onPreviewKeyEvent { keyEvent ->
+                        .onPreviewKeyEvent { keyEvent: androidx.compose.ui.input.key.KeyEvent ->
                             if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
                                 when (keyEvent.nativeKeyEvent.keyCode) {
                                     android.view.KeyEvent.KEYCODE_DPAD_CENTER,

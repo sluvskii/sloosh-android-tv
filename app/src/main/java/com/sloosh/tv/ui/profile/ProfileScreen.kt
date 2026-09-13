@@ -2,7 +2,6 @@ package com.sloosh.tv.ui.profile
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.Icon
@@ -31,20 +30,29 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.FocusState
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.rememberTextMeasurer
 
-// iOS ProfileView has 4 categories: Все / Фильмы / Сериалы / Мульты
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.tv.foundation.lazy.grid.rememberTvLazyGridState
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+// iOS ProfileView has 5 categories: Все / Фильмы / Сериалы / Мульты / Аниме
 enum class FavoriteCategory(val title: String) {
     ALL("Все"),
     MOVIES("Фильмы"),
     SERIES("Сериалы"),
-    CARTOONS("Мульты")
+    CARTOONS("Мульты"),
+    ANIME("Аниме")
 }
 
 @Composable
@@ -54,7 +62,38 @@ fun ProfileScreen(
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.uiState.collectAsState()
-    var selectedCategory by remember { mutableStateOf(FavoriteCategory.ALL) }
+    val coroutineScope = rememberCoroutineScope()
+    var selectedCategory by rememberSaveable { mutableStateOf(FavoriteCategory.ALL) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val appSettings = remember { com.sloosh.tv.data.repository.AppSettings(context) }
+    val gridColumns = appSettings.gridColumns
+    val isCompact = gridColumns >= 6
+    val gridSpacing = if (isCompact) 12.dp else 16.dp
+    val activeCardFocusRequester = remember { FocusRequester() }
+    val focusBridge = com.sloosh.tv.LocalSideDrawerFocusBridge.current
+    val categories = FavoriteCategory.values()
+    val categoryFocusRequesters = remember { Array(categories.size) { FocusRequester() } }
+    val gridState = rememberTvLazyGridState()
+
+    var lastFocusedArea by rememberSaveable { mutableStateOf("tab") }
+    var lastFocusedCardIndex by rememberSaveable { mutableIntStateOf(0) }
+
+    // Initial autofocus on favorite category tabs
+    LaunchedEffect(Unit) {
+        try {
+            categoryFocusRequesters[0].requestFocus()
+        } catch (e: Exception) {
+            // ignore
+        }
+    }
+
+    // Reset card focus index when category tab changes
+    LaunchedEffect(selectedCategory) {
+        lastFocusedCardIndex = 0
+        try {
+            gridState.scrollToItem(0)
+        } catch (_: Exception) {}
+    }
 
     val filteredFavorites = remember(state.favorites, selectedCategory) {
         val raw = when (selectedCategory) {
@@ -67,6 +106,9 @@ fun ProfileScreen(
             }
             FavoriteCategory.CARTOONS -> state.favorites.filter {
                 it.type == "cartoon" || it.type == "animation"
+            }
+            FavoriteCategory.ANIME -> state.favorites.filter {
+                it.type == "anime"
             }
         }
         raw.map { fav ->
@@ -87,6 +129,42 @@ fun ProfileScreen(
         }
     }
 
+    DisposableEffect(focusBridge, lastFocusedArea, selectedCategory, filteredFavorites.isNotEmpty(), lastFocusedCardIndex) {
+        focusBridge.contentFocusCallback = {
+            var focused = false
+            if (lastFocusedArea == "card" && filteredFavorites.isNotEmpty()) {
+                val safeTarget = lastFocusedCardIndex.coerceIn(0, filteredFavorites.lastIndex)
+                try {
+                    activeCardFocusRequester.requestFocus()
+                    focused = true
+                } catch (e: Exception) {
+                    coroutineScope.launch {
+                        try {
+                            gridState.scrollToItem(safeTarget)
+                            delay(32)
+                            activeCardFocusRequester.requestFocus()
+                        } catch (_: Exception) {}
+                    }
+                    focused = true
+                }
+            }
+            if (!focused) {
+                try {
+                    categoryFocusRequesters[selectedCategory.ordinal].requestFocus()
+                } catch (e: Exception) {
+                    try {
+                        categoryFocusRequesters[0].requestFocus()
+                    } catch (e2: Exception) {}
+                }
+            }
+        }
+        onDispose {
+            if (focusBridge.contentFocusCallback != null) {
+                focusBridge.contentFocusCallback = null
+            }
+        }
+    }
+
     val categoryCounts = remember(state.favorites) {
         FavoriteCategory.values().associateWith { cat ->
             when (cat) {
@@ -94,12 +172,11 @@ fun ProfileScreen(
                 FavoriteCategory.MOVIES -> state.favorites.count { it.type == "movie" || it.type == null }
                 FavoriteCategory.SERIES -> state.favorites.count { it.type == "tv" || it.type == "show" || it.type == "series" }
                 FavoriteCategory.CARTOONS -> state.favorites.count { it.type == "cartoon" || it.type == "animation" }
+                FavoriteCategory.ANIME -> state.favorites.count { it.type == "anime" }
             }
         }
     }
 
-    val categories = FavoriteCategory.values()
-    val categoryFocusRequesters = remember { Array(categories.size) { FocusRequester() } }
     val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
 
@@ -156,7 +233,7 @@ fun ProfileScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 4.dp, top = 32.dp, end = 16.dp, bottom = 24.dp)
+                .padding(start = 16.dp, top = 32.dp, end = 24.dp, bottom = 24.dp)
         ) {
 
             // ─── Header ──────────────────────────────────────────────
@@ -204,10 +281,14 @@ fun ProfileScreen(
                                 .width(thisTabWidth)
                                 .height(34.dp)
                                 .clip(ContinuousCapsule)
+                                .focusable()
                                 .focusRequester(categoryFocusRequesters[index])
-                                .onFocusChanged { focusState ->
-                                    if (focusState.isFocused && selectedCategory != cat) {
-                                        selectedCategory = cat
+                                .onFocusChanged { focusState: FocusState ->
+                                    if (focusState.isFocused) {
+                                        lastFocusedArea = "tab"
+                                        if (selectedCategory != cat) {
+                                            selectedCategory = cat
+                                        }
                                     }
                                 }
                                 .clickable(
@@ -216,9 +297,27 @@ fun ProfileScreen(
                                 ) {
                                     selectedCategory = cat
                                 }
-                                .onPreviewKeyEvent { keyEvent ->
+                                .onPreviewKeyEvent { keyEvent: KeyEvent ->
                                     if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
                                         when (keyEvent.nativeKeyEvent.keyCode) {
+                                            android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                                if (filteredFavorites.isNotEmpty()) {
+                                                    val safeTarget = lastFocusedCardIndex.coerceIn(0, filteredFavorites.lastIndex)
+                                                    try {
+                                                        activeCardFocusRequester.requestFocus()
+                                                        true
+                                                    } catch (e: Exception) {
+                                                        coroutineScope.launch {
+                                                            try {
+                                                                gridState.scrollToItem(safeTarget)
+                                                                delay(32)
+                                                                activeCardFocusRequester.requestFocus()
+                                                            } catch (_: Exception) {}
+                                                        }
+                                                        true
+                                                    }
+                                                } else false
+                                            }
                                             android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
                                                 if (index > 0) {
                                                     try {
@@ -227,7 +326,14 @@ fun ProfileScreen(
                                                     } catch (e: Exception) {
                                                         false
                                                     }
-                                                } else false
+                                                } else {
+                                                    try {
+                                                        focusBridge.drawerNavFocusRequesters[com.sloosh.tv.ui.components.NavSection.FAVORITES]?.requestFocus()
+                                                        true
+                                                    } catch (e: Exception) {
+                                                        false
+                                                    }
+                                                }
                                             }
                                             android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
                                                 if (index < categories.size - 1) {
@@ -298,26 +404,66 @@ fun ProfileScreen(
                     }
                 }
             } else {
-                val context = androidx.compose.ui.platform.LocalContext.current
-                val appSettings = remember { com.sloosh.tv.data.repository.AppSettings(context) }
-                val gridColumns = appSettings.gridColumns
-                val isCompact = gridColumns >= 6
-                val gridSpacing = if (isCompact) 12.dp else 16.dp
-
                 TvLazyVerticalGrid(
+                    state = gridState,
                     columns = TvGridCells.Fixed(gridColumns),
                     horizontalArrangement = Arrangement.spacedBy(gridSpacing),
                     verticalArrangement = Arrangement.spacedBy(gridSpacing),
                     contentPadding = PaddingValues(bottom = 60.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(filteredFavorites.size, key = { filteredFavorites[it].identifier }) { index ->
+                    items(filteredFavorites.size, key = { index -> "${filteredFavorites[index].identifier}_$index" }) { index ->
                         val item = filteredFavorites[index]
+                        val isFirstColumn = index % gridColumns == 0
+                        val isTopRow = index < gridColumns
+                        val targetIndex = lastFocusedCardIndex.coerceIn(0, (filteredFavorites.size - 1).coerceAtLeast(0))
+                        val isTargetCard = (index == targetIndex)
+
+                        val cardModifier = Modifier
+                            .then(if (isTargetCard) Modifier.focusRequester(activeCardFocusRequester) else Modifier)
+                            .onFocusChanged {
+                                if (it.isFocused) {
+                                    lastFocusedArea = "card"
+                                    lastFocusedCardIndex = index
+                                }
+                            }
+                            .onPreviewKeyEvent { keyEvent: KeyEvent ->
+                                if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                                    when (keyEvent.nativeKeyEvent.keyCode) {
+                                        android.view.KeyEvent.KEYCODE_DPAD_UP -> {
+                                            if (isTopRow) {
+                                                try {
+                                                    categoryFocusRequesters[selectedCategory.ordinal].requestFocus()
+                                                    true
+                                                } catch (e: Exception) {
+                                                    false
+                                                }
+                                            } else false
+                                        }
+                                        android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
+                                            if (isFirstColumn) {
+                                                try {
+                                                    focusBridge.drawerNavFocusRequesters[com.sloosh.tv.ui.components.NavSection.FAVORITES]?.requestFocus()
+                                                    true
+                                                } catch (e: Exception) {
+                                                    false
+                                                }
+                                            } else false
+                                        }
+                                        else -> false
+                                    }
+                                } else false
+                            }
+
                         MediaCard(
                             item = item,
                             onClick = { onMediaSelected(item.identifier) },
                             compact = isCompact,
-                            onFocus = {}
+                            modifier = cardModifier,
+                            onFocus = {
+                                lastFocusedArea = "card"
+                                lastFocusedCardIndex = index
+                            }
                         )
                     }
                 }

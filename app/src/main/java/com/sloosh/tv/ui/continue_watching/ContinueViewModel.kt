@@ -22,7 +22,9 @@ data class ContinueWatchingItem(
     val title: String,
     val posterUrl: String?,
     val backdropUrl: String?,
+    val logoUrl: String? = null,
     val isEpisode: Boolean,
+    val isNextEpisode: Boolean = false,
     val season: Int?,
     val episode: Int?,
     val positionSec: Double,
@@ -41,7 +43,7 @@ data class ContinueUiState(
 class ContinueViewModel(application: Application) : AndroidViewModel(application) {
 
     private val progressStore = PlaybackProgressStore(application)
-    private val moviesRepository = MoviesRepository()
+    private val moviesRepository = MoviesRepository.instance
 
     private val _uiState = MutableStateFlow(ContinueUiState())
     val uiState: StateFlow<ContinueUiState> = _uiState.asStateFlow()
@@ -65,14 +67,16 @@ class ContinueViewModel(application: Application) : AndroidViewModel(application
                             var title = record.title.ifEmpty { "Просмотр" }
                             var poster = record.posterUrl
                             var backdrop = record.backdropUrl
+                            var logo: String? = record.logoUrl
 
-                            if (title == "Просмотр" || poster.isNullOrEmpty()) {
+                            if (title == "Просмотр" || poster.isNullOrEmpty() || backdrop.isNullOrEmpty() || logo.isNullOrEmpty()) {
                                 try {
                                     val details = moviesRepository.getDetails(record.mediaId)
                                     if (details != null) {
                                         title = details.displayTitle
-                                        poster = details.getDisplayPosterUrl()
-                                        backdrop = details.getDisplayBackdropUrl() ?: poster
+                                        poster = poster ?: details.getDisplayPosterUrl()
+                                        backdrop = backdrop ?: (details.getDisplayBackdropUrl() ?: poster)
+                                        logo = logo ?: details.getDisplayLogoUrl()
                                     }
                                 } catch (e: Exception) {}
                             }
@@ -105,7 +109,9 @@ class ContinueViewModel(application: Application) : AndroidViewModel(application
                                 title = title,
                                 posterUrl = poster,
                                 backdropUrl = backdrop ?: poster,
+                                logoUrl = logo,
                                 isEpisode = record.isEpisode,
+                                isNextEpisode = false,
                                 season = record.season,
                                 episode = record.episode,
                                 positionSec = record.positionSec,

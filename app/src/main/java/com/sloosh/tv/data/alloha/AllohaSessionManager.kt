@@ -1,8 +1,6 @@
 package com.sloosh.tv.data.alloha
 
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import kotlinx.coroutines.*
 import org.json.JSONObject
@@ -21,7 +19,7 @@ class AllohaSessionManager(private val context: Context) {
         private set
 
     val proxyMasterUrl: String
-        get() = hlsProxy?.fixedMasterUrl ?: ""
+        get() = hlsProxy?.fixedMasterUrl ?: HlsProxyServer.shared.fixedMasterUrl
 
     val activeHeaders: Map<String, String> get() = _activeHeaders
     private val _activeHeaders = ConcurrentHashMap<String, String>()
@@ -38,7 +36,6 @@ class AllohaSessionManager(private val context: Context) {
     var onError: ((String) -> Unit)? = null
     var onM3u8Updated: ((newUrl: String) -> Unit)? = null
 
-    private var ttlTimerJob: Job? = null
     private var isRestarting = false
     private var lastRestartUrl: String? = null
     private var failureCount = 0
@@ -46,15 +43,9 @@ class AllohaSessionManager(private val context: Context) {
     fun ensureInitialized() {
         if (parser == null) parser = AllohaParser(context)
         if (hlsProxy == null) {
-            hlsProxy = HlsProxyServer(
-                activeHeaders = _activeHeaders,
-                onSessionExpired = {
-                    Log.w(TAG, "HLS proxy reported session expired -> restarting")
-                    lastRestartUrl?.let { url ->
-                        scope.launch { startSession(url, isRestart = true) }
-                    }
-                }
-            ).also { it.start() }
+            hlsProxy = HlsProxyServer.shared.also {
+                it.start(_activeHeaders)
+            }
         }
     }
 
@@ -62,7 +53,6 @@ class AllohaSessionManager(private val context: Context) {
         ensureInitialized()
         lastRestartUrl = iframeUrl
         isRestarting = isRestart
-        ttlTimerJob?.cancel()
 
         Log.d(TAG, "Starting Alloha session (attempt=$attempt, restart=$isRestart): $iframeUrl")
 
@@ -86,6 +76,7 @@ class AllohaSessionManager(private val context: Context) {
                 timeoutJob.cancel()
                 failureCount = 0
                 _activeHeaders.putAll(extraHeaders)
+                hlsProxy?.updateHeaders(_activeHeaders)
 
                 val result = parseBnsiJson(json)
                 if (result == null) {
@@ -107,12 +98,11 @@ class AllohaSessionManager(private val context: Context) {
                 lastSelectedQuality = initialQuality
 
                 hlsProxy?.subtitleTracks = result.subtitles
+                hlsProxy?.updateMasterUrl(initialUrl)
 
                 if (isRestart) {
-                    hlsProxy?.updateMasterUrl(initialUrl)
                     onM3u8Updated?.invoke(initialUrl)
                 } else {
-                    hlsProxy?.updateMasterUrl(initialUrl)
                     onStreamReady?.invoke(result.qualityMap, initialUrl)
                 }
             }
@@ -120,11 +110,15 @@ class AllohaSessionManager(private val context: Context) {
             override fun onConfigUpdate(edgeHash: String, ttlSeconds: Int, extraHeaders: Map<String, String>) {
                 _activeHeaders.putAll(extraHeaders)
                 _activeHeaders["accepts-controls"] = edgeHash
-                scheduleTtlRestart(ttlSeconds, iframeUrl)
+                hlsProxy?.updateHeaders(_activeHeaders)
+                // Note: Proactive TTL restarts removed. Video stream tokens on Alloha CDN
+                // remain valid for the movie duration. Scheduled restarts were destroying
+                // active ExoPlayer TCP connections and causing playback to freeze at ~7-8 minutes.
             }
 
             override fun onM3u8Refreshed(url: String, extraHeaders: Map<String, String>) {
                 _activeHeaders.putAll(extraHeaders)
+                hlsProxy?.updateHeaders(_activeHeaders)
                 Log.d(TAG, "CDN master URL refreshed: $url")
                 hlsProxy?.updateMasterUrl(url)
                 onM3u8Updated?.invoke(url)
@@ -132,6 +126,7 @@ class AllohaSessionManager(private val context: Context) {
 
             override fun onStreamHeadersUpdated(extraHeaders: Map<String, String>) {
                 _activeHeaders.putAll(extraHeaders)
+                hlsProxy?.updateHeaders(_activeHeaders)
             }
 
             override fun onError(error: String) {
@@ -155,27 +150,11 @@ class AllohaSessionManager(private val context: Context) {
 
     fun release() {
         scope.cancel()
-        ttlTimerJob?.cancel()
-        ttlTimerJob = null
         parser?.release()
         parser = null
-        hlsProxy?.stop()
         hlsProxy = null
         _activeHeaders.clear()
         Log.d(TAG, "AllohaSessionManager released")
-    }
-
-    private fun scheduleTtlRestart(ttlSeconds: Int, iframeUrl: String) {
-        ttlTimerJob?.cancel()
-        val restartDelayMs = (ttlSeconds * 1000L - 20_000L).coerceAtLeast(30_000L)
-        Log.d(TAG, "Scheduling session renewal in ${restartDelayMs / 1000}s (TTL: ${ttlSeconds}s)")
-        ttlTimerJob = scope.launch {
-            delay(restartDelayMs)
-            if (isActive) {
-                Log.d(TAG, "Renewing session before TTL expiry")
-                startSession(iframeUrl, isRestart = true)
-            }
-        }
     }
 
     private data class BnsiResult(

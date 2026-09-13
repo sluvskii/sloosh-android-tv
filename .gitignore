@@ -8,3 +8,15 @@
 /captures
 .externalNativeBuild
 .cxx
+
+# Keystore files
+/keys/
+*.jks
+*.keystore
+
+# Built binaries
+*.apk
+*.aab
+
+# Local reference folders
+/iOS-sloosh/

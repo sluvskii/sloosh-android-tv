@@ -252,7 +252,15 @@ object AllohaRuntimeParser {
         return when {
             cleanValue.startsWith("//") -> "https:$cleanValue"
             cleanValue.startsWith("http://") || cleanValue.startsWith("https://") -> cleanValue
-            else -> runCatching { baseUrl.resolve(cleanValue).toString() }.getOrNull()
+            else -> runCatching {
+                val resolved = baseUrl.resolve(cleanValue)
+                val resolvedStr = resolved.toString()
+                if (!cleanValue.contains("?") && !baseUrl.query.isNullOrBlank() && !resolvedStr.contains("?")) {
+                    "$resolvedStr?${baseUrl.query}"
+                } else {
+                    resolvedStr
+                }
+            }.getOrNull()
         }
     }
 
@@ -263,7 +271,11 @@ object AllohaRuntimeParser {
     }
 
     private fun qualityHeight(label: String): Int {
-        return label.lowercase(Locale.ROOT).replace("p", "").toIntOrNull() ?: 0
+        val clean = label.lowercase(Locale.ROOT)
+        if (clean.endsWith("k")) {
+            return clean.removeSuffix("k").toIntOrNull() ?: 0
+        }
+        return clean.replace("p", "").toIntOrNull() ?: 0
     }
 
     private fun normalizedQualityLabel(label: String): String {
@@ -365,15 +377,38 @@ object AllohaRuntimeParser {
         var intro: SkipTimeRange? = null
         var outro: SkipTimeRange? = null
 
+        val skipArr = obj.optJSONArray("skipTime") ?: run {
+            val hls = obj.optJSONArray("hlsSource")?.optJSONObject(0)
+            hls?.optJSONArray("skipTime")
+        }
+        if (skipArr != null) {
+            if (skipArr.length() > 0) {
+                val item = skipArr.optJSONObject(0)
+                if (item != null) {
+                    val s = item.optDouble("start", -1.0)
+                    val e = item.optDouble("end", -1.0)
+                    if (s >= 0 && e > s) intro = SkipTimeRange(s, e)
+                }
+            }
+            if (skipArr.length() > 1) {
+                val item = skipArr.optJSONObject(1)
+                if (item != null) {
+                    val s = item.optDouble("start", -1.0)
+                    val e = item.optDouble("end", -1.0)
+                    if (s >= 0 && e > s) outro = SkipTimeRange(s, e)
+                }
+            }
+        }
+
         val skipTime = obj.optString("skipTime", "")
-        if (skipTime.isNotBlank()) {
+        if (intro == null && outro == null && skipTime.isNotBlank()) {
             val parts = skipTime.split(",")
             if (parts.isNotEmpty()) {
                 val times = parts[0].split("-")
                 if (times.size == 2) {
                     val s = times[0].toDoubleOrNull()
                     val e = times[1].toDoubleOrNull()
-                    if (s != null && e != null) intro = SkipTimeRange(s, e)
+                    if (s != null && e != null && e > s) intro = SkipTimeRange(s, e)
                 }
             }
             if (parts.size >= 2) {
@@ -381,7 +416,7 @@ object AllohaRuntimeParser {
                 if (times.size == 2) {
                     val s = times[0].toDoubleOrNull()
                     val e = times[1].toDoubleOrNull()
-                    if (s != null && e != null) outro = SkipTimeRange(s, e)
+                    if (s != null && e != null && e > s) outro = SkipTimeRange(s, e)
                 }
             }
         }
@@ -460,4 +495,43 @@ object AllohaRuntimeParser {
         }
         return -1
     }
+
+    fun parseMasterPlaylistQualities(content: String, masterUrl: String): List<QualityVariant> {
+        val lines = content.lines()
+        val list = mutableListOf<QualityVariant>()
+        var curRes: String? = null
+        val masterQuery = masterUrl.substringAfter('?', "")
+
+        for (line in lines) {
+            val trimmed = line.trim()
+            if (trimmed.startsWith("#EXT-X-STREAM-INF:")) {
+                val resMatch = Regex("""RESOLUTION=(\d+)x(\d+)""").find(trimmed)
+                if (resMatch != null) {
+                    val height = resMatch.groupValues[2]
+                    curRes = "${height}p"
+                } else {
+                    val bwMatch = Regex("""BANDWIDTH=(\d+)""").find(trimmed)
+                    if (bwMatch != null) {
+                        val bw = bwMatch.groupValues[1].toLongOrNull() ?: 0L
+                        curRes = "${bw / 1000}k"
+                    }
+                }
+            } else if (!trimmed.startsWith("#") && trimmed.isNotBlank()) {
+                if (curRes != null) {
+                    val absolute = if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+                        if (!trimmed.contains("?") && masterQuery.isNotBlank()) "$trimmed?$masterQuery" else trimmed
+                    } else {
+                        val cleanBase = masterUrl.substringBefore('?')
+                        val baseDir = cleanBase.substringBeforeLast("/") + "/"
+                        val combined = baseDir + trimmed.removePrefix("/")
+                        if (!trimmed.contains("?") && masterQuery.isNotBlank()) "$combined?$masterQuery" else combined
+                    }
+                    list.add(QualityVariant(label = curRes, url = absolute))
+                    curRes = null
+                }
+            }
+        }
+        return list.distinctBy { it.label }.sortedByDescending { qualityHeight(it.label) }
+    }
 }
+

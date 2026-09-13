@@ -12,15 +12,22 @@ class MoviesRepository {
 
     private val api = MoviesApi.service
 
-    private val detailsCache = ConcurrentHashMap<String, MediaDetailsDto>()
-    private val popularMoviesCache = ConcurrentHashMap<Int, List<MediaDto>>()
-    private val topMoviesCache = ConcurrentHashMap<Int, List<MediaDto>>()
-    private val topTvCache = ConcurrentHashMap<Int, List<MediaDto>>()
+    companion object {
+        val instance by lazy { MoviesRepository() }
+
+        private val detailsCache = ConcurrentHashMap<String, MediaDetailsDto>()
+        private val popularMoviesCache = ConcurrentHashMap<Int, List<MediaDto>>()
+        private val topMoviesCache = ConcurrentHashMap<Int, List<MediaDto>>()
+        private val topTvCache = ConcurrentHashMap<Int, List<MediaDto>>()
+        private val cartoonsCache = ConcurrentHashMap<Int, List<MediaDto>>()
+        private val animeCache = ConcurrentHashMap<String, List<MediaDto>>()
+        private val trendingCache = ConcurrentHashMap<Int, List<MediaDto>>()
+    }
 
     suspend fun getPopularMovies(page: Int = 1): List<MediaDto> = withContext(Dispatchers.IO) {
         popularMoviesCache[page]?.let { return@withContext it }
         try {
-            val results = api.getPopularMovies(page).data?.results ?: emptyList()
+            val results = api.getPopularMovies(page).data?.allItems ?: emptyList()
             if (results.isNotEmpty()) {
                 popularMoviesCache[page] = results
             }
@@ -33,7 +40,7 @@ class MoviesRepository {
     suspend fun getTopMovies(page: Int = 1): List<MediaDto> = withContext(Dispatchers.IO) {
         topMoviesCache[page]?.let { return@withContext it }
         try {
-            val results = api.getTopMovies(page).data?.results ?: emptyList()
+            val results = api.getTopMovies(page).data?.allItems ?: emptyList()
             if (results.isNotEmpty()) {
                 topMoviesCache[page] = results
             }
@@ -46,7 +53,7 @@ class MoviesRepository {
     suspend fun getTopTv(page: Int = 1): List<MediaDto> = withContext(Dispatchers.IO) {
         topTvCache[page]?.let { return@withContext it }
         try {
-            val results = api.getTopTv(page).data?.results ?: emptyList()
+            val results = api.getTopTv(page).data?.allItems ?: emptyList()
             if (results.isNotEmpty()) {
                 topTvCache[page] = results
             }
@@ -56,12 +63,69 @@ class MoviesRepository {
         }
     }
 
-    suspend fun getDetails(id: String): MediaDetailsDto? = withContext(Dispatchers.IO) {
-        detailsCache[id]?.let { return@withContext it }
+    suspend fun getCartoons(page: Int = 1): List<MediaDto> = withContext(Dispatchers.IO) {
+        cartoonsCache[page]?.let { return@withContext it }
         try {
-            val details = api.getDetails(id).data
+            val results = api.getCartoons(page).data?.allItems ?: emptyList()
+            if (results.isNotEmpty()) {
+                cartoonsCache[page] = results
+            }
+            results
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun getAnime(page: Int = 1, order: String? = null): List<MediaDto> = withContext(Dispatchers.IO) {
+        val cacheKey = if (order != null) "${page}_$order" else "$page"
+        animeCache[cacheKey]?.let { return@withContext it }
+        try {
+            val results = api.getAnime(page, order).data?.allItems ?: emptyList()
+            if (results.isNotEmpty()) {
+                animeCache[cacheKey] = results
+            }
+            results
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun getTrending(page: Int = 1, window: String = "week"): List<MediaDto> = withContext(Dispatchers.IO) {
+        trendingCache[page]?.let { return@withContext it }
+        try {
+            val results = api.getTrending(page, window).data?.allItems ?: emptyList()
+            if (results.isNotEmpty()) {
+                trendingCache[page] = results
+            }
+            results
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun getDetails(id: String, type: String? = null): MediaDetailsDto? = withContext(Dispatchers.IO) {
+        detailsCache[id]?.let { return@withContext it }
+        val cleanId = id.replace("tv_", "").replace("movie_", "")
+        val isTv = type?.lowercase() in listOf("tv", "series", "serial", "show") || id.startsWith("tv_")
+
+        try {
+            val details = if (isTv) {
+                try {
+                    api.getTvDetails(cleanId).data
+                } catch (e: Exception) {
+                    api.getMovieDetails(cleanId).data
+                }
+            } else {
+                try {
+                    api.getMovieDetails(cleanId).data
+                } catch (e: Exception) {
+                    api.getTvDetails(cleanId).data
+                }
+            }
+
             if (details != null) {
                 detailsCache[id] = details
+                detailsCache[cleanId] = details
             }
             details
         } catch (e: Exception) {
@@ -69,9 +133,19 @@ class MoviesRepository {
         }
     }
 
-    suspend fun getEpisodeDetails(id: String, season: Int, episode: Int): TvEpisodeDetailsDto? = withContext(Dispatchers.IO) {
+    suspend fun getSeason(id: String, season: Int) = withContext(Dispatchers.IO) {
+        val cleanId = id.replace("tv_", "").replace("movie_", "")
         try {
-            api.getEpisodeDetails(id, season, episode).data
+            api.getSeason(cleanId, season).data
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    suspend fun getEpisodeDetails(id: String, season: Int, episode: Int): TvEpisodeDetailsDto? = withContext(Dispatchers.IO) {
+        val cleanId = id.replace("tv_", "").replace("movie_", "")
+        try {
+            api.getEpisodeDetails(cleanId, season, episode).data
         } catch (e: Exception) {
             null
         }
@@ -79,7 +153,7 @@ class MoviesRepository {
 
     suspend fun searchMovies(query: String, page: Int = 1): List<MediaDto> = withContext(Dispatchers.IO) {
         try {
-            api.searchMovies(query, page).data?.results ?: emptyList()
+            api.searchMovies(query, page).data?.allItems ?: emptyList()
         } catch (e: Exception) {
             emptyList()
         }
@@ -90,5 +164,7 @@ class MoviesRepository {
         popularMoviesCache.clear()
         topMoviesCache.clear()
         topTvCache.clear()
+        cartoonsCache.clear()
+        animeCache.clear()
     }
 }

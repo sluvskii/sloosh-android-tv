@@ -12,8 +12,8 @@ android {
         applicationId = "com.sloosh.tv"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 5
+        versionName = "1.0.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -24,13 +24,12 @@ android {
     signingConfigs {
         create("release") {
             val keystoreFile = rootProject.file("keys/slooshkey")
-            if (keystoreFile.exists() && System.getenv("KEYSTORE_PASSWORD") != null) {
+            val keystorePassword = System.getenv("KEYSTORE_PASSWORD")
+            if (keystoreFile.exists() && !keystorePassword.isNullOrBlank()) {
                 storeFile = keystoreFile
-                storePassword = System.getenv("KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("KEY_ALIAS") ?: "sloosh"
-                keyPassword = System.getenv("KEY_PASSWORD") ?: System.getenv("KEYSTORE_PASSWORD")
-            } else {
-                initWith(getByName("debug"))
+                storePassword = keystorePassword
+                keyAlias = System.getenv("KEY_ALIAS") ?: "keysloosh"
+                keyPassword = System.getenv("KEY_PASSWORD") ?: keystorePassword
             }
         }
     }
@@ -38,7 +37,12 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("release")
+            val releaseSigning = signingConfigs.getByName("release")
+            if (releaseSigning.storeFile != null && releaseSigning.storeFile!!.exists()) {
+                signingConfig = releaseSigning
+            } else {
+                signingConfig = signingConfigs.getByName("debug")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
