@@ -293,6 +293,8 @@ object AllohaRuntimeParser {
     private fun isPlayable(url: String): Boolean {
         val path = url.lowercase(Locale.ROOT)
         if (path.contains("blank.mp4") || path.contains("cdn.plyr.io")) return false
+        if (path.contains("token_movie=") || path.contains("token=") || path.contains("<") ||
+            path.contains(" ") || path.contains("\n") || path.contains("\r")) return false
         return path.contains(".m3u8") || path.contains(".mpd") || path.contains(".mp4")
     }
 

@@ -102,7 +102,8 @@ class HlsProxyServer(
 
     fun updateMasterUrl(url: String) {
         val trimmed = url.trim()
-        if (trimmed.isBlank() || trimmed.startsWith("<") || trimmed.startsWith("{") || trimmed.contains("\n") || trimmed.contains(" ")) {
+        if (trimmed.isBlank() || trimmed.startsWith("<") || trimmed.startsWith("{") || trimmed.contains("\n") || trimmed.contains(" ") ||
+            trimmed.contains("token_movie=") || (!trimmed.contains(".m3u8") && !trimmed.contains(".mp4") && !trimmed.contains(".mpd"))) {
             Log.w(TAG, "Ignoring invalid master URL: ${trimmed.take(80)}")
             return
         }
@@ -510,6 +511,10 @@ class HlsProxyServer(
 
     private fun fetchText(url: String): String? {
         val cleanUrl = if (url.startsWith("//")) "https:$url" else url
+        if (cleanUrl.contains("token_movie=") || cleanUrl.contains("<") || cleanUrl.contains("\n")) {
+            Log.w(TAG, "fetchText: rejecting non-media URL: ${cleanUrl.take(80)}")
+            return null
+        }
         var attempts = 0
         while (attempts < 2) {
             attempts++
@@ -567,7 +572,8 @@ class HlsProxyServer(
 
         try {
             if (cleanUrl.startsWith("http://") || cleanUrl.startsWith("https://")) {
-                val cookie = CookieManager.getInstance().getCookie(cleanUrl)
+                val sanitizedUrl = cleanUrl.trim().substringBefore(' ').substringBefore('\n')
+                val cookie = runCatching { CookieManager.getInstance().getCookie(sanitizedUrl) }.getOrNull()
                 if (!cookie.isNullOrBlank()) builder.header("Cookie", cookie)
             }
         } catch (_: Throwable) {}

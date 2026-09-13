@@ -120,7 +120,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
                 // Resolve stream using AllohaRuntimeResolver (mirrors iOS architecture)
                 val resolvedStream = allohaRepository.resolveStream(iframeUrl)
-                if (resolvedStream.videoUrl.isBlank()) {
+                if (!isPlayableMediaUrl(resolvedStream.videoUrl)) {
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         errorMessage = "Не удалось получить видеопоток"
@@ -206,7 +206,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     }
                 }
 
-                val activeStreamUrl = if (chosenAudio != null && chosenAudio.url.contains(".m3u8", ignoreCase = true)) {
+                val activeStreamUrl = if (chosenAudio != null && isPlayableMediaUrl(chosenAudio.url)) {
                     chosenAudio.url
                 } else {
                     resolvedStream.videoUrl
@@ -293,7 +293,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 }
 
                 // 1. If audio.url is already a direct playable stream URL
-                if (audio.url.contains(".m3u8", ignoreCase = true) || audio.url.contains(".mp4", ignoreCase = true)) {
+                if (isPlayableMediaUrl(audio.url)) {
                     val proxy = HlsProxyServer.shared
                     proxy.updateMasterUrl(audio.url)
                     val newUrl = proxy.proxyUrl(audio.url)
@@ -318,7 +318,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 // 2. Resolve iframe URL for the new translation
                 AllohaRuntimeResolver.invalidateCache(audio.url)
                 val resolvedStream = allohaRepository.resolveStream(audio.url)
-                if (resolvedStream.videoUrl.isNotBlank()) {
+                if (isPlayableMediaUrl(resolvedStream.videoUrl)) {
                     val proxy = HlsProxyServer.shared
                     proxy.updateHeaders(resolvedStream.headers)
                     proxy.updateMasterUrl(resolvedStream.videoUrl)
@@ -494,7 +494,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 AllohaRuntimeResolver.invalidateCache(iframeUrl)
                 val refreshed = allohaRepository.resolveStream(iframeUrl)
-                if (refreshed.videoUrl.isNotBlank()) {
+                if (isPlayableMediaUrl(refreshed.videoUrl)) {
                     val proxy = HlsProxyServer.shared
                     proxy.updateHeaders(refreshed.headers)
                     proxy.updateMasterUrl(refreshed.videoUrl)
@@ -522,7 +522,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 AllohaRuntimeResolver.invalidateCache(iframe)
                 val refreshed = allohaRepository.resolveStream(iframe)
-                if (refreshed.videoUrl.isNotBlank()) {
+                if (isPlayableMediaUrl(refreshed.videoUrl)) {
                     val proxy = HlsProxyServer.shared
                     proxy.updateHeaders(refreshed.headers)
                     proxy.updateMasterUrl(refreshed.videoUrl)
@@ -541,7 +541,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 AllohaRuntimeResolver.invalidateCache(iframe)
                 val refreshed = allohaRepository.resolveStream(iframe)
-                if (refreshed.videoUrl.isNotBlank()) {
+                if (isPlayableMediaUrl(refreshed.videoUrl)) {
                     val proxy = HlsProxyServer.shared
                     proxy.updateHeaders(refreshed.headers)
                     proxy.updateMasterUrl(refreshed.videoUrl)
@@ -585,5 +585,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         proactiveRefreshJob?.cancel()
         HlsProxyServer.shared.onSessionExpired = null
         AllohaSessionHolder.clear()
+    }
+
+    private fun isPlayableMediaUrl(url: String): Boolean {
+        val clean = url.trim()
+        if (clean.isBlank() || clean.contains("token_movie=") || clean.contains("<") || clean.contains("\n") || clean.contains(" ")) return false
+        return clean.contains(".m3u8", ignoreCase = true) || clean.contains(".mp4", ignoreCase = true) || clean.contains(".mpd", ignoreCase = true)
     }
 }
