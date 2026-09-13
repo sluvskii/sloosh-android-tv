@@ -11,7 +11,7 @@ fun getGitCommitCount(): Int {
             .redirectErrorStream(true)
             .start()
         val output = process.inputStream.bufferedReader().readText().trim()
-        process.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)
+        process.waitFor()
         output.toIntOrNull() ?: 100
     } catch (_: Throwable) {
         100

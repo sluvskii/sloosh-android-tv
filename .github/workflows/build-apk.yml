@@ -80,18 +80,17 @@ jobs:
 
       - name: Publish GitHub Release
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/'))
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', steps.app_version.outputs.version) }}
-          name: ${{ format('Sloosh Android TV v{0}', steps.app_version.outputs.version) }}
-          body: |
-            🚀 **Релизная сборка Sloosh для Android TV (v${{ steps.app_version.outputs.version }})**
+        run: |
+          VERSION="${{ steps.app_version.outputs.version }}"
+          TAG="v${VERSION}"
+          echo "Publishing GitHub release for $TAG..."
+          gh release create "$TAG" release-output/sloosh-tv-release.apk \
+            --title "Sloosh Android TV $TAG" \
+            --notes "🚀 **Релизная сборка Sloosh для Android TV ($TAG)**
 
-            - Готовый файл `sloosh-tv-release.apk` прикреплен ниже.
-            - Коммит: `${{ github.event.head_commit.message }}`
-          draft: false
-          prerelease: false
-          make_latest: "true"
-          files: release-output/sloosh-tv-release.apk
+          - Готовый файл \`sloosh-tv-release.apk\` прикреплен ниже.
+          - Коммит: \`${{ github.event.head_commit.message }}\`" \
+            --target "${{ github.sha }}" \
+            --latest
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
