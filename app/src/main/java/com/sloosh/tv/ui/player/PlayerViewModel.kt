@@ -208,8 +208,14 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
                 val activeStreamUrl = if (chosenAudio != null && isPlayableMediaUrl(chosenAudio.url)) {
                     chosenAudio.url
-                } else {
+                } else if (isPlayableMediaUrl(resolvedStream.videoUrl)) {
                     resolvedStream.videoUrl
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        errorMessage = "Не удалось получить видеопоток"
+                    )
+                    return@launch
                 }
                 proxy.updateMasterUrl(activeStreamUrl)
 

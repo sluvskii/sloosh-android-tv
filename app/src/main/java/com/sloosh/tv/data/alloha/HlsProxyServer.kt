@@ -330,12 +330,12 @@ class HlsProxyServer(
                 }
             }
         }
-        if (body == null) {
-            Log.w(TAG, "servePlaylist: body is null for $cleanUrl, sending 503 Retry-After: 1")
+        if (body == null || !body.contains("#EXT")) {
+            Log.w(TAG, "servePlaylist: playlist unavailable or not starting with #EXT for $cleanUrl, sending 503 Retry-After: 1")
             send503(out)
             return
         }
-        val rewritten = if (body.contains("#EXT")) rewriteM3u8(body, cleanUrl) else body
+        val rewritten = rewriteM3u8(body, cleanUrl)
         val bytes = rewritten.toByteArray(Charsets.UTF_8)
         val header = "HTTP/1.1 200 OK\r\nContent-Type: application/vnd.apple.mpegurl\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n"
         out.write(header.toByteArray(Charsets.UTF_8))
@@ -577,8 +577,8 @@ class HlsProxyServer(
 
         try {
             if (cleanUrl.startsWith("http://") || cleanUrl.startsWith("https://")) {
-                val sanitizedUrl = cleanUrl.trim().substringBefore(' ').substringBefore('\n')
-                val cookie = runCatching { CookieManager.getInstance().getCookie(sanitizedUrl) }.getOrNull()
+                val cookieUrl = uri?.let { "${it.scheme ?: "https"}://${it.host}/" } ?: cleanUrl.substringBefore('?').substringBefore(' ')
+                val cookie = runCatching { CookieManager.getInstance().getCookie(cookieUrl) }.getOrNull()
                 if (!cookie.isNullOrBlank()) builder.header("Cookie", cookie)
             }
         } catch (_: Throwable) {}
