@@ -28,6 +28,7 @@ import com.sloosh.tv.data.api.AllohaResolvedStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -154,8 +155,8 @@ class AllohaRuntimeResolver(private val context: Context) {
         val selectedUserAgent = nextUserAgent()
 
         capturedHeaders["user-agent"] = selectedUserAgent
-        capturedHeaders["referer"] = "$iframeOrigin/"
-        capturedHeaders["origin"] = iframeOrigin
+        capturedHeaders["referer"] = "$origin/"
+        capturedHeaders["origin"] = origin
         capturedHeaders["accept"] = "*/*"
 
         var bestMasterPayload: String? = null
