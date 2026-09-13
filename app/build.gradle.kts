@@ -4,6 +4,21 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+val baseVersion = "2.0"
+val buildNumber: Int = (System.getenv("BUILD_NUMBER") ?: System.getenv("GITHUB_RUN_NUMBER"))?.toIntOrNull()
+    ?: run {
+        try {
+            val stdout = java.io.ByteArrayOutputStream()
+            exec {
+                commandLine("git", "rev-list", "--count", "HEAD")
+                standardOutput = stdout
+            }
+            stdout.toString().trim().toIntOrNull() ?: 100
+        } catch (_: Exception) {
+            100
+        }
+    }
+
 android {
     namespace = "com.sloosh.tv"
     compileSdk = 34
@@ -12,8 +27,8 @@ android {
         applicationId = "com.sloosh.tv"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "1.0.5"
+        versionCode = buildNumber
+        versionName = "$baseVersion.$buildNumber"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -121,4 +136,10 @@ dependencies {
     implementation(libs.androidx.palette)
 
     debugImplementation(libs.androidx.ui.tooling)
+}
+
+tasks.register("printVersion") {
+    doLast {
+        println(android.defaultConfig.versionName)
+    }
 }

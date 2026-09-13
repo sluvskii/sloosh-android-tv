@@ -41,6 +41,7 @@ jobs:
       - name: Build Release APK
         run: ./gradlew assembleRelease --no-daemon --stacktrace
         env:
+          BUILD_NUMBER: ${{ github.run_number }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
@@ -66,10 +67,11 @@ jobs:
       - name: Extract App Version
         id: app_version
         run: |
-          VERSION=$(grep -E 'versionName\s*=\s*"[^"]+"' app/build.gradle.kts | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')
-          if [ -z "$VERSION" ]; then
-            VERSION="1.0.5"
+          BASE_VERSION=$(grep -E 'val\s+baseVersion\s*=\s*"[^"]+"' app/build.gradle.kts | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')
+          if [ -z "$BASE_VERSION" ]; then
+            BASE_VERSION="2.0"
           fi
+          VERSION="${BASE_VERSION}.${{ github.run_number }}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Detected App Version: $VERSION"
 
