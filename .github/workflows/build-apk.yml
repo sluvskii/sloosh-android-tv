@@ -73,7 +73,8 @@ jobs:
           if [ -z "$BASE_VERSION" ]; then
             BASE_VERSION="2.0"
           fi
-          VERSION="${BASE_VERSION}.${{ github.run_number }}"
+          BUILD_NUM=$(git rev-list --count HEAD)
+          VERSION="${BASE_VERSION}.${BUILD_NUM}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Detected App Version: $VERSION"
 
