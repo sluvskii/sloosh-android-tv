@@ -493,13 +493,21 @@ fun SettingsScreen(
                                                         if (!isCheckingUpdates) {
                                                             isCheckingUpdates = true
                                                             coroutineScope.launch {
-                                                                val update = updateManager.checkForUpdates()
-                                                                isCheckingUpdates = false
-                                                                if (update != null) {
-                                                                    updateInfoForDialog = update
-                                                                } else {
-                                                                    statusMessage = "✓ У вас актуальная версия (${com.sloosh.tv.BuildConfig.VERSION_NAME})"
+                                                                when (val result = updateManager.checkForUpdatesDetailed()) {
+                                                                    is com.sloosh.tv.data.update.UpdateCheckResult.Available -> {
+                                                                        updateInfoForDialog = result.info
+                                                                    }
+                                                                    is com.sloosh.tv.data.update.UpdateCheckResult.UpToDate -> {
+                                                                        statusMessage = "✓ У вас актуальная версия (${com.sloosh.tv.BuildConfig.VERSION_NAME})"
+                                                                    }
+                                                                    is com.sloosh.tv.data.update.UpdateCheckResult.RateLimited -> {
+                                                                        statusMessage = result.message
+                                                                    }
+                                                                    is com.sloosh.tv.data.update.UpdateCheckResult.Error -> {
+                                                                        statusMessage = "Ошибка проверки: ${result.message}"
+                                                                    }
                                                                 }
+                                                                isCheckingUpdates = false
                                                             }
                                                         }
                                                     }

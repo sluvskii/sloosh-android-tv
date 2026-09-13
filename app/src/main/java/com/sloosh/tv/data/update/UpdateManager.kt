@@ -42,6 +42,13 @@ data class AppUpdateInfo(
     val fileSize: Long
 )
 
+sealed class UpdateCheckResult {
+    data class Available(val info: AppUpdateInfo) : UpdateCheckResult()
+    object UpToDate : UpdateCheckResult()
+    data class RateLimited(val message: String = "Лимит запросов к GitHub исчерпан, повторите позже") : UpdateCheckResult()
+    data class Error(val message: String) : UpdateCheckResult()
+}
+
 class UpdateManager(private val context: Context) {
 
     private val httpClient = OkHttpClient.Builder()
@@ -54,7 +61,17 @@ class UpdateManager(private val context: Context) {
     suspend fun checkForUpdates(
         owner: String = GITHUB_REPO_OWNER,
         repo: String = GITHUB_REPO_NAME
-    ): AppUpdateInfo? = withContext(Dispatchers.IO) {
+    ): AppUpdateInfo? {
+        return when (val result = checkForUpdatesDetailed(owner, repo)) {
+            is UpdateCheckResult.Available -> result.info
+            else -> null
+        }
+    }
+
+    suspend fun checkForUpdatesDetailed(
+        owner: String = GITHUB_REPO_OWNER,
+        repo: String = GITHUB_REPO_NAME
+    ): UpdateCheckResult = withContext(Dispatchers.IO) {
         try {
             val url = "https://api.github.com/repos/$owner/$repo/releases/latest"
             val request = Request.Builder()
@@ -64,14 +81,21 @@ class UpdateManager(private val context: Context) {
                 .build()
 
             httpClient.newCall(request).execute().use { response ->
+                if (response.code == 403) {
+                    Log.w(TAG, "Check update GitHub rate limited (HTTP 403)")
+                    return@withContext UpdateCheckResult.RateLimited()
+                }
                 if (!response.isSuccessful) {
                     Log.w(TAG, "Check update returned HTTP ${response.code}")
-                    return@withContext null
+                    return@withContext UpdateCheckResult.Error("HTTP ${response.code}")
                 }
-                val bodyString = response.body?.string() ?: return@withContext null
-                val release = gson.fromJson(bodyString, GitHubReleaseDto::class.java) ?: return@withContext null
+                val bodyString = response.body?.string()
+                    ?: return@withContext UpdateCheckResult.Error("Пустой ответ от сервера")
+                val release = gson.fromJson(bodyString, GitHubReleaseDto::class.java)
+                    ?: return@withContext UpdateCheckResult.Error("Ошибка обработки ответа")
 
-                val remoteTag = release.tagName ?: return@withContext null
+                val remoteTag = release.tagName
+                    ?: return@withContext UpdateCheckResult.Error("Отсутствует тег релиза")
                 val remoteVersionClean = remoteTag.trim().removePrefix("v").removePrefix("V")
                 val currentVersionClean = BuildConfig.VERSION_NAME.trim().removePrefix("v").removePrefix("V")
 
@@ -81,21 +105,27 @@ class UpdateManager(private val context: Context) {
 
                     val downloadUrl = apkAsset?.downloadUrl
                     if (!downloadUrl.isNullOrBlank()) {
-                        return@withContext AppUpdateInfo(
-                            newVersion = remoteTag,
-                            currentVersion = "v${BuildConfig.VERSION_NAME}",
-                            releaseTitle = release.name ?: "Обновление $remoteTag",
-                            changelog = release.body ?: "Что нового:\n• Исправления ошибок и повышение стабильности",
-                            downloadUrl = downloadUrl,
-                            fileSize = apkAsset.size ?: 0L
+                        return@withContext UpdateCheckResult.Available(
+                            AppUpdateInfo(
+                                newVersion = remoteTag,
+                                currentVersion = "v${BuildConfig.VERSION_NAME}",
+                                releaseTitle = release.name ?: "Обновление $remoteTag",
+                                changelog = release.body ?: "Что нового:\n• Исправления ошибок и повышение стабильности",
+                                downloadUrl = downloadUrl,
+                                fileSize = apkAsset.size ?: 0L
+                            )
                         )
+                    } else {
+                        return@withContext UpdateCheckResult.Error("Файл обновления не найден в релизе")
                     }
+                } else {
+                    return@withContext UpdateCheckResult.UpToDate
                 }
             }
         } catch (e: Exception) {
             Log.w(TAG, "checkForUpdates error: ${e.message}")
+            return@withContext UpdateCheckResult.Error(e.localizedMessage ?: "Сетевая ошибка")
         }
-        return@withContext null
     }
 
     suspend fun downloadAndInstall(

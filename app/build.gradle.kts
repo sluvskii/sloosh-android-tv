@@ -4,10 +4,24 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+fun getGitCommitCount(): Int {
+    return try {
+        val process = ProcessBuilder("git", "rev-list", "--count", "HEAD")
+            .directory(rootDir)
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader().readText().trim()
+        process.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)
+        output.toIntOrNull() ?: 100
+    } catch (_: Throwable) {
+        100
+    }
+}
+
 val baseVersion = "2.0"
 val buildNumber: Int = (project.findProperty("buildNumber") as? String)?.toIntOrNull()
     ?: (System.getenv("BUILD_NUMBER") ?: System.getenv("GITHUB_RUN_NUMBER"))?.toIntOrNull()
-    ?: 100
+    ?: getGitCommitCount()
 
 android {
     namespace = "com.sloosh.tv"
