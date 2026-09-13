@@ -125,23 +125,33 @@ fun UpdateDialog(
 
                 Spacer(modifier = Modifier.height(18.dp))
 
-                // Changelog Card
+                // Changelog / description
                 val scrollState = rememberScrollState()
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 160.dp)
-                        .clip(ContinuousRoundedRectangle(14.dp))
-                        .background(Color.White.copy(alpha = 0.05f))
-                        .padding(14.dp)
-                        .verticalScroll(scrollState)
-                ) {
-                    Text(
-                        text = updateInfo.changelog,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondaryDark,
-                        lineHeight = 18.sp
-                    )
+                val cleanNotes = remember(updateInfo.changelog) {
+                    updateInfo.changelog
+                        .replace(Regex("\\*\\*(.+?)\\*\\*"), "$1")
+                        .replace(Regex("\\*(.+?)\\*"), "$1")
+                        .replace(Regex("`(.+?)`"), "$1")
+                        .replace(Regex("^[-•] ", RegexOption.MULTILINE), "• ")
+                        .trim()
+                }
+                if (cleanNotes.isNotBlank()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 120.dp)
+                            .clip(ContinuousRoundedRectangle(14.dp))
+                            .background(Color.White.copy(alpha = 0.05f))
+                            .padding(14.dp)
+                            .verticalScroll(scrollState)
+                    ) {
+                        Text(
+                            text = cleanNotes,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondaryDark,
+                            lineHeight = 18.sp
+                        )
+                    }
                 }
 
                 if (errorMessage != null) {

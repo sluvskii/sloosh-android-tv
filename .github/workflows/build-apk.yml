@@ -86,10 +86,7 @@ jobs:
           echo "Publishing GitHub release for $TAG..."
           gh release create "$TAG" release-output/sloosh-tv-release.apk \
             --title "Sloosh Android TV $TAG" \
-            --notes "🚀 **Релизная сборка Sloosh для Android TV ($TAG)**
-
-          - Готовый файл \`sloosh-tv-release.apk\` прикреплен ниже.
-          - Коммит: \`${{ github.event.head_commit.message }}\`" \
+            --notes "Версия $VERSION" \
             --target "${{ github.sha }}" \
             --latest || gh release upload "$TAG" release-output/sloosh-tv-release.apk --clobber || true
         env:
