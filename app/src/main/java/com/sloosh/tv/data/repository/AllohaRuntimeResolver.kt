@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
-import android.net.Uri
 import android.net.http.SslError
 import android.os.Handler
 import android.os.Looper
@@ -28,18 +27,12 @@ import com.sloosh.tv.data.api.AllohaResolvedStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import okhttp3.Headers
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import org.json.JSONObject
-import java.io.ByteArrayInputStream
 import java.net.URI
 import java.net.URL
-import java.net.URLDecoder
 import java.util.ArrayDeque
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -47,12 +40,6 @@ private const val TAG = "AllohaResolver"
 
 class AllohaRuntimeResolver(private val context: Context) {
 
-    private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .followRedirects(true)
-        .followSslRedirects(true)
-        .build()
 
     companion object {
         private var uaIndex = 0
@@ -361,7 +348,7 @@ class AllohaRuntimeResolver(private val context: Context) {
             }
         }
         timeoutRunnable = timeoutTask
-        mainHandler.postDelayed(timeoutTask, 45_000L)
+        mainHandler.postDelayed(timeoutTask, 25_000L)
 
         fun parseAndMergeHeaders(headersJson: String?) {
             if (headersJson.isNullOrBlank()) return
@@ -605,136 +592,19 @@ class AllohaRuntimeResolver(private val context: Context) {
                 override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                     val reqUrl = request?.url?.toString() ?: return null
 
-                    // 1. Intercept Bridge requests from injected JS in iframe
-                    if (reqUrl.startsWith("https://sloosh-bridge.internal/")) {
-                        val uri = runCatching { Uri.parse(reqUrl) }.getOrNull()
-                        val edgeHash = uri?.getQueryParameter("edge_hash")
-                        val ttl = uri?.getQueryParameter("ttl")?.toIntOrNull() ?: 0
-                        var payload = uri?.getQueryParameter("payload")
-
-                        val headerPayload = request.requestHeaders?.get("x-sloosh-payload") ?: request.requestHeaders?.get("X-Sloosh-Payload")
-                        if (!headerPayload.isNullOrBlank()) {
-                            val decoded = runCatching { URLDecoder.decode(headerPayload, "UTF-8") }.getOrNull()
-                            if (!decoded.isNullOrBlank()) payload = decoded
-                        }
-
-                        if (!edgeHash.isNullOrBlank()) {
-                            capturedHeaders["accepts-controls"] = edgeHash
-                            if (ttl > 0) capturedHeaders["x-neo-config-ttl"] = ttl.toString()
-                            HlsProxyServer.shared.updateHeaders(capturedHeaders)
-                            mainHandler.post { resolveBestPayloadIfReady() }
-                        }
-
-                        if (!payload.isNullOrBlank()) {
-                            val msg = JSONObject().apply {
-                                put("type", "payload")
-                                put("payload", payload)
-                            }.toString()
-                            processIncomingMessage(msg)
-                        }
-
-                        val emptyStream = ByteArrayInputStream(ByteArray(0))
-                        val bridgeHeaders = mapOf(
-                            "Access-Control-Allow-Origin" to "*",
-                            "Access-Control-Allow-Methods" to "GET, POST, OPTIONS",
-                            "Access-Control-Allow-Headers" to "*"
-                        )
-                        return WebResourceResponse("text/plain", "UTF-8", 200, "OK", bridgeHeaders, emptyStream)
-                    }
-
-                    // Passively capture request headers sent from all frames/XHRs
+                    // Passively capture request headers from all frames/XHRs for later use with HLS proxy
                     request.requestHeaders?.forEach { (k, v) ->
                         val lower = k.lowercase(Locale.ROOT)
                         if (lower != "host" && lower != "connection" && lower != "accept-encoding") {
                             capturedHeaders[lower] = v
                         }
                     }
-
                     val refererFromReq = request.requestHeaders?.get("Referer") ?: request.requestHeaders?.get("referer")
                     if (!refererFromReq.isNullOrBlank() && !refererFromReq.contains("about:blank") && !refererFromReq.contains("127.0.0.1")) {
                         capturedHeaders["referer"] = refererFromReq
                     }
 
-                    // 2. Intercept Alloha iframe HTML request and inject early hooks
-                    // NOTE: /bnsi/ is intentionally NOT intercepted here because /bnsi/ is a POST request
-                    // whose body is not exposed to shouldInterceptRequest in Android WebView. Allowing WebView
-                    // to execute /bnsi/ natively ensures proper method, headers, and cookies, while our
-                    // XHR/Fetch hooks in JS capture the response and deliver it to Android.
-                    val isAllohaHtml = (reqUrl.contains("token_movie=") || reqUrl.contains("token=")) &&
-                        (request.requestHeaders?.get("Accept")?.contains("text/html") == true ||
-                         request.isForMainFrame || (!reqUrl.contains(".js") && !reqUrl.contains(".css") && !reqUrl.contains(".m3u8") && !reqUrl.contains(".mp4") && !reqUrl.contains(".vtt") && !reqUrl.contains("/bnsi/")))
-
-                    if (isAllohaHtml) {
-                        Log.d(TAG, "Intercepted Alloha HTML page: $reqUrl")
-                        try {
-                            val reqUri = runCatching { Uri.parse(reqUrl) }.getOrNull()
-                            val origin = reqUri?.let { "${it.scheme}://${it.host}" } ?: "https://allplay.tv"
-                            val htmlReqBuilder = Request.Builder().url(reqUrl)
-                                .header("User-Agent", selectedUserAgent)
-                                .header("Referer", "$origin/")
-                                .header("Origin", origin)
-                                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-                            request.requestHeaders?.forEach { (k, v) ->
-                                val lower = k.lowercase(Locale.ROOT)
-                                if (lower != "host" && lower != "connection" && lower != "accept-encoding" &&
-                                    lower != "user-agent" && lower != "referer" && lower != "origin") {
-                                    htmlReqBuilder.header(k, v)
-                                }
-                            }
-                            val htmlResp = httpClient.newCall(htmlReqBuilder.build()).execute()
-                            val htmlBody = htmlResp.body?.string().orEmpty()
-                            Log.d(TAG, "Fetched Alloha HTML body: len=${htmlBody.length}")
-
-                            // Patch Alloha anti-framing check and disable preroll/midroll/postroll ads for instant stream resolution
-                            val patchedHtml = htmlBody
-                                .replace("var isFramed=false;", "var isFramed=true;")
-                                .replace("var isFramed = false;", "var isFramed = true;")
-                                .replace("\"ads\":{\"enabled\":true", "\"ads\":{\"enabled\":false")
-                                .replace("\"ads\":{\"enabled\": true", "\"ads\":{\"enabled\":false")
-                                .replace("\"ads\": {\"enabled\": true", "\"ads\":{\"enabled\":false")
-                                .replace("\"ads\": {\"enabled\":true", "\"ads\":{\"enabled\":false")
-                                .replace("\"preroll\":\"jsf:rotateP\"", "\"preroll\":\"\"")
-                                .replace("\"preroll\": \"jsf:rotateP\"", "\"preroll\":\"\"")
-                                .replace("\"preroll\":\"jsf:rotatePM\"", "\"preroll\":\"\"")
-                                .replace("\"preroll\": \"jsf:rotatePM\"", "\"preroll\":\"\"")
-                                .replace("\"midroll\":[", "\"midroll\":[],\"_orig_midroll\":[")
-                                .replace("\"postroll\":\"jsf:rotatePO\"", "\"postroll\":\"\"")
-                                .replace("\"postroll\": \"jsf:rotatePO\"", "\"postroll\":\"\"")
-
-                            // Try direct parse from HTML body in case stream data is embedded
-                            val directParsed = AllohaRuntimeParser.parsePayload(patchedHtml, cleanUrl, capturedHeaders)
-                            if (directParsed != null && (directParsed.videoUrl.isNotBlank() || directParsed.audioVariants.isNotEmpty())) {
-                                Log.d(TAG, "Stream parsed directly from HTML body: ${directParsed.videoUrl}")
-                                mainHandler.post { finishOk(directParsed) }
-                            }
-
-                            // Inject early hook script right after <head>
-                            val scriptToInject = "<script>$IFRAME_INJECTED_HOOK_JS</script>"
-                            val modifiedHtml = when {
-                                patchedHtml.contains("<head>", ignoreCase = true) ->
-                                    patchedHtml.replaceFirst(Regex("<head>", RegexOption.IGNORE_CASE), "<head>$scriptToInject")
-                                patchedHtml.contains("<html>", ignoreCase = true) ->
-                                    patchedHtml.replaceFirst(Regex("<html>", RegexOption.IGNORE_CASE), "<html><head>$scriptToInject</head>")
-                                else -> "$scriptToInject$patchedHtml"
-                            }
-
-                            val respHeaders = sanitizeInterceptResponseHeaders(htmlResp.headers)
-                            val htmlBytes = modifiedHtml.toByteArray(Charsets.UTF_8)
-
-                            return WebResourceResponse(
-                                "text/html",
-                                "UTF-8",
-                                htmlResp.code,
-                                htmlResp.message.ifBlank { "OK" },
-                                respHeaders,
-                                ByteArrayInputStream(htmlBytes)
-                            )
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Failed to intercept Alloha HTML: ${e.message}")
-                        }
-                    }
-
-                    // 4. Passive direct m3u8 capture without hijacking the network request
+                    // Passively note m3u8 URL when WebView fetches it natively
                     if (isMasterPlaylistPayload(reqUrl) || (isPlayableURL(reqUrl) && !reqUrl.contains("blank"))) {
                         mainHandler.post {
                             if (!isFinished) {
@@ -818,27 +688,8 @@ class AllohaRuntimeResolver(private val context: Context) {
         </html>
         """.trimIndent()
     }
-
-    private fun sanitizeInterceptResponseHeaders(headers: okhttp3.Headers): MutableMap<String, String> {
-        val map = mutableMapOf<String, String>()
-        for (i in 0 until headers.size) {
-            val name = headers.name(i)
-            val lower = name.lowercase(Locale.ROOT)
-            if (lower != "content-encoding" &&
-                lower != "content-length" &&
-                lower != "transfer-encoding" &&
-                lower != "content-security-policy" &&
-                lower != "content-security-policy-report-only" &&
-                lower != "x-frame-options") {
-                map[name] = headers.value(i)
-            }
-        }
-        map["Access-Control-Allow-Origin"] = "*"
-        map["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-        map["Access-Control-Allow-Headers"] = "*"
-        return map
-    }
 }
+
 
 private const val HOOK_JS = """
 (function() {
@@ -1143,264 +994,6 @@ private const val HOOK_JS = """
   tick();
   setInterval(tick, 500);
   window.addEventListener('load', tick);
-})();
-"""
-
-private const val IFRAME_INJECTED_HOOK_JS = """
-(function() {
-  if (window.__slooshIframeHookInstalled) return;
-  window.__slooshIframeHookInstalled = true;
-
-  try {
-    Object.defineProperty(document, 'visibilityState', { get: function() { return 'visible'; }, configurable: true });
-    Object.defineProperty(document, 'hidden', { get: function() { return false; }, configurable: true });
-  } catch(e) {}
-
-  // Dummy ad functions to immediately bypass any VAST / Alloha ad callbacks
-  try {
-    window.rotateP = function() {};
-    window.rotatePM = function() {};
-    window.rotateM1 = function() {};
-    window.rotatePO = function() {};
-    window.rmpVast = { stopAds: function(){}, playAds: function(){} };
-  } catch(e) {}
-
-  var capturedHeaders = {};
-  var lastPayload = '';
-  var lastM3u8 = '';
-
-  function putHeader(name, value) {
-    if (!name || !value) return;
-    capturedHeaders[String(name).toLowerCase()] = String(value);
-  }
-
-  function defaultHeaders() {
-    try {
-      if (window.location && window.location.origin) {
-        putHeader('origin', window.location.origin);
-        putHeader('referer', window.location.origin + '/');
-      }
-      if (window.navigator && window.navigator.userAgent) {
-        putHeader('user-agent', window.navigator.userAgent);
-      }
-      putHeader('accept', '*/*');
-      putHeader('sec-fetch-dest', 'empty');
-      putHeader('sec-fetch-mode', 'cors');
-      putHeader('sec-fetch-site', 'cross-site');
-    } catch(e) {}
-  }
-  defaultHeaders();
-
-  function sendBridge(params) {
-    if (!params.headers) {
-      params.headers = capturedHeaders;
-    }
-    var json = JSON.stringify(params);
-
-    // 1. Standard HTML5 Cross-Window postMessage (Works across ALL origins, frames & webviews)
-    try {
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage(json, '*');
-      }
-    } catch(e) {}
-    try {
-      if (window.top && window.top !== window) {
-        window.top.postMessage(json, '*');
-      }
-    } catch(e) {}
-
-    // 2. Direct JavascriptInterface if present in this frame
-    try {
-      var b = window.AndroidBridge || window.AndroidAllohaResolver;
-      if (b && typeof b.post === 'function') {
-        b.post(json);
-      }
-    } catch(e) {}
-
-    // 3. AndroidX WebMessageListener if present
-    try {
-      if (window.allohaWebMessageBridge && typeof window.allohaWebMessageBridge.postMessage === 'function') {
-        window.allohaWebMessageBridge.postMessage(json);
-      }
-    } catch(e) {}
-  }
-
-  function handleWsMessage(raw) {
-    try {
-      var msg = typeof raw === 'string' ? JSON.parse(raw) : null;
-      if (msg && msg.type === 'config_update' && msg.edge_hash) {
-        putHeader('accepts-controls', msg.edge_hash);
-        if (msg.ttl) putHeader('x-neo-config-ttl', String(msg.ttl));
-        sendBridge({ type: 'config_update', edge_hash: msg.edge_hash, ttl: msg.ttl || 0, headers: capturedHeaders });
-      }
-      if (typeof raw === 'string' && (raw.indexOf('hlsSource') !== -1 || raw.indexOf('.m3u8') !== -1 || raw.indexOf('.mp4') !== -1)) {
-        sendBridge({ type: 'payload', payload: raw, headers: capturedHeaders });
-      }
-    } catch(e) {
-      if (typeof raw === 'string' && (raw.indexOf('hlsSource') !== -1 || raw.indexOf('.m3u8') !== -1 || raw.indexOf('.mp4') !== -1)) {
-        sendBridge({ type: 'payload', payload: raw, headers: capturedHeaders });
-      }
-    }
-  }
-
-  // 1. Early WebSocket Hook - executes before Alloha's __ws_factory is defined
-  var RealWebSocket = window.WebSocket;
-  if (RealWebSocket) {
-    function SlooshWebSocket(url, protocols) {
-      var ws = protocols ? new RealWebSocket(url, protocols) : new RealWebSocket(url);
-      try {
-        ws.addEventListener('message', function(evt) {
-          handleWsMessage(evt.data);
-        });
-      } catch(e) {}
-      return ws;
-    }
-    SlooshWebSocket.prototype = RealWebSocket.prototype;
-    SlooshWebSocket.CONNECTING = RealWebSocket.CONNECTING;
-    SlooshWebSocket.OPEN = RealWebSocket.OPEN;
-    SlooshWebSocket.CLOSING = RealWebSocket.CLOSING;
-    SlooshWebSocket.CLOSED = RealWebSocket.CLOSED;
-
-    var origAddEvt = RealWebSocket.prototype.addEventListener;
-    if (origAddEvt) {
-      RealWebSocket.prototype.addEventListener = function(type, listener, options) {
-        if (type === 'message') {
-          var wrappedListener = function(evt) {
-            handleWsMessage(evt.data);
-            return listener.apply(this, arguments);
-          };
-          return origAddEvt.call(this, type, wrappedListener, options);
-        }
-        return origAddEvt.apply(this, arguments);
-      };
-    }
-
-    try {
-      var origOnMsgDesc = Object.getOwnPropertyDescriptor(RealWebSocket.prototype, 'onmessage');
-      Object.defineProperty(RealWebSocket.prototype, 'onmessage', {
-        get: function() {
-          return origOnMsgDesc && origOnMsgDesc.get ? origOnMsgDesc.get.call(this) : this.__slooshOnMsg;
-        },
-        set: function(fn) {
-          var wrapped = function(evt) {
-            handleWsMessage(evt.data);
-            if (typeof fn === 'function') return fn.apply(this, arguments);
-          };
-          if (origOnMsgDesc && origOnMsgDesc.set) {
-            origOnMsgDesc.set.call(this, wrapped);
-          } else {
-            this.__slooshOnMsg = wrapped;
-          }
-        },
-        configurable: true,
-        enumerable: true
-      });
-    } catch(e) {}
-
-    window.WebSocket = SlooshWebSocket;
-  }
-
-  // 2. Hook XMLHttpRequest
-  var origOpen = window.XMLHttpRequest && window.XMLHttpRequest.prototype.open;
-  var origSetHeader = window.XMLHttpRequest && window.XMLHttpRequest.prototype.setRequestHeader;
-  if (origOpen) {
-    window.XMLHttpRequest.prototype.open = function(method, url) {
-      var self = this;
-      this.__slooshReqUrl = url || '';
-      this.addEventListener('load', function() {
-        try {
-          var resUrl = self.responseURL || self.__slooshReqUrl || '';
-          if (resUrl.indexOf('/bnsi/') !== -1 || (self.responseText && self.responseText.indexOf('hlsSource') !== -1)) {
-            if (self.responseText && self.responseText.length > 0) {
-              sendBridge({ type: 'payload', payload: self.responseText, headers: capturedHeaders });
-            }
-          }
-          if (resUrl.indexOf('master.m3u8') !== -1 && resUrl !== lastM3u8) {
-            lastM3u8 = resUrl;
-            sendBridge({ type: 'payload', payload: resUrl, headers: capturedHeaders });
-          }
-        } catch(e) {}
-      });
-      return origOpen.apply(this, arguments);
-    };
-  }
-  if (origSetHeader) {
-    window.XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
-      putHeader(name, value);
-      sendBridge({ type: 'headers', headers: capturedHeaders });
-      return origSetHeader.apply(this, arguments);
-    };
-  }
-
-  // 3. Hook Fetch
-  var origFetch = window.fetch;
-  if (origFetch) {
-    window.fetch = function(input, init) {
-      try {
-        var reqUrl = (typeof input === 'string') ? input : (input && input.url ? input.url : '');
-        if (init && init.headers) {
-          if (typeof init.headers.forEach === 'function') {
-            init.headers.forEach(function(v, k) { putHeader(k, v); });
-          } else {
-            for (var k in init.headers) putHeader(k, init.headers[k]);
-          }
-          sendBridge({ type: 'headers', headers: capturedHeaders });
-        }
-        if (reqUrl.indexOf('.m3u8') !== -1 || reqUrl.indexOf('.mp4') !== -1) {
-          sendBridge({ type: 'payload', payload: reqUrl, headers: capturedHeaders });
-        }
-      } catch(e) {}
-      return origFetch.apply(this, arguments).then(function(res) {
-        try {
-          var rUrl = res.url || '';
-          if (rUrl.indexOf('.m3u8') !== -1 && rUrl !== lastM3u8) {
-            lastM3u8 = rUrl;
-            sendBridge({ type: 'payload', payload: rUrl, headers: capturedHeaders });
-          }
-          if (rUrl.indexOf('/bnsi/') !== -1 || rUrl.indexOf('config') !== -1) {
-            res.clone().text().then(function(t) {
-              if (t && (t.indexOf('hlsSource') !== -1 || t.indexOf('.m3u8') !== -1)) {
-                sendBridge({ type: 'payload', payload: t, headers: capturedHeaders });
-              }
-            }).catch(function(){});
-          }
-        } catch(e) {}
-        return res;
-      });
-    };
-  }
-
-  // 4. Auto-play trigger to kick-start playback safely
-  function autoPlay() {
-    try {
-      var timeSaveBtn = document.querySelector('.time_save__btn') || document.querySelector('.time_save:not(.hidden) button');
-      if (timeSaveBtn && typeof timeSaveBtn.click === 'function') timeSaveBtn.click();
-
-      var video = document.querySelector('video');
-      if (video && (video.currentSrc || (video.src && video.src !== '' && video.src !== 'about:blank') || video.querySelector('source'))) {
-        video.muted = true;
-        if (video.paused) {
-          try {
-            var p = video.play();
-            if (p && typeof p.catch === 'function') p.catch(function(){});
-          } catch(e) {}
-        }
-        var vSrc = video.currentSrc || video.src || '';
-        if (vSrc && (vSrc.indexOf('.m3u8') !== -1 || vSrc.indexOf('.mp4') !== -1)) {
-          sendBridge({ type: 'payload', payload: vSrc, headers: capturedHeaders });
-        }
-      }
-      var playSelectors = ['.plyr__control--overlaid', 'button[data-plyr="play"]', '.allplay__play-btn', 'button.play', '.play-btn', '.vjs-big-play-button', '[data-plyr="play"]'];
-      for (var i = 0; i < playSelectors.length; i++) {
-        var el = document.querySelector(playSelectors[i]);
-        if (el && typeof el.click === 'function') el.click();
-      }
-    } catch(e) {}
-  }
-
-  setInterval(autoPlay, 1000);
-  window.addEventListener('load', autoPlay);
-  window.addEventListener('DOMContentLoaded', autoPlay);
 })();
 """
 
