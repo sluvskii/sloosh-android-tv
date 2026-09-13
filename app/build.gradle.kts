@@ -5,19 +5,9 @@ plugins {
 }
 
 val baseVersion = "2.0"
-val buildNumber: Int = (System.getenv("BUILD_NUMBER") ?: System.getenv("GITHUB_RUN_NUMBER"))?.toIntOrNull()
-    ?: run {
-        try {
-            val stdout = java.io.ByteArrayOutputStream()
-            exec {
-                commandLine("git", "rev-list", "--count", "HEAD")
-                standardOutput = stdout
-            }
-            stdout.toString().trim().toIntOrNull() ?: 100
-        } catch (_: Exception) {
-            100
-        }
-    }
+val buildNumber: Int = (project.findProperty("buildNumber") as? String)?.toIntOrNull()
+    ?: (System.getenv("BUILD_NUMBER") ?: System.getenv("GITHUB_RUN_NUMBER"))?.toIntOrNull()
+    ?: 100
 
 android {
     namespace = "com.sloosh.tv"
@@ -136,10 +126,4 @@ dependencies {
     implementation(libs.androidx.palette)
 
     debugImplementation(libs.androidx.ui.tooling)
-}
-
-tasks.register("printVersion") {
-    doLast {
-        println(android.defaultConfig.versionName)
-    }
 }
