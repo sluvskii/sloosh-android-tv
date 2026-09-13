@@ -91,6 +91,6 @@ jobs:
           - Готовый файл \`sloosh-tv-release.apk\` прикреплен ниже.
           - Коммит: \`${{ github.event.head_commit.message }}\`" \
             --target "${{ github.sha }}" \
-            --latest
+            --latest || gh release upload "$TAG" release-output/sloosh-tv-release.apk --clobber || true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
