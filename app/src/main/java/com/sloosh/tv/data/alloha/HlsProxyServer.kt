@@ -432,23 +432,25 @@ class HlsProxyServer(
         val cleanBase = if (baseUrl.startsWith("//")) "https:$baseUrl" else baseUrl
         val lines = content.lines()
         val result = mutableListOf<String>()
-        var skipNextUri = false
+        val seenVariantKeys = mutableSetOf<String>()
+        var i = 0
 
-        for (line in lines) {
+        while (i < lines.size) {
+            val line = lines[i]
             val trimmed = line.trim()
+
             if (trimmed.isEmpty()) {
-                if (!skipNextUri) result.add(line)
+                result.add(line)
+                i++
                 continue
             }
-            if (trimmed.startsWith("#")) {
-                // Filter AV1 streams from master playlist — unsupported hardware decoder on TV causes crash/lag
-                if (trimmed.startsWith("#EXT-X-STREAM-INF")) {
-                    if (hlsLineHasAV1Codecs(trimmed)) {
-                        skipNextUri = true
-                        continue
-                    }
-                    skipNextUri = false
-                    result.add(trimmed)
+
+            // Audio/Subtitle media lines
+            if (trimmed.startsWith("#EXT-X-MEDIA")) {
+                val groupId = extractQuotedAttribute(trimmed, "GROUP-ID")
+                // Filter duplicate/unsupported failover audio groups (parity with iOS PlaybackHlsRewriter.swift)
+                if (groupId?.lowercase(Locale.ROOT)?.startsWith("failover-") == true) {
+                    i++
                     continue
                 }
                 if (trimmed.contains("URI=")) {
@@ -461,15 +463,85 @@ class HlsProxyServer(
                 } else {
                     result.add(trimmed)
                 }
-            } else {
-                if (skipNextUri) {
-                    skipNextUri = false
+                i++
+                continue
+            }
+
+            // Stream-Inf lines
+            if (trimmed.startsWith("#EXT-X-STREAM-INF")) {
+                // Filter AV1 codecs (unsupported hardware decoding on Android TV causes crash/lag)
+                if (hlsLineHasAV1Codecs(trimmed)) {
+                    i += 2 // skip stream-inf and its URL
                     continue
                 }
+
+                // Filter failover audio streams
+                val audioGroup = extractQuotedAttribute(trimmed, "AUDIO")
+                if (audioGroup?.lowercase(Locale.ROOT)?.startsWith("failover-") == true) {
+                    i += 2
+                    continue
+                }
+
+                // Deduplicate identical variants
+                val resolution = extractAttributeValue(trimmed, "RESOLUTION")
+                val bandwidth = extractAttributeValue(trimmed, "BANDWIDTH")
+                val codecs = extractQuotedAttribute(trimmed, "CODECS")
+                val key = listOfNotNull(resolution, bandwidth, codecs, audioGroup).joinToString("|")
+                if (key.isNotEmpty() && !seenVariantKeys.add(key)) {
+                    i += 2
+                    continue
+                }
+
+                // Normalize VIDEO-RANGE (strip PQ/HLG for non-HEVC/HDR to prevent decoder crash)
+                val normalizedStreamInf = normalizeStreamInfVideoRange(trimmed)
+                result.add(normalizedStreamInf)
+
+                if (i + 1 < lines.size) {
+                    val nextLine = lines[i + 1].trim()
+                    if (!nextLine.startsWith("#") && nextLine.isNotBlank()) {
+                        result.add(proxyUrl(nextLine, cleanBase))
+                        i += 2
+                        continue
+                    }
+                }
+                i++
+                continue
+            }
+
+            if (trimmed.startsWith("#")) {
+                if (trimmed.contains("URI=")) {
+                    val modified = trimmed.replace(Regex("""URI\s*=\s*"([^"]+)"""")) { match ->
+                        val uri = match.groupValues[1]
+                        if (uri.isBlank() || uri == "none") match.value
+                        else """URI="${proxyUrl(uri, cleanBase)}""""
+                    }
+                    result.add(modified)
+                } else {
+                    result.add(trimmed)
+                }
+            } else {
                 result.add(proxyUrl(trimmed, cleanBase))
             }
+            i++
         }
         return result.joinToString("\n")
+    }
+
+    private fun normalizeStreamInfVideoRange(line: String): String {
+        val lower = line.lowercase(Locale.ROOT)
+        val isHdrCapable = lower.contains("hvc1") || lower.contains("hev1") || lower.contains("dvh1") || lower.contains("dvhe")
+        if (isHdrCapable) return line
+        return line.replace(Regex(""",?\s*VIDEO-RANGE=[^,\s]+""", RegexOption.IGNORE_CASE), "")
+    }
+
+    private fun extractQuotedAttribute(line: String, key: String): String? {
+        val pattern = Regex("""\b${Regex.escape(key)}\s*=\s*"([^"]+)"""", RegexOption.IGNORE_CASE)
+        return pattern.find(line)?.groupValues?.getOrNull(1)
+    }
+
+    private fun extractAttributeValue(line: String, key: String): String? {
+        val pattern = Regex("""\b${Regex.escape(key)}\s*=\s*([^,\s]+)""", RegexOption.IGNORE_CASE)
+        return pattern.find(line)?.groupValues?.getOrNull(1)
     }
 
     private fun hlsLineHasAV1Codecs(line: String): Boolean {

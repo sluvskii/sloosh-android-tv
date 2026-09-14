@@ -56,6 +56,8 @@ import com.sloosh.tv.ui.components.SlooshButton
 import com.sloosh.tv.ui.components.SlooshFocusableCard
 import com.sloosh.tv.ui.theme.*
 import com.sloosh.tv.data.alloha.HlsProxyServer
+import com.sloosh.tv.data.repository.allohaTranslationNamesMatch
+import java.util.Locale
 import kotlinx.coroutines.delay
 
 enum class PlayerHudState {
@@ -71,6 +73,8 @@ fun PlayerScreen(
     title: String = "Просмотр",
     season: Int? = null,
     episode: Int? = null,
+    selectedVoice: String? = null,
+    directStreamUrl: String? = null,
     viewModel: PlayerViewModel = viewModel(),
     modifier: Modifier = Modifier
 ) {
@@ -97,8 +101,8 @@ fun PlayerScreen(
 
     var hasAutoRetried by remember { mutableStateOf(false) }
 
-    LaunchedEffect(iframeUrl, season, episode, title) {
-        viewModel.initPlayer(iframeUrl, mediaId, season, episode, title)
+    LaunchedEffect(iframeUrl, season, episode, title, selectedVoice, directStreamUrl) {
+        viewModel.initPlayer(iframeUrl, mediaId, season, episode, title, selectedVoice, directStreamUrl)
     }
 
     val exoPlayer = remember(context) {
@@ -309,25 +313,129 @@ fun PlayerScreen(
                     }
                 }
             }
-            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+            fun syncExoPlayerAudioTrack(tracks: androidx.media3.common.Tracks, targetTitle: String?) {
                 val audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
-                if (audioGroups.isNotEmpty()) {
-                    val group = audioGroups.firstOrNull() ?: return
-                    val trackGroup = group.mediaTrackGroup
-                    if (trackGroup.length > 0 && !group.isSelected) {
-                        exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
-                            .buildUpon()
-                            .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
-                            .setOverrideForType(androidx.media3.common.TrackSelectionOverride(trackGroup, listOf(0)))
-                            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
-                            .build()
+                if (audioGroups.isEmpty()) return
+
+                var bestGroup: androidx.media3.common.Tracks.Group? = null
+                var bestTrackIndex = 0
+
+                // 1. Exact or loose title match using allohaTranslationNamesMatch
+                if (!targetTitle.isNullOrBlank()) {
+                    for (group in audioGroups) {
+                        val mg = group.mediaTrackGroup
+                        for (i in 0 until mg.length) {
+                            val format = mg.getFormat(i)
+                            val label = format.label.orEmpty()
+                            if (label.isNotBlank() && allohaTranslationNamesMatch(label, targetTitle, exactOnly = false)) {
+                                bestGroup = group
+                                bestTrackIndex = i
+                                break
+                            }
+                        }
+                        if (bestGroup != null) break
                     }
                 }
+
+                // 2. Fallback to Russian language track
+                if (bestGroup == null) {
+                    for (group in audioGroups) {
+                        val mg = group.mediaTrackGroup
+                        for (i in 0 until mg.length) {
+                            val format = mg.getFormat(i)
+                            val lang = format.language?.lowercase(Locale.ROOT)
+                            if (lang == "rus" || lang == "ru") {
+                                bestGroup = group
+                                bestTrackIndex = i
+                                break
+                            }
+                        }
+                        if (bestGroup != null) break
+                    }
+                }
+
+                // 3. Fallback to first available audio track
+                if (bestGroup == null) {
+                    bestGroup = audioGroups.firstOrNull()
+                    bestTrackIndex = 0
+                }
+
+                if (bestGroup != null && (!bestGroup.isSelected || !bestGroup.isTrackSelected(bestTrackIndex))) {
+                    exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+                        .buildUpon()
+                        .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                        .setOverrideForType(androidx.media3.common.TrackSelectionOverride(bestGroup.mediaTrackGroup, listOf(bestTrackIndex)))
+                        .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                        .build()
+                }
+            }
+
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                syncExoPlayerAudioTrack(tracks, state.currentAudio?.title)
             }
         }
         exoPlayer.addListener(listener)
         onDispose {
             exoPlayer.removeListener(listener)
+        }
+    }
+
+    // Dynamic Audio track synchronization when selected translation changes in UI
+    LaunchedEffect(state.currentAudio?.title) {
+        val audioGroups = exoPlayer.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+        if (audioGroups.isNotEmpty()) {
+            val targetTitle = state.currentAudio?.title
+            var bestGroup: androidx.media3.common.Tracks.Group? = null
+            var bestTrackIndex = 0
+
+            if (!targetTitle.isNullOrBlank()) {
+                for (group in audioGroups) {
+                    val mg = group.mediaTrackGroup
+                    for (i in 0 until mg.length) {
+                        val format = mg.getFormat(i)
+                        val label = format.label.orEmpty()
+                        if (label.isNotBlank() && allohaTranslationNamesMatch(label, targetTitle, exactOnly = false)) {
+                            bestGroup = group
+                            bestTrackIndex = i
+                            break
+                        }
+                    }
+                    if (bestGroup != null) break
+                }
+            }
+
+            if (bestGroup != null && (!bestGroup.isSelected || !bestGroup.isTrackSelected(bestTrackIndex))) {
+                exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+                    .buildUpon()
+                    .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                    .setOverrideForType(androidx.media3.common.TrackSelectionOverride(bestGroup.mediaTrackGroup, listOf(bestTrackIndex)))
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                    .build()
+            }
+        }
+    }
+
+    // Video quality switching via ExoPlayer native trackSelectionParameters (seamless 4K & adaptive)
+    LaunchedEffect(state.currentQuality) {
+        val quality = state.currentQuality ?: return@LaunchedEffect
+        if (quality.label == "Авто") {
+            exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+                .buildUpon()
+                .clearVideoSizeConstraints()
+                .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+                .build()
+            Log.d("PlayerScreen", "ExoPlayer video quality set to Auto (adaptive)")
+        } else {
+            val targetHeight = quality.label.removeSuffix("p").toIntOrNull()
+                ?: if (quality.label.contains("4k", ignoreCase = true) || quality.label.contains("uhd", ignoreCase = true)) 2160 else null
+            if (targetHeight != null) {
+                exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+                    .buildUpon()
+                    .setMaxVideoSize(Int.MAX_VALUE, targetHeight)
+                    .setMinVideoSize(0, targetHeight)
+                    .build()
+                Log.d("PlayerScreen", "ExoPlayer video quality constrained to height=$targetHeight (${quality.label})")
+            }
         }
     }
 
@@ -689,7 +797,7 @@ fun PlayerScreen(
                                         ?: (state.startPositionSec * 1000).toLong()
                                     lastPreservedPositionMs = pos
                                     if (state.errorMessage != null) {
-                                        viewModel.initPlayer(iframeUrl, mediaId, season, episode, displayTitle)
+                                        viewModel.initPlayer(iframeUrl, mediaId, season, episode, displayTitle, selectedVoice, directStreamUrl)
                                     } else {
                                         viewModel.retryPlayback(pos) { newUrl ->
                                             val mediaItem = androidx.media3.common.MediaItem.fromUri(newUrl)

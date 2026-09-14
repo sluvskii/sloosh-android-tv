@@ -67,7 +67,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         mediaId: String,
         season: Int? = null,
         episode: Int? = null,
-        initialTitle: String? = null
+        initialTitle: String? = null,
+        selectedVoice: String? = null,
+        directStreamUrl: String? = null
     ) {
         currentMediaId = mediaId
         currentIframeUrl = iframeUrl
@@ -118,8 +120,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 val savedProgress = progressStore.getProgress(mediaId)
                 val savedPosition = savedProgress?.positionSec ?: 0.0
 
-                // Resolve stream using AllohaRuntimeResolver (mirrors iOS architecture)
-                val resolvedStream = allohaRepository.resolveStream(iframeUrl)
+                // Resolve stream using AllohaRuntimeResolver (or directStreamUrl if already playable)
+                val targetStreamUrl = if (!directStreamUrl.isNullOrBlank() && isPlayableMediaUrl(directStreamUrl)) directStreamUrl else iframeUrl
+                val resolvedStream = allohaRepository.resolveStream(targetStreamUrl)
                 if (!isPlayableMediaUrl(resolvedStream.videoUrl)) {
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
@@ -161,15 +164,16 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     )
                 }.ifEmpty { resolvedStream.subtitles }
 
-                val qualities = resolvedStream.qualityVariants
+                val autoQuality = QualityVariant(label = "Авто", url = resolvedStream.videoUrl)
+                val sortedResolutions = resolvedStream.qualityVariants
+                    .filter { it.label != "Авто" }
                     .sortedByDescending { it.label.removeSuffix("p").toIntOrNull() ?: 0 }
-                    .toMutableList()
 
-                if (qualities.isEmpty()) {
-                    qualities.add(QualityVariant(label = "Авто", url = resolvedStream.videoUrl))
-                }
+                val qualities = mutableListOf<QualityVariant>()
+                qualities.add(autoQuality)
+                qualities.addAll(sortedResolutions)
 
-                val activeQuality = qualities.firstOrNull()
+                val activeQuality = autoQuality
 
                 // Gather available audio translations from catalog
                 val allohaResult = _uiState.value.allohaData
@@ -195,7 +199,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
                 val kpIdInt = mediaId.removePrefix("kp_").toIntOrNull()
                 val savedVoice = kpIdInt?.let { allohaRepository.getLastVoiceover(it) } ?: allohaRepository.getLastTranslation()
-                val chosenAudio = findMatchingAudioVariant(audioVariants, savedVoice)
+                val targetVoice = selectedVoice?.takeIf { it.isNotBlank() } ?: savedVoice
+                val chosenAudio = findMatchingAudioVariant(audioVariants, targetVoice)
                     ?: audioVariants.firstOrNull { it.url == iframeUrl }
                     ?: audioVariants.firstOrNull()
 
@@ -250,14 +255,20 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                             if (!body.isNullOrBlank()) {
                                 val parsedQualities = AllohaRuntimeParser.parseMasterPlaylistQualities(body, resolvedStream.videoUrl)
                                 if (parsedQualities.isNotEmpty()) {
-                                    val updatedQualities = parsedQualities.sortedByDescending {
-                                        it.label.removeSuffix("p").toIntOrNull() ?: 0
-                                    }
+                                    val updatedResolutions = parsedQualities
+                                        .filter { it.label != "Авто" }
+                                        .sortedByDescending {
+                                            it.label.removeSuffix("p").toIntOrNull() ?: 0
+                                        }
+                                    val allQualities = mutableListOf(autoQuality)
+                                    allQualities.addAll(updatedResolutions)
                                     val currentStream = _uiState.value.resolvedStream
                                     if (currentStream != null) {
+                                        val curQ = _uiState.value.currentQuality
+                                        val preservedQuality = allQualities.firstOrNull { it.label == curQ?.label } ?: autoQuality
                                         _uiState.value = _uiState.value.copy(
-                                            resolvedStream = currentStream.copy(qualityVariants = updatedQualities),
-                                            currentQuality = updatedQualities.firstOrNull()
+                                            resolvedStream = currentStream.copy(qualityVariants = allQualities),
+                                            currentQuality = preservedQuality
                                         )
                                     }
                                 }
@@ -279,7 +290,23 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun selectAudioTrack(audio: AudioVariant) {
-        if (audio.url == currentIframeUrl && _uiState.value.currentAudio?.id == audio.id) return
+        val curAudio = _uiState.value.currentAudio
+        if (curAudio?.id == audio.id && curAudio.title == audio.title) return
+
+        val kpIdInt = currentMediaId.removePrefix("kp_").toIntOrNull()
+        allohaRepository.saveLastTranslation(audio.title)
+        if (kpIdInt != null) {
+            allohaRepository.saveLastVoiceover(kpIdInt, audio.title)
+        }
+
+        // If audio variant is an internal stream of current master or current iframe, just update state (ExoPlayer will switch track)
+        if (audio.url == currentIframeUrl || audio.url == _uiState.value.resolvedStream?.videoUrl || audio.url.isBlank()) {
+            _uiState.value = _uiState.value.copy(
+                currentAudio = audio
+            )
+            return
+        }
+
         currentIframeUrl = audio.url
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
@@ -287,22 +314,16 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 currentAudio = audio
             )
             try {
-                allohaRepository.saveLastTranslation(audio.title)
-                val kpIdInt = currentMediaId.removePrefix("kp_").toIntOrNull()
-                if (kpIdInt != null) {
-                    allohaRepository.saveLastVoiceover(kpIdInt, audio.title)
-                }
-
                 // 1. If audio.url is already a direct playable stream URL
                 if (isPlayableMediaUrl(audio.url)) {
                     val proxy = HlsProxyServer.shared
                     proxy.updateMasterUrl(audio.url)
                     val newUrl = proxy.proxyUrl(audio.url)
-                    val qualities = audio.qualityVariants.ifEmpty {
-                        listOf(QualityVariant(label = "Авто", url = audio.url))
-                    }
+                    val autoQ = QualityVariant(label = "Авто", url = audio.url)
+                    val qualities = mutableListOf(autoQ)
+                    qualities.addAll(audio.qualityVariants.filter { it.label != "Авто" })
                     val activeQuality = qualities.firstOrNull { it.label == _uiState.value.currentQuality?.label }
-                        ?: qualities.firstOrNull()
+                        ?: autoQ
                     val updatedStream = _uiState.value.resolvedStream?.copy(
                         videoUrl = newUrl,
                         qualityVariants = qualities
@@ -344,12 +365,16 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                         )
                     }.ifEmpty { resolvedStream.subtitles }
 
-                    val qualities = resolvedStream.qualityVariants
+                    val autoQ = QualityVariant(label = "Авто", url = resolvedStream.videoUrl)
+                    val sortedRes = resolvedStream.qualityVariants
+                        .filter { it.label != "Авто" }
                         .sortedByDescending { it.label.removeSuffix("p").toIntOrNull() ?: 0 }
-                        .ifEmpty { listOf(QualityVariant(label = "Авто", url = resolvedStream.videoUrl)) }
+
+                    val qualities = mutableListOf(autoQ)
+                    qualities.addAll(sortedRes)
 
                     val activeQuality = qualities.firstOrNull { it.label == _uiState.value.currentQuality?.label }
-                        ?: qualities.firstOrNull()
+                        ?: autoQ
 
                     val updatedResolved = _uiState.value.resolvedStream?.copy(
                         videoUrl = newUrl,
@@ -384,12 +409,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun selectQuality(quality: QualityVariant) {
-        val proxy = HlsProxyServer.shared
-        proxy.updateMasterUrl(quality.url)
-        val newUrl = proxy.proxyUrl(quality.url)
+        // We do NOT replace currentVideoUrl with quality variant URL because variant playlists
+        // lack audio track declarations (#EXT-X-MEDIA:TYPE=AUDIO).
+        // ExoPlayer switches renditions seamlessly in-place via TrackSelectionParameters.
         _uiState.value = _uiState.value.copy(
-            currentQuality = quality,
-            currentVideoUrl = newUrl
+            currentQuality = quality
         )
     }
 
@@ -434,7 +458,15 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             allohaTranslationNamesMatch(trans.name, curVoice)
         } ?: next.second.translations.firstOrNull() ?: return
 
-        initPlayer(chosenTranslation.iframeUrl, currentMediaId, next.first, next.second.episode, _uiState.value.mediaTitle)
+        initPlayer(
+            iframeUrl = chosenTranslation.iframeUrl,
+            mediaId = currentMediaId,
+            season = next.first,
+            episode = next.second.episode,
+            initialTitle = _uiState.value.mediaTitle,
+            selectedVoice = chosenTranslation.name,
+            directStreamUrl = chosenTranslation.streamUrl
+        )
     }
 
     fun playPrevEpisode() {
@@ -444,7 +476,15 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             allohaTranslationNamesMatch(trans.name, curVoice)
         } ?: prev.second.translations.firstOrNull() ?: return
 
-        initPlayer(chosenTranslation.iframeUrl, currentMediaId, prev.first, prev.second.episode, _uiState.value.mediaTitle)
+        initPlayer(
+            iframeUrl = chosenTranslation.iframeUrl,
+            mediaId = currentMediaId,
+            season = prev.first,
+            episode = prev.second.episode,
+            initialTitle = _uiState.value.mediaTitle,
+            selectedVoice = chosenTranslation.name,
+            directStreamUrl = chosenTranslation.streamUrl
+        )
     }
 
     private var lastSavedSec: Double = 0.0

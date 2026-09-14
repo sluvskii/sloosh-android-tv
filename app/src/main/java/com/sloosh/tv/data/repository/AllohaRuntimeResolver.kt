@@ -623,6 +623,57 @@ class AllohaRuntimeResolver(private val context: Context) {
                         capturedHeaders["referer"] = refererFromReq
                     }
 
+                    // Intercept Alloha /bnsi/ config requests to resolve streams fast (~300ms)
+                    if (reqUrl.contains("/bnsi/")) {
+                        try {
+                            val reqBuilder = Request.Builder().url(reqUrl)
+                            request.requestHeaders?.forEach { (k, v) ->
+                                val lower = k.lowercase(Locale.ROOT)
+                                if (lower != "host" && lower != "connection" && lower != "accept-encoding") {
+                                    reqBuilder.addHeader(k, v)
+                                }
+                            }
+                            if (!capturedHeaders["user-agent"].isNullOrBlank()) {
+                                reqBuilder.header("User-Agent", capturedHeaders["user-agent"]!!)
+                            }
+                            if (!capturedHeaders["referer"].isNullOrBlank()) {
+                                reqBuilder.header("Referer", capturedHeaders["referer"]!!)
+                            }
+                            val resp = httpClient.newCall(reqBuilder.build()).execute()
+                            val contentType = resp.header("Content-Type", "application/json") ?: "application/json"
+                            val mimeType = contentType.substringBefore(";").trim()
+                            val encoding = if (contentType.contains("charset=", ignoreCase = true)) {
+                                contentType.substringAfter("charset=").substringBefore(";").trim()
+                            } else "UTF-8"
+                            val bytes = resp.body?.bytes() ?: ByteArray(0)
+                            val text = String(bytes, Charsets.UTF_8)
+
+                            if (text.isNotBlank()) {
+                                mainHandler.post {
+                                    if (!isFinished) {
+                                        resolveIfReady(text)
+                                    }
+                                }
+                            }
+
+                            val respHeaders = mutableMapOf<String, String>()
+                            for (i in 0 until resp.headers.size) {
+                                respHeaders[resp.headers.name(i)] = resp.headers.value(i)
+                            }
+
+                            return WebResourceResponse(
+                                mimeType,
+                                encoding,
+                                resp.code,
+                                resp.message.ifBlank { "OK" },
+                                respHeaders,
+                                java.io.ByteArrayInputStream(bytes)
+                            )
+                        } catch (e: Exception) {
+                            Log.w(TAG, "shouldInterceptRequest /bnsi/ proxy error: ${e.message}")
+                        }
+                    }
+
                     // Passively observe master playlist or direct playable URL
                     if (isMasterPlaylistPayload(reqUrl) || (isPlayableURL(reqUrl) && !reqUrl.contains("blank"))) {
                         mainHandler.post {
@@ -645,15 +696,10 @@ class AllohaRuntimeResolver(private val context: Context) {
             wv.onResume()
             wv.resumeTimers()
 
-            val wrapper = wrapperHtml(cleanUrl)
-            val parsed = runCatching { URL(cleanUrl) }.getOrNull()
-            val baseUrl = if (parsed != null) {
-                val path = parsed.path.substringBeforeLast('/', "")
-                "${parsed.protocol}://${parsed.host}${if (parsed.port != -1 && parsed.port != 80 && parsed.port != 443) ":${parsed.port}" else ""}$path/"
-            } else {
-                cleanUrl
-            }
-            wv.loadDataWithBaseURL(baseUrl, wrapper, "text/html", "UTF-8", baseUrl)
+            val additionalHeaders = mutableMapOf<String, String>()
+            additionalHeaders["User-Agent"] = selectedUserAgent
+            additionalHeaders["Referer"] = "$origin/"
+            wv.loadUrl(cleanUrl, additionalHeaders)
 
         } catch (e: Exception) {
             finishError(e.localizedMessage ?: "Ошибка инициализации WebView")

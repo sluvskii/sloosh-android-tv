@@ -99,9 +99,25 @@ fun isTranslationNoiseWord(word: String): Boolean {
     return noise.contains(word.lowercase(Locale.ROOT))
 }
 
+enum class TranslationVoiceType {
+    DUB, MVO, DVO, AVO, SUB, UNKNOWN
+}
+
+fun detectVoiceType(text: String): TranslationVoiceType {
+    val lower = text.lowercase(Locale.ROOT)
+    return when {
+        lower.contains("субтитр") || lower.contains("subtitle") || lower.contains("sub") -> TranslationVoiceType.SUB
+        lower.contains("дубл") || lower.contains("dub") -> TranslationVoiceType.DUB
+        lower.contains("многоголос") || lower.contains("mvo") || lower.contains("пм") || lower.contains("лм") -> TranslationVoiceType.MVO
+        lower.contains("двухголос") || lower.contains("dvo") || lower.contains("пд") || lower.contains("лд") -> TranslationVoiceType.DVO
+        lower.contains("одноголос") || lower.contains("авторск") || lower.contains("закадров") || lower.contains("avo") -> TranslationVoiceType.AVO
+        else -> TranslationVoiceType.UNKNOWN
+    }
+}
+
 /**
  * Checks whether two Alloha translation names refer to the same dubbing studio or author.
- * Mirrors allohaTranslationNamesMatch() in iOS AllohaRepository.swift.
+ * Strictly differentiates between Dubbing, Multi-voice, Two-voice, and Author voiceovers.
  */
 fun allohaTranslationNamesMatch(lhs: String?, rhs: String?, exactOnly: Boolean = false): Boolean {
     val lhsRaw = lhs?.trim().orEmpty()
@@ -136,6 +152,26 @@ fun allohaTranslationNamesMatch(lhs: String?, rhs: String?, exactOnly: Boolean =
     }
     if (isOriginalOrEnglish(left) && isOriginalOrEnglish(right)) return true
 
+    // ─── STRICT VOICE TYPE RULES ─────────────────────────────────────────────
+    // Дубляж и многоголосый — принципиально разные озвучки!
+    val typeLeft = detectVoiceType(lhsRaw)
+    val typeRight = detectVoiceType(rhsRaw)
+
+    // Subtitles must only match subtitles
+    if ((typeLeft == TranslationVoiceType.SUB) != (typeRight == TranslationVoiceType.SUB)) {
+        return false
+    }
+
+    // Dubbing must NEVER match non-dubbing
+    if ((typeLeft == TranslationVoiceType.DUB) != (typeRight == TranslationVoiceType.DUB)) {
+        return false
+    }
+
+    // Known different voiceover types must not conflict (e.g. MVO vs DVO vs AVO)
+    if (typeLeft != TranslationVoiceType.UNKNOWN && typeRight != TranslationVoiceType.UNKNOWN && typeLeft != typeRight) {
+        return false
+    }
+
     if (exactOnly) return false
 
     // Check for specific studio names
@@ -150,10 +186,8 @@ fun allohaTranslationNamesMatch(lhs: String?, rhs: String?, exactOnly: Boolean =
     if (leftStudios.isNotEmpty() && rightStudios.isNotEmpty()) {
         val shared = leftStudios.toSet().intersect(rightStudios.toSet())
         if (shared.isEmpty()) return false
-        val leftHasDub = left.contains("дубл")
-        val rightHasDub = right.contains("дубл")
-        if (leftHasDub != rightHasDub) return false
-        return true
+        // Shared studio must still respect voice type
+        return typeLeft == typeRight || (typeLeft == TranslationVoiceType.UNKNOWN || typeRight == TranslationVoiceType.UNKNOWN)
     }
 
     val exclusiveStudios = listOf(
@@ -164,16 +198,14 @@ fun allohaTranslationNamesMatch(lhs: String?, rhs: String?, exactOnly: Boolean =
     val rightHasExclusive = exclusiveStudios.any { right.contains(it) }
     if (leftHasExclusive != rightHasExclusive) return false
 
-    val leftHasDub = left.contains("дубл")
-    val rightHasDub = right.contains("дубл")
-    if (leftHasDub && rightHasDub) {
+    if (typeLeft == TranslationVoiceType.DUB && typeRight == TranslationVoiceType.DUB) {
         if (langLeft != null && langRight != null) return langLeft == langRight
         return true
     }
 
     val noiseWords = setOf(
-        "studio", "студия", "дубляж", "дублированный", "дублирование", "полное",
-        "многоголосый", "двухголосый", "одноголосый", "авторский", "закадровый", "озвучка",
+        "studio", "студия", "полное",
+        "закадровый", "озвучка",
         "профессиональный", "проф", "любительский", "люб", "production", "films", "film",
         "team", "voice", "line", "перевод", "голос", "звук", "чистый", "версия", "театральная",
         "расширенная", "режиссерская", "режиссёрская"
@@ -190,7 +222,9 @@ fun allohaTranslationNamesMatch(lhs: String?, rhs: String?, exactOnly: Boolean =
 
     val leftCore = stripNoise(left)
     val rightCore = stripNoise(right)
-    if (leftCore.isNotEmpty() && leftCore == rightCore) return true
+    if (leftCore.isNotEmpty() && leftCore == rightCore) {
+        return typeLeft == typeRight || (typeLeft == TranslationVoiceType.UNKNOWN || typeRight == TranslationVoiceType.UNKNOWN)
+    }
 
     val extractDistinctiveWords: (String) -> List<String> = { s ->
         s.lowercase(Locale.ROOT)
@@ -203,11 +237,15 @@ fun allohaTranslationNamesMatch(lhs: String?, rhs: String?, exactOnly: Boolean =
         val hasSharedDistinctive = rightWords.any { rw ->
             leftWords.any { lw -> lw == rw || lw.contains(rw) || rw.contains(lw) }
         }
-        if (hasSharedDistinctive) return true
+        if (hasSharedDistinctive) {
+            return typeLeft == typeRight || (typeLeft == TranslationVoiceType.UNKNOWN || typeRight == TranslationVoiceType.UNKNOWN)
+        }
     }
 
     if (leftCore.length >= 4 && rightCore.length >= 4) {
-        if (leftCore.contains(rightCore) || rightCore.contains(leftCore)) return true
+        if (leftCore.contains(rightCore) || rightCore.contains(leftCore)) {
+            return typeLeft == typeRight || (typeLeft == TranslationVoiceType.UNKNOWN || typeRight == TranslationVoiceType.UNKNOWN)
+        }
     }
 
     return false
@@ -215,7 +253,7 @@ fun allohaTranslationNamesMatch(lhs: String?, rhs: String?, exactOnly: Boolean =
 
 /**
  * Finds the best matching audio variant from audioVariants list for a target voiceover name.
- * Mirrors findMatchingAudioVariant() in iOS AllohaRepository.swift.
+ * Mirrors findMatchingAudioVariant() in iOS AllohaRepository.swift with strict voice-type checking.
  */
 fun findMatchingAudioVariant(
     audioVariants: List<AudioVariant>,
@@ -228,35 +266,42 @@ fun findMatchingAudioVariant(
         return audioVariants.firstOrNull { it.url.isNotBlank() }
     }
 
-    // 1. Exact match
+    // 1. Exact match (exactOnly = true)
     audioVariants.firstOrNull { allohaTranslationNamesMatch(it.title, target, exactOnly = true) }?.let { return it }
 
-    // 2. Loose studio / author match
+    // 2. Loose studio / author match (exactOnly = false, but strictly respecting voice type)
     audioVariants.firstOrNull { allohaTranslationNamesMatch(it.title, target, exactOnly = false) }?.let { return it }
 
-    // 3. Language tag match
+    // 3. Language tag match (for non-Russian regional languages)
     val targetLang = detectLanguageTag(target)
-    if (targetLang != null) {
+    if (targetLang != null && targetLang != "rus") {
         audioVariants.firstOrNull { detectLanguageTag(it.title) == targetLang }?.let { return it }
     }
 
-    // 4. Distinctive author/studio words
+    // 4. Distinctive author/studio words with matching voice type
+    val targetType = detectVoiceType(target)
     val targetWords = target.lowercase(Locale.ROOT)
         .split(Regex("[^a-zA-Zа-яА-ЯёЁ0-9]+"))
         .filter { it.length >= 4 && !isTranslationNoiseWord(it) }
     if (targetWords.isNotEmpty()) {
         for (word in targetWords) {
-            audioVariants.firstOrNull { it.title.lowercase(Locale.ROOT).contains(word) }?.let { return it }
+            val match = audioVariants.firstOrNull {
+                val variantType = detectVoiceType(it.title)
+                val typeCompatible = targetType == TranslationVoiceType.UNKNOWN ||
+                        variantType == targetType ||
+                        (targetType != TranslationVoiceType.DUB && variantType != TranslationVoiceType.DUB)
+                it.title.lowercase(Locale.ROOT).contains(word) && typeCompatible
+            }
+            if (match != null) return match
         }
     }
 
-    // 5. Dedicated iframe fallback
+    // 5. Dedicated iframe fallback (if target is not dub, prefer non-dub variant 1)
     if (isDedicatedIframe && audioVariants.size > 1) {
-        val isTargetDub = target.lowercase(Locale.ROOT).contains("дубл")
+        val isTargetDub = targetType == TranslationVoiceType.DUB
         if (!isTargetDub) {
             val nonDub = audioVariants.firstOrNull {
-                val t = it.title.lowercase(Locale.ROOT)
-                !t.contains("дубл") && !t.contains("dub")
+                detectVoiceType(it.title) != TranslationVoiceType.DUB
             }
             if (nonDub != null) return nonDub
             return audioVariants.getOrNull(1)

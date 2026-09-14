@@ -289,7 +289,7 @@ private fun AppNavHost(
             DetailsScreen(
                 mediaId = mediaId,
                 onBackClick = { navController.popBackStack() },
-                onPlayClick = { iframeUrl, season, episode, movieTitle ->
+                onPlayClick = { iframeUrl, season, episode, movieTitle, voice, streamUrl ->
                     val encodedUrl = android.util.Base64.encodeToString(
                         iframeUrl.toByteArray(StandardCharsets.UTF_8),
                         android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
@@ -299,21 +299,33 @@ private fun AppNavHost(
                         safeTitle.toByteArray(StandardCharsets.UTF_8),
                         android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
                     )
+                    val safeVoice = if (voice.isNullOrBlank()) "none" else voice
+                    val encodedVoice = android.util.Base64.encodeToString(
+                        safeVoice.toByteArray(StandardCharsets.UTF_8),
+                        android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
+                    )
+                    val safeStream = if (streamUrl.isNullOrBlank()) "none" else streamUrl
+                    val encodedStream = android.util.Base64.encodeToString(
+                        safeStream.toByteArray(StandardCharsets.UTF_8),
+                        android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
+                    )
                     val seasonParam = season ?: -1
                     val epParam = episode ?: -1
-                    navController.navigate("player/$encodedUrl/$mediaId/$seasonParam/$epParam/$encodedTitle")
+                    navController.navigate("player/$encodedUrl/$mediaId/$seasonParam/$epParam/$encodedTitle?voice=$encodedVoice&streamUrl=$encodedStream")
                 }
             )
         }
 
         composable(
-            route = "player/{iframeUrl}/{mediaId}/{season}/{episode}/{title}",
+            route = "player/{iframeUrl}/{mediaId}/{season}/{episode}/{title}?voice={voice}&streamUrl={streamUrl}",
             arguments = listOf(
                 navArgument("iframeUrl") { type = NavType.StringType },
                 navArgument("mediaId") { type = NavType.StringType },
                 navArgument("season") { type = NavType.IntType; defaultValue = -1 },
                 navArgument("episode") { type = NavType.IntType; defaultValue = -1 },
-                navArgument("title") { type = NavType.StringType; defaultValue = "none" }
+                navArgument("title") { type = NavType.StringType; defaultValue = "none" },
+                navArgument("voice") { type = NavType.StringType; defaultValue = "none" },
+                navArgument("streamUrl") { type = NavType.StringType; defaultValue = "none" }
             )
         ) { backStack ->
             val rawUrlParam = backStack.arguments?.getString("iframeUrl") ?: ""
@@ -321,6 +333,9 @@ private fun AppNavHost(
             val season = backStack.arguments?.getInt("season")?.takeIf { it > 0 }
             val episode = backStack.arguments?.getInt("episode")?.takeIf { it > 0 }
             val rawTitleParam = backStack.arguments?.getString("title") ?: ""
+            val rawVoiceParam = backStack.arguments?.getString("voice") ?: "none"
+            val rawStreamUrlParam = backStack.arguments?.getString("streamUrl") ?: "none"
+
             val decodedUrl = try {
                 val bytes = android.util.Base64.decode(rawUrlParam, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP)
                 String(bytes, StandardCharsets.UTF_8)
@@ -334,6 +349,19 @@ private fun AppNavHost(
             } catch (e: Exception) {
                 if (rawTitleParam == "none" || rawTitleParam.isBlank()) "Просмотр" else rawTitleParam
             }
+            val decodedVoice = if (rawVoiceParam != "none" && rawVoiceParam.isNotBlank()) {
+                try {
+                    val bytes = android.util.Base64.decode(rawVoiceParam, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP)
+                    String(bytes, StandardCharsets.UTF_8).takeIf { it.isNotBlank() && it != "none" }
+                } catch (e: Exception) { null }
+            } else null
+
+            val decodedStreamUrl = if (rawStreamUrlParam != "none" && rawStreamUrlParam.isNotBlank()) {
+                try {
+                    val bytes = android.util.Base64.decode(rawStreamUrlParam, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP)
+                    String(bytes, StandardCharsets.UTF_8).takeIf { it.isNotBlank() && it != "none" }
+                } catch (e: Exception) { null }
+            } else null
 
             PlayerScreen(
                 iframeUrl = decodedUrl,
@@ -341,6 +369,8 @@ private fun AppNavHost(
                 title = decodedTitle.ifEmpty { "Просмотр" },
                 season = season,
                 episode = episode,
+                selectedVoice = decodedVoice,
+                directStreamUrl = decodedStreamUrl,
                 onBack = { navController.popBackStack() }
             )
         }

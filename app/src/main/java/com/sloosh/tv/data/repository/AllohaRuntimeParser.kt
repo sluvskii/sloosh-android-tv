@@ -298,19 +298,33 @@ object AllohaRuntimeParser {
         return path.contains(".m3u8") || path.contains(".mpd") || path.contains(".mp4")
     }
 
-    private fun qualityHeight(label: String): Int {
+    fun qualityHeight(label: String): Int {
         val clean = label.lowercase(Locale.ROOT)
+        if (clean.contains("4k") || clean.contains("uhd")) return 2160
+        val pMatch = Regex("""(\d+)p""").find(clean)
+        if (pMatch != null) return pMatch.groupValues[1].toIntOrNull() ?: 0
+        val numMatch = Regex("""\b(\d+)\b""").find(clean)
+        if (numMatch != null) {
+            val n = numMatch.groupValues[1].toIntOrNull() ?: 0
+            if (n in 144..4320) return n
+        }
         if (clean.endsWith("k")) {
             return clean.removeSuffix("k").toIntOrNull() ?: 0
         }
-        return clean.replace("p", "").toIntOrNull() ?: 0
+        return 0
     }
 
     private fun normalizedQualityLabel(label: String): String {
         val clean = label.trim()
+        val lower = clean.lowercase(Locale.ROOT)
         return when {
             clean.isEmpty() -> "Поток"
-            clean.lowercase(Locale.ROOT).endsWith("p") -> clean
+            lower == "4k" || lower == "2160" || lower == "2160p" -> "2160p"
+            lower == "1080" || lower == "1080p" -> "1080p"
+            lower == "720" || lower == "720p" -> "720p"
+            lower == "480" || lower == "480p" -> "480p"
+            lower == "360" || lower == "360p" -> "360p"
+            lower.endsWith("p") -> clean
             clean.toIntOrNull() != null -> "${clean}p"
             else -> clean
         }

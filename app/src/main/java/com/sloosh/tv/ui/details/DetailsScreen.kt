@@ -61,7 +61,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun DetailsScreen(
     mediaId: String,
-    onPlayClick: (String, Int?, Int?, String) -> Unit,
+    onPlayClick: (iframeUrl: String, season: Int?, episode: Int?, title: String, voice: String?, streamUrl: String?) -> Unit,
     onBackClick: (() -> Unit)? = null,
     viewModel: DetailsViewModel = viewModel(),
     modifier: Modifier = Modifier
@@ -133,7 +133,7 @@ fun DetailsScreen(
                 onSelect = { result ->
                     viewModel.saveLastPlaybackChoice(kpId, result.translation.name, result.season, result.episode)
                     viewModel.dismissSourceSheet()
-                    onPlayClick(result.translation.iframeUrl, result.season, result.episode, details.displayTitle)
+                    onPlayClick(result.translation.iframeUrl, result.season, result.episode, details.displayTitle, result.translation.name, result.translation.streamUrl)
                 },
                 onRetry = { viewModel.openSourceSheet() },
                 onDismiss = { viewModel.dismissSourceSheet() }
