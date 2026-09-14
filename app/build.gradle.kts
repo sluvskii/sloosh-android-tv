@@ -41,12 +41,27 @@ android {
     signingConfigs {
         create("release") {
             val keystoreFile = rootProject.file("keys/slooshkey")
+            val localProps = java.util.Properties().apply {
+                val propFile = rootProject.file("local.properties")
+                if (propFile.exists()) {
+                    propFile.inputStream().use { load(it) }
+                }
+            }
             val keystorePassword = System.getenv("KEYSTORE_PASSWORD")
+                ?: localProps.getProperty("KEYSTORE_PASSWORD")
+                ?: (project.findProperty("KEYSTORE_PASSWORD") as? String)
+
             if (keystoreFile.exists() && !keystorePassword.isNullOrBlank()) {
                 storeFile = keystoreFile
                 storePassword = keystorePassword
-                keyAlias = System.getenv("KEY_ALIAS") ?: "keysloosh"
-                keyPassword = System.getenv("KEY_PASSWORD") ?: keystorePassword
+                keyAlias = System.getenv("KEY_ALIAS")
+                    ?: localProps.getProperty("KEY_ALIAS")
+                    ?: (project.findProperty("KEY_ALIAS") as? String)
+                    ?: "keysloosh"
+                keyPassword = System.getenv("KEY_PASSWORD")
+                    ?: localProps.getProperty("KEY_PASSWORD")
+                    ?: (project.findProperty("KEY_PASSWORD") as? String)
+                    ?: keystorePassword
             }
         }
     }
@@ -56,8 +71,10 @@ android {
             isMinifyEnabled = false
             val releaseSigning = signingConfigs.getByName("release")
             if (releaseSigning.storeFile != null && releaseSigning.storeFile!!.exists()) {
+                println(">>> BUILD: Signing release APK with: ${releaseSigning.storeFile?.name}")
                 signingConfig = releaseSigning
             } else {
+                println(">>> BUILD: Release keystore or password not found, falling back to debug signing")
                 signingConfig = signingConfigs.getByName("debug")
             }
             proguardFiles(
