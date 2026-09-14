@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -41,26 +43,26 @@ android {
     signingConfigs {
         create("release") {
             val keystoreFile = rootProject.file("keys/slooshkey")
-            val localProps = java.util.Properties().apply {
+            val localProps = Properties().apply {
                 val propFile = rootProject.file("local.properties")
                 if (propFile.exists()) {
                     propFile.inputStream().use { load(it) }
                 }
             }
-            val keystorePassword = System.getenv("KEYSTORE_PASSWORD")
-                ?: localProps.getProperty("KEYSTORE_PASSWORD")
-                ?: (project.findProperty("KEYSTORE_PASSWORD") as? String)
+            val keystorePassword = System.getenv("KEYSTORE_PASSWORD").takeIf { !it.isNullOrBlank() }
+                ?: localProps.getProperty("KEYSTORE_PASSWORD").takeIf { !it.isNullOrBlank() }
+                ?: (project.findProperty("KEYSTORE_PASSWORD") as? String).takeIf { !it.isNullOrBlank() }
 
             if (keystoreFile.exists() && !keystorePassword.isNullOrBlank()) {
                 storeFile = keystoreFile
                 storePassword = keystorePassword
-                keyAlias = System.getenv("KEY_ALIAS")
-                    ?: localProps.getProperty("KEY_ALIAS")
-                    ?: (project.findProperty("KEY_ALIAS") as? String)
+                keyAlias = System.getenv("KEY_ALIAS").takeIf { !it.isNullOrBlank() }
+                    ?: localProps.getProperty("KEY_ALIAS").takeIf { !it.isNullOrBlank() }
+                    ?: (project.findProperty("KEY_ALIAS") as? String).takeIf { !it.isNullOrBlank() }
                     ?: "keysloosh"
-                keyPassword = System.getenv("KEY_PASSWORD")
-                    ?: localProps.getProperty("KEY_PASSWORD")
-                    ?: (project.findProperty("KEY_PASSWORD") as? String)
+                keyPassword = System.getenv("KEY_PASSWORD").takeIf { !it.isNullOrBlank() }
+                    ?: localProps.getProperty("KEY_PASSWORD").takeIf { !it.isNullOrBlank() }
+                    ?: (project.findProperty("KEY_PASSWORD") as? String).takeIf { !it.isNullOrBlank() }
                     ?: keystorePassword
             }
         }

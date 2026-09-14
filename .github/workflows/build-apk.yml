@@ -52,8 +52,8 @@ jobs:
           ./gradlew assembleRelease --build-cache --stacktrace > build.log 2>&1 || (cat build.log && exit 1)
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS || 'keysloosh' }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || secrets.KEYSTORE_PASSWORD }}
 
       - name: Report Build Log on Failure
         if: failure()
