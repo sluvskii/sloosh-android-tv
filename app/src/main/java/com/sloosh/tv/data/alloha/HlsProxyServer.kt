@@ -308,7 +308,8 @@ class HlsProxyServer(
             val remainder = raw.length % 4
             if (remainder > 0) raw = raw.padEnd(raw.length + (4 - remainder), '=')
             val bytes = Base64.decode(raw, Base64.DEFAULT)
-            String(bytes, Charsets.UTF_8)
+            val str = String(bytes, Charsets.UTF_8)
+            if (str.startsWith("http://") || str.startsWith("https://")) str else null
         }.getOrNull()
     }
 
@@ -576,8 +577,9 @@ class HlsProxyServer(
         }
 
         try {
-            if (cleanUrl.startsWith("http://") || cleanUrl.startsWith("https://")) {
-                val cookieUrl = uri?.let { "${it.scheme ?: "https"}://${it.host}/" } ?: cleanUrl.substringBefore('?').substringBefore(' ')
+            val cookieHost = uri?.host
+            if (!cookieHost.isNullOrBlank() && (cleanUrl.startsWith("http://") || cleanUrl.startsWith("https://"))) {
+                val cookieUrl = "${uri.scheme ?: "https"}://$cookieHost/"
                 val cookie = runCatching { CookieManager.getInstance().getCookie(cookieUrl) }.getOrNull()
                 if (!cookie.isNullOrBlank()) builder.header("Cookie", cookie)
             }
