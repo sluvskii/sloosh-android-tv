@@ -36,10 +36,16 @@ jobs:
         run: chmod +x gradlew
 
       - name: Decode Keystore (if provided via secret)
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          mkdir -p keys
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > keys/slooshkey
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            mkdir -p keys
+            echo "$KEYSTORE_BASE64" | base64 --decode > keys/slooshkey
+            echo "Keystore decoded successfully"
+          else
+            echo "Warning: KEYSTORE_BASE64 secret is not set"
+          fi
 
       - name: Build Release APK
         run: ./gradlew assembleRelease --build-cache --stacktrace
