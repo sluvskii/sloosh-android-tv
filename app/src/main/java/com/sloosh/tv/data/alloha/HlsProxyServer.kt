@@ -316,23 +316,19 @@ class HlsProxyServer(
     private fun servePlaylist(url: String, out: OutputStream) {
         val cleanUrl = if (url.startsWith("//")) "https:$url" else url
         var body = fetchText(cleanUrl)
-        if (body == null && cleanUrl != activeMasterUrl && activeMasterUrl.isNotBlank()) {
-            Log.i(TAG, "servePlaylist fallback: retrying with activeMasterUrl: $activeMasterUrl")
-            body = fetchText(activeMasterUrl)
-        }
         if (body == null && onSessionExpired != null) {
             Log.i(TAG, "servePlaylist: fetch failed, notifying onSessionExpired and waiting for refresh...")
             onSessionExpired?.invoke()
             val startWait = System.currentTimeMillis()
             while (System.currentTimeMillis() - startWait < 1500 && body == null) {
                 try { Thread.sleep(100) } catch (_: Exception) {}
-                if (activeMasterUrl.isNotBlank() && activeMasterUrl != cleanUrl) {
+                if (activeMasterUrl.isNotBlank() && (cleanUrl == activeMasterUrl || !cleanUrl.contains(".m3u8"))) {
                     body = fetchText(activeMasterUrl)
                 }
             }
         }
         if (body == null || !body.contains("#EXT")) {
-            Log.w(TAG, "servePlaylist: playlist unavailable or not starting with #EXT for $cleanUrl, sending 503 Retry-After: 1")
+            Log.w(TAG, "servePlaylist: playlist unavailable or not starting with #EXT for ${cleanUrl.take(80)}, sending 503 Retry-After: 1")
             send503(out)
             return
         }
@@ -430,7 +426,29 @@ class HlsProxyServer(
 
     private fun rewriteM3u8(content: String, baseUrl: String): String {
         val cleanBase = if (baseUrl.startsWith("//")) "https:$baseUrl" else baseUrl
-        val lines = content.lines()
+        val cleanContent = content.removePrefix("\uFEFF").trimStart()
+        val rawLines = cleanContent.lines()
+
+        val hasStreamInf = rawLines.any { it.trim().startsWith("#EXT-X-STREAM-INF") }
+
+        // Pass 1: Try rewriting with filters (AV1 check, failover audio filter, deduplication)
+        val filtered = doRewriteM3u8(rawLines, cleanBase, filterUnsupportedCodecs = true)
+
+        // Safety check (mirrors iOS PlaybackHlsRewriter.swift):
+        // If the original had #EXT-X-STREAM-INF, but the filtered result has NO #EXT-X-STREAM-INF left,
+        // fallback to unfiltered rewriting so ExoPlayer never receives an empty/malformed playlist!
+        val hasStreamInfAfterFilter = filtered.any { it.trim().startsWith("#EXT-X-STREAM-INF") }
+        val finalLines = if (hasStreamInf && !hasStreamInfAfterFilter) {
+            Log.w(TAG, "rewriteM3u8: all variants were filtered! Falling back to unfiltered variants.")
+            doRewriteM3u8(rawLines, cleanBase, filterUnsupportedCodecs = false)
+        } else {
+            filtered
+        }
+
+        return finalLines.joinToString("\n")
+    }
+
+    private fun doRewriteM3u8(lines: List<String>, cleanBase: String, filterUnsupportedCodecs: Boolean): List<String> {
         val result = mutableListOf<String>()
         val seenVariantKeys = mutableSetOf<String>()
         var i = 0
@@ -469,16 +487,20 @@ class HlsProxyServer(
 
             // Stream-Inf lines
             if (trimmed.startsWith("#EXT-X-STREAM-INF")) {
-                // Filter AV1 codecs (unsupported hardware decoding on Android TV causes crash/lag)
-                if (hlsLineHasAV1Codecs(trimmed)) {
-                    i += 2 // skip stream-inf and its URL
+                // Filter AV1 codecs only if requested
+                if (filterUnsupportedCodecs && hlsLineHasAV1Codecs(trimmed)) {
+                    i++
+                    while (i < lines.size && lines[i].trim().isEmpty()) i++
+                    if (i < lines.size && !lines[i].trim().startsWith("#")) i++
                     continue
                 }
 
                 // Filter failover audio streams
                 val audioGroup = extractQuotedAttribute(trimmed, "AUDIO")
                 if (audioGroup?.lowercase(Locale.ROOT)?.startsWith("failover-") == true) {
-                    i += 2
+                    i++
+                    while (i < lines.size && lines[i].trim().isEmpty()) i++
+                    if (i < lines.size && !lines[i].trim().startsWith("#")) i++
                     continue
                 }
 
@@ -488,7 +510,9 @@ class HlsProxyServer(
                 val codecs = extractQuotedAttribute(trimmed, "CODECS")
                 val key = listOfNotNull(resolution, bandwidth, codecs, audioGroup).joinToString("|")
                 if (key.isNotEmpty() && !seenVariantKeys.add(key)) {
-                    i += 2
+                    i++
+                    while (i < lines.size && lines[i].trim().isEmpty()) i++
+                    if (i < lines.size && !lines[i].trim().startsWith("#")) i++
                     continue
                 }
 
@@ -496,15 +520,19 @@ class HlsProxyServer(
                 val normalizedStreamInf = normalizeStreamInfVideoRange(trimmed)
                 result.add(normalizedStreamInf)
 
-                if (i + 1 < lines.size) {
-                    val nextLine = lines[i + 1].trim()
+                // Advance to the URI line (skipping any intervening empty lines)
+                i++
+                while (i < lines.size && lines[i].trim().isEmpty()) {
+                    i++
+                }
+                if (i < lines.size) {
+                    val nextLine = lines[i].trim()
                     if (!nextLine.startsWith("#") && nextLine.isNotBlank()) {
                         result.add(proxyUrl(nextLine, cleanBase))
-                        i += 2
+                        i++
                         continue
                     }
                 }
-                i++
                 continue
             }
 
@@ -524,7 +552,13 @@ class HlsProxyServer(
             }
             i++
         }
-        return result.joinToString("\n")
+
+        // Guarantee that the first line is #EXTM3U
+        if (result.isNotEmpty() && !result[0].startsWith("#EXTM3U")) {
+            result.add(0, "#EXTM3U")
+        }
+
+        return result
     }
 
     private fun normalizeStreamInfVideoRange(line: String): String {
@@ -596,7 +630,10 @@ class HlsProxyServer(
             try {
                 client.newCall(buildRequest(cleanUrl).build()).execute().use { resp ->
                     if (resp.isSuccessful) {
-                        return resp.body?.string()
+                        val bodyStr = resp.body?.string()
+                        if (!bodyStr.isNullOrBlank()) {
+                            return bodyStr.removePrefix("\uFEFF").trimStart()
+                        }
                     } else {
                         Log.w(TAG, "fetchText HTTP ${resp.code} for ${cleanUrl.take(80)}")
                         if (resp.code == 403 || resp.code == 410) {
@@ -620,42 +657,30 @@ class HlsProxyServer(
             .header("User-Agent", activeHeaders["user-agent"] ?: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36")
             .header("Accept", "*/*")
 
-        val uri = runCatching { URI(cleanUrl) }.getOrNull()
-        val originHost = uri?.host?.takeIf { it != "127.0.0.1" && it != "localhost" }
-        val fallbackOrigin = if (originHost != null) "${uri.scheme ?: "https"}://$originHost" else "https://alloha.tv"
+        // Active referer/origin or fallback to https://alloha.tv/
+        val activeRef = activeHeaders["referer"]?.takeIf {
+            it.isNotBlank() && !it.contains("127.0.0.1") && !it.contains("localhost") && !it.contains("about:blank")
+        } ?: "https://alloha.tv/"
+
+        val activeOrig = activeHeaders["origin"]?.takeIf {
+            it.isNotBlank() && !it.contains("127.0.0.1") && !it.contains("localhost") && !it.contains("about:blank")
+        } ?: "https://alloha.tv"
 
         activeHeaders.forEach { (k, v) ->
             val lower = k.lowercase(Locale.ROOT)
             if (lower != "user-agent" && lower != "accept" && lower != "host" &&
-                lower != "content-length" && lower != "connection" && lower != "range") {
-                if ((lower == "referer" || lower == "origin") && (v.contains("127.0.0.1") || v.contains("localhost") || v.contains("about:blank"))) {
-                    // Skip loopback Referer/Origin
-                } else {
-                    builder.header(k, v)
-                    if (lower == "accepts-controls") {
-                        builder.header("Accepts-Controls", v)
-                    }
+                lower != "content-length" && lower != "connection" && lower != "range" &&
+                lower != "accept-encoding" && lower != "referer" && lower != "origin") {
+                builder.header(k, v)
+                if (lower == "accepts-controls") {
+                    builder.header("Accepts-Controls", v)
                 }
             }
         }
 
-        val activeRef = activeHeaders["referer"]
-        if (activeRef.isNullOrBlank() || activeRef.contains("127.0.0.1") || activeRef.contains("localhost") || activeRef.contains("about:blank")) {
-            builder.header("Referer", "$fallbackOrigin/")
-        }
-        val activeOrig = activeHeaders["origin"]
-        if (activeOrig.isNullOrBlank() || activeOrig.contains("127.0.0.1") || activeOrig.contains("localhost") || activeOrig.contains("about:blank")) {
-            builder.header("Origin", fallbackOrigin)
-        }
+        builder.header("Referer", activeRef)
+        builder.header("Origin", activeOrig)
 
-        try {
-            val cookieHost = uri?.host
-            if (!cookieHost.isNullOrBlank() && (cleanUrl.startsWith("http://") || cleanUrl.startsWith("https://"))) {
-                val cookieUrl = "${uri.scheme ?: "https"}://$cookieHost/"
-                val cookie = runCatching { CookieManager.getInstance().getCookie(cookieUrl) }.getOrNull()
-                if (!cookie.isNullOrBlank()) builder.header("Cookie", cookie)
-            }
-        } catch (_: Throwable) {}
         return builder
     }
 

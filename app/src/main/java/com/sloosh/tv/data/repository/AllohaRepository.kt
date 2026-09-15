@@ -129,6 +129,10 @@ fun allohaTranslationNamesMatch(lhs: String?, rhs: String?, exactOnly: Boolean =
 
     if (left == right) return true
 
+    val leftWordsSorted = left.split(Regex("""\s+""")).filter { it.isNotBlank() }.sorted().joinToString(" ")
+    val rightWordsSorted = right.split(Regex("""\s+""")).filter { it.isNotBlank() }.sorted().joinToString(" ")
+    if (leftWordsSorted.isNotEmpty() && leftWordsSorted == rightWordsSorted) return true
+
     // Strict language mismatch check on raw strings
     val langLeft = detectLanguageTag(lhsRaw)
     val langRight = detectLanguageTag(rhsRaw)
@@ -172,13 +176,12 @@ fun allohaTranslationNamesMatch(lhs: String?, rhs: String?, exactOnly: Boolean =
         return false
     }
 
-    if (exactOnly) return false
-
     // Check for specific studio names
     val studios = listOf(
         "red head sound", "rhs", "flarrow", "lostfilm", "tvshows", "newstudio", "newcomers",
         "alexfilm", "кубик", "hdrezka", "rezka", "baibako", "jaskier", "vsi", "iron voice",
-        "кураж бамбей", "лостфильм", "ньюстудио"
+        "кураж бамбей", "лостфильм", "ньюстудио", "пифагор", "невафильм", "мост видео",
+        "coldfilm", "колдфильм", "anilibria", "анилибрия", "anidub", "анидаб", "force media", "good people"
     )
     val leftStudios = studios.filter { left.contains(it) }
     val rightStudios = studios.filter { right.contains(it) }
@@ -186,9 +189,16 @@ fun allohaTranslationNamesMatch(lhs: String?, rhs: String?, exactOnly: Boolean =
     if (leftStudios.isNotEmpty() && rightStudios.isNotEmpty()) {
         val shared = leftStudios.toSet().intersect(rightStudios.toSet())
         if (shared.isEmpty()) return false
+        // Shared studio with same non-unknown voice type is an exact match
+        if (typeLeft == typeRight && typeLeft != TranslationVoiceType.UNKNOWN) {
+            return true
+        }
+        if (exactOnly) return false
         // Shared studio must still respect voice type
         return typeLeft == typeRight || (typeLeft == TranslationVoiceType.UNKNOWN || typeRight == TranslationVoiceType.UNKNOWN)
     }
+
+    if (exactOnly) return false
 
     val exclusiveStudios = listOf(
         "red head sound", "rhs", "flarrow", "lostfilm", "tvshows", "newstudio", "newcomers",

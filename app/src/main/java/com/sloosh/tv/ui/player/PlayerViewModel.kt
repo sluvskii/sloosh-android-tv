@@ -200,8 +200,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 val kpIdInt = mediaId.removePrefix("kp_").toIntOrNull()
                 val savedVoice = kpIdInt?.let { allohaRepository.getLastVoiceover(it) } ?: allohaRepository.getLastTranslation()
                 val targetVoice = selectedVoice?.takeIf { it.isNotBlank() } ?: savedVoice
-                val chosenAudio = findMatchingAudioVariant(audioVariants, targetVoice)
-                    ?: audioVariants.firstOrNull { it.url == iframeUrl }
+                val chosenAudio = audioVariants.firstOrNull { it.url == iframeUrl }
+                    ?: audioVariants.firstOrNull { it.id.isNotBlank() && (iframeUrl.contains("translation=${it.id}&") || iframeUrl.endsWith("translation=${it.id}")) }
+                    ?: (if (!selectedVoice.isNullOrBlank()) {
+                        audioVariants.firstOrNull { allohaTranslationNamesMatch(it.title, selectedVoice, exactOnly = true) }
+                            ?: findMatchingAudioVariant(audioVariants, selectedVoice)
+                    } else null)
+                    ?: findMatchingAudioVariant(audioVariants, targetVoice)
                     ?: audioVariants.firstOrNull()
 
                 if (chosenAudio != null) {

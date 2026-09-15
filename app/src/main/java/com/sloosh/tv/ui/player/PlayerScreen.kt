@@ -321,18 +321,35 @@ fun PlayerScreen(
                     var bestTrackIndex = 0
 
                     if (!targetTitle.isNullOrBlank()) {
+                        // 1. Try exact translation match first (distinguishes Дубляж vs Многоголосый for same studio)
                         for (group in audioGroups) {
                             val mg = group.mediaTrackGroup
                             for (i in 0 until mg.length) {
                                 val format = mg.getFormat(i)
                                 val label = format.label.orEmpty()
-                                if (label.isNotBlank() && allohaTranslationNamesMatch(label, targetTitle, exactOnly = false)) {
+                                if (label.isNotBlank() && allohaTranslationNamesMatch(label, targetTitle, exactOnly = true)) {
                                     bestGroup = group
                                     bestTrackIndex = i
                                     break
                                 }
                             }
                             if (bestGroup != null) break
+                        }
+                        // 2. Fallback to fuzzy match if exact match not found
+                        if (bestGroup == null) {
+                            for (group in audioGroups) {
+                                val mg = group.mediaTrackGroup
+                                for (i in 0 until mg.length) {
+                                    val format = mg.getFormat(i)
+                                    val label = format.label.orEmpty()
+                                    if (label.isNotBlank() && allohaTranslationNamesMatch(label, targetTitle, exactOnly = false)) {
+                                        bestGroup = group
+                                        bestTrackIndex = i
+                                        break
+                                    }
+                                }
+                                if (bestGroup != null) break
+                            }
                         }
                     }
 
@@ -384,18 +401,35 @@ fun PlayerScreen(
             var bestTrackIndex = 0
 
             if (!targetTitle.isNullOrBlank()) {
+                // 1. Try exact translation match first
                 for (group in audioGroups) {
                     val mg = group.mediaTrackGroup
                     for (i in 0 until mg.length) {
                         val format = mg.getFormat(i)
                         val label = format.label.orEmpty()
-                        if (label.isNotBlank() && allohaTranslationNamesMatch(label, targetTitle, exactOnly = false)) {
+                        if (label.isNotBlank() && allohaTranslationNamesMatch(label, targetTitle, exactOnly = true)) {
                             bestGroup = group
                             bestTrackIndex = i
                             break
                         }
                     }
                     if (bestGroup != null) break
+                }
+                // 2. Fallback to fuzzy match
+                if (bestGroup == null) {
+                    for (group in audioGroups) {
+                        val mg = group.mediaTrackGroup
+                        for (i in 0 until mg.length) {
+                            val format = mg.getFormat(i)
+                            val label = format.label.orEmpty()
+                            if (label.isNotBlank() && allohaTranslationNamesMatch(label, targetTitle, exactOnly = false)) {
+                                bestGroup = group
+                                bestTrackIndex = i
+                                break
+                            }
+                        }
+                        if (bestGroup != null) break
+                    }
                 }
             }
 
@@ -433,25 +467,61 @@ fun PlayerScreen(
     }
 
     // Video quality switching via ExoPlayer native trackSelectionParameters (seamless 4K & adaptive)
-    LaunchedEffect(state.currentQuality) {
+    LaunchedEffect(state.currentQuality, exoPlayer.currentTracks) {
         val quality = state.currentQuality ?: return@LaunchedEffect
         if (quality.label == "Авто") {
             exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
                 .buildUpon()
                 .clearVideoSizeConstraints()
                 .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+                .setExceedVideoConstraintsIfNecessary(true)
+                .setExceedRendererCapabilitiesIfNecessary(true)
                 .build()
             Log.d("PlayerScreen", "ExoPlayer video quality set to Auto (adaptive)")
         } else {
             val targetHeight = quality.label.removeSuffix("p").toIntOrNull()
                 ?: if (quality.label.contains("4k", ignoreCase = true) || quality.label.contains("uhd", ignoreCase = true)) 2160 else null
             if (targetHeight != null) {
-                exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
-                    .buildUpon()
-                    .setMaxVideoSize(Int.MAX_VALUE, targetHeight)
-                    .setMinVideoSize(0, targetHeight)
-                    .build()
-                Log.d("PlayerScreen", "ExoPlayer video quality constrained to height=$targetHeight (${quality.label})")
+                val videoGroups = exoPlayer.currentTracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }
+                var matchedGroup: androidx.media3.common.Tracks.Group? = null
+                var matchedTrackIndex = 0
+
+                // Match track by height or 4K width (widescreen 4K movies have height 1600-2160)
+                for (group in videoGroups) {
+                    val mg = group.mediaTrackGroup
+                    for (i in 0 until mg.length) {
+                        val format = mg.getFormat(i)
+                        val h = format.height
+                        val w = format.width
+                        val is4k = targetHeight >= 2160 && (h >= 1440 || w >= 2560)
+                        val isMatch = is4k || (h in (targetHeight - 80)..(targetHeight + 80))
+                        if (isMatch) {
+                            matchedGroup = group
+                            matchedTrackIndex = i
+                            break
+                        }
+                    }
+                    if (matchedGroup != null) break
+                }
+
+                if (matchedGroup != null) {
+                    exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+                        .buildUpon()
+                        .clearVideoSizeConstraints()
+                        .setExceedVideoConstraintsIfNecessary(true)
+                        .setExceedRendererCapabilitiesIfNecessary(true)
+                        .setOverrideForType(androidx.media3.common.TrackSelectionOverride(matchedGroup.mediaTrackGroup, listOf(matchedTrackIndex)))
+                        .build()
+                    Log.d("PlayerScreen", "ExoPlayer video quality overridden to track [group=${matchedGroup.mediaTrackGroup}, track=$matchedTrackIndex] for ${quality.label}")
+                } else {
+                    exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+                        .buildUpon()
+                        .setMaxVideoSize(Int.MAX_VALUE, targetHeight)
+                        .setExceedVideoConstraintsIfNecessary(true)
+                        .setExceedRendererCapabilitiesIfNecessary(true)
+                        .build()
+                    Log.d("PlayerScreen", "ExoPlayer video quality constrained to height<=$targetHeight (${quality.label})")
+                }
             }
         }
     }
