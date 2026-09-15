@@ -484,15 +484,19 @@ fun PlayerScreen(
                 var matchedGroup: androidx.media3.common.Tracks.Group? = null
                 var matchedTrackIndex = 0
 
-                // Match track by height or 4K width (widescreen 4K movies have height 1600-2160)
+                // Match track by height or widescreen dimensions (e.g. 1080p widescreen 1920x800, 720p widescreen 1280x534)
                 for (group in videoGroups) {
                     val mg = group.mediaTrackGroup
                     for (i in 0 until mg.length) {
                         val format = mg.getFormat(i)
                         val h = format.height
                         val w = format.width
-                        val is4k = targetHeight >= 2160 && (h >= 1440 || w >= 2560)
-                        val isMatch = is4k || (h in (targetHeight - 80)..(targetHeight + 80))
+                        val is4k = targetHeight >= 2160 && (h >= 1400 || w >= 2560)
+                        val is1080 = targetHeight in 1000..1200 && (h in 700..1200 || w in 1700..2100)
+                        val is720 = targetHeight in 700..900 && (h in 480..800 || w in 1100..1500)
+                        val is480 = targetHeight in 450..550 && (h in 320..550 || w in 600..900)
+                        val is360 = targetHeight in 300..400 && (h in 200..400 || w in 350..550)
+                        val isMatch = is4k || is1080 || is720 || is480 || is360 || (h in (targetHeight - 80)..(targetHeight + 80))
                         if (isMatch) {
                             matchedGroup = group
                             matchedTrackIndex = i
@@ -512,9 +516,10 @@ fun PlayerScreen(
                 } else {
                     exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
                         .buildUpon()
-                        .setMaxVideoSize(Int.MAX_VALUE, targetHeight)
+                        .clearVideoSizeConstraints()
+                        .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
                         .build()
-                    Log.d("PlayerScreen", "ExoPlayer video quality constrained to height<=$targetHeight (${quality.label})")
+                    Log.d("PlayerScreen", "ExoPlayer video quality constraints cleared for dedicated stream ${quality.label}")
                 }
             }
         }

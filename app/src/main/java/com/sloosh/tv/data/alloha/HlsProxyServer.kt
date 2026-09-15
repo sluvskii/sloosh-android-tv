@@ -8,6 +8,7 @@ import kotlinx.coroutines.*
 import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import com.sloosh.tv.ui.util.CodecHelper
 import java.io.*
 import java.net.InetSocketAddress
 import java.net.ServerSocket
@@ -431,8 +432,9 @@ class HlsProxyServer(
 
         val hasStreamInf = rawLines.any { it.trim().startsWith("#EXT-X-STREAM-INF") }
 
-        // Pass 1: Try rewriting with filters (AV1 check, failover audio filter, deduplication)
-        val filtered = doRewriteM3u8(rawLines, cleanBase, filterUnsupportedCodecs = true)
+        // Pass 1: Try rewriting with filters (AV1 check on devices lacking HW AV1, failover audio filter, deduplication)
+        val shouldFilterAv1 = !CodecHelper.isHardwareAv1Supported()
+        val filtered = doRewriteM3u8(rawLines, cleanBase, filterUnsupportedCodecs = shouldFilterAv1)
 
         // Safety check (mirrors iOS PlaybackHlsRewriter.swift):
         // If the original had #EXT-X-STREAM-INF, but the filtered result has NO #EXT-X-STREAM-INF left,

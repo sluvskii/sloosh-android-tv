@@ -81,11 +81,14 @@ object AllohaRuntimeParser {
                 val keys = quality.keys()
                 while (keys.hasNext()) {
                     val label = keys.next()
+                    val is4kKey = label.lowercase(Locale.ROOT).let { it.contains("4k") || it.contains("2160") || it.contains("uhd") }
                     val rawValue = quality.get(label)
                     for (rawURL in qualityURLStrings(rawValue)) {
                         val urls = allohaURLs(rawURL, baseUrl)
-                        if (masterURL == null) masterURL = urls.firstOrNull { isMasterM3u8(it) }
-                        if (itemMasterURL == null) itemMasterURL = urls.firstOrNull { isMasterM3u8(it) }
+                        if (!is4kKey) {
+                            if (masterURL == null) masterURL = urls.firstOrNull { isMasterM3u8(it) }
+                            if (itemMasterURL == null) itemMasterURL = urls.firstOrNull { isMasterM3u8(it) }
+                        }
                         val target = urls.firstOrNull { !isMasterM3u8(it) } ?: urls.firstOrNull() ?: continue
 
                         val variant = QualityVariant(
@@ -98,7 +101,13 @@ object AllohaRuntimeParser {
                 }
 
                 val sortedItemVariants = itemVariants.sortedBy { qualityHeight(it.label) }
-                val chosenURL = itemMasterURL ?: sortedItemVariants.lastOrNull()?.url
+                // For the default stream (under "Авто"), select the highest safe resolution up to 1080p
+                // so that devices without hardware AV1 4K don't choke on a 1 FPS CPU software decode.
+                // 4K (2160p) remains available in qualityVariants if user explicitly chooses it.
+                val preferred1080Variants = sortedItemVariants.filter { qualityHeight(it.label) <= 1080 }
+                val chosenURL = itemMasterURL
+                    ?: preferred1080Variants.lastOrNull()?.url
+                    ?: sortedItemVariants.lastOrNull()?.url
                 if (chosenURL != null) {
                     audioVariants.add(
                         AudioVariant(
@@ -115,6 +124,7 @@ object AllohaRuntimeParser {
             val deduped = deduplicatedAudioVariants(audioVariants)
             val pickedURL = deduped.firstOrNull()?.url
                 ?: masterURL
+                ?: qualityVariants.filter { qualityHeight(it.label) <= 1080 }.lastOrNull()?.url
                 ?: qualityVariants.lastOrNull()?.url
             pickedURL ?: continue
 
@@ -608,8 +618,9 @@ object AllohaRuntimeParser {
             if (trimmed.startsWith("#EXT-X-STREAM-INF:")) {
                 val resMatch = Regex("""RESOLUTION=(\d+)x(\d+)""").find(trimmed)
                 if (resMatch != null) {
-                    val height = resMatch.groupValues[2]
-                    curRes = "${height}p"
+                    val w = resMatch.groupValues[1].toIntOrNull() ?: 0
+                    val h = resMatch.groupValues[2].toIntOrNull() ?: 0
+                    curRes = normalizeResolutionDimensions(w, h)
                 } else {
                     val bwMatch = Regex("""BANDWIDTH=(\d+)""").find(trimmed)
                     if (bwMatch != null) {
@@ -633,6 +644,18 @@ object AllohaRuntimeParser {
             }
         }
         return list.distinctBy { it.label }.sortedByDescending { qualityHeight(it.label) }
+    }
+
+    fun normalizeResolutionDimensions(w: Int, h: Int): String {
+        return when {
+            w >= 2560 || h >= 1440 -> "2160p"
+            w in 1700..2559 || h in 750..1439 -> "1080p"
+            w in 1100..1699 || h in 500..749 -> "720p"
+            w in 600..1099 || h in 350..499 -> "480p"
+            w in 350..599 || h in 200..349 -> "360p"
+            h > 0 -> "${h}p"
+            else -> "Поток"
+        }
     }
 }
 

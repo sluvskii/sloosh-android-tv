@@ -329,6 +329,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     qualities.addAll(audio.qualityVariants.filter { it.label != "Авто" })
                     val activeQuality = qualities.firstOrNull { it.label == _uiState.value.currentQuality?.label }
                         ?: autoQ
+                    val targetStreamUrl = if (activeQuality.label == "Авто" || activeQuality.url.isBlank()) {
+                        newUrl
+                    } else {
+                        proxy.updateMasterUrl(activeQuality.url)
+                        proxy.proxyUrl(activeQuality.url)
+                    }
                     val updatedStream = _uiState.value.resolvedStream?.copy(
                         videoUrl = newUrl,
                         qualityVariants = qualities
@@ -336,7 +342,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         resolvedStream = updatedStream,
-                        currentVideoUrl = newUrl,
+                        currentVideoUrl = targetStreamUrl,
                         currentQuality = activeQuality
                     )
                     return@launch
@@ -381,6 +387,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     val activeQuality = qualities.firstOrNull { it.label == _uiState.value.currentQuality?.label }
                         ?: autoQ
 
+                    val targetStreamUrl = if (activeQuality.label == "Авто" || activeQuality.url.isBlank()) {
+                        newUrl
+                    } else {
+                        proxy.updateMasterUrl(activeQuality.url)
+                        proxy.proxyUrl(activeQuality.url)
+                    }
+
                     val updatedResolved = _uiState.value.resolvedStream?.copy(
                         videoUrl = newUrl,
                         qualityVariants = qualities,
@@ -394,7 +407,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         resolvedStream = updatedResolved,
-                        currentVideoUrl = newUrl,
+                        currentVideoUrl = targetStreamUrl,
                         currentQuality = activeQuality
                     )
                 } else {
@@ -414,11 +427,28 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun selectQuality(quality: QualityVariant) {
-        // We do NOT replace currentVideoUrl with quality variant URL because variant playlists
-        // lack audio track declarations (#EXT-X-MEDIA:TYPE=AUDIO).
-        // ExoPlayer switches renditions seamlessly in-place via TrackSelectionParameters.
+        val proxy = HlsProxyServer.shared
+        val curQuality = _uiState.value.currentQuality
+        if (curQuality?.label == quality.label && curQuality.url == quality.url) return
+
+        val targetUrl = if (quality.label == "Авто") {
+            _uiState.value.resolvedStream?.videoUrl ?: quality.url
+        } else {
+            quality.url
+        }
+
+        val effectiveProxyUrl = if (targetUrl.contains("127.0.0.1") || targetUrl.contains("localhost")) {
+            targetUrl
+        } else {
+            proxy.updateMasterUrl(targetUrl)
+            proxy.proxyUrl(targetUrl)
+        }
+
+        Log.d(TAG, "selectQuality: Switching to quality=${quality.label}, targetUrl=$targetUrl, effectiveProxyUrl=$effectiveProxyUrl")
+
         _uiState.value = _uiState.value.copy(
-            currentQuality = quality
+            currentQuality = quality,
+            currentVideoUrl = effectiveProxyUrl
         )
     }
 
