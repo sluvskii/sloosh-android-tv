@@ -474,7 +474,6 @@ fun PlayerScreen(
                 .buildUpon()
                 .clearVideoSizeConstraints()
                 .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
-                .setExceedVideoConstraintsIfNecessary(true)
                 .setExceedRendererCapabilitiesIfNecessary(true)
                 .build()
             Log.d("PlayerScreen", "ExoPlayer video quality set to Auto (adaptive)")
@@ -508,7 +507,6 @@ fun PlayerScreen(
                     exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
                         .buildUpon()
                         .clearVideoSizeConstraints()
-                        .setExceedVideoConstraintsIfNecessary(true)
                         .setExceedRendererCapabilitiesIfNecessary(true)
                         .setOverrideForType(androidx.media3.common.TrackSelectionOverride(matchedGroup.mediaTrackGroup, listOf(matchedTrackIndex)))
                         .build()
@@ -517,7 +515,6 @@ fun PlayerScreen(
                     exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
                         .buildUpon()
                         .setMaxVideoSize(Int.MAX_VALUE, targetHeight)
-                        .setExceedVideoConstraintsIfNecessary(true)
                         .setExceedRendererCapabilitiesIfNecessary(true)
                         .build()
                     Log.d("PlayerScreen", "ExoPlayer video quality constrained to height<=$targetHeight (${quality.label})")
