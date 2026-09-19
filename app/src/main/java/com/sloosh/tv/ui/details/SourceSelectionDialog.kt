@@ -1,12 +1,17 @@
 package com.sloosh.tv.ui.details
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -19,8 +24,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -31,6 +39,8 @@ import com.kyant.capsule.ContinuousCapsule
 import com.kyant.capsule.ContinuousRoundedRectangle
 import com.sloosh.tv.data.api.AllohaApiResult
 import com.sloosh.tv.data.api.AllohaTranslation
+import com.sloosh.tv.data.repository.AppSettings
+import com.sloosh.tv.data.repository.VideoQualityPreference
 import com.sloosh.tv.data.repository.allohaTranslationNamesMatch
 import com.sloosh.tv.ui.components.SlooshButton
 import com.sloosh.tv.ui.components.SlooshFocusableCard
@@ -40,7 +50,8 @@ import com.sloosh.tv.ui.components.SlooshFocusableCard
 data class SourceSelectionResult(
     val translation: AllohaTranslation,
     val season: Int?,
-    val episode: Int?
+    val episode: Int?,
+    val preferredQuality: String? = null
 )
 
 // ─── Availability helpers (ported 1:1 from iOS SourceSelectionView.swift) ───
@@ -269,6 +280,17 @@ fun SourceSelectionContentView(
         }
     }
 
+    val context = LocalContext.current
+    val appSettings = remember { AppSettings(context) }
+    var showQualityPicker by remember { mutableStateOf(false) }
+    var pendingTranslation by remember { mutableStateOf<AllohaTranslation?>(null) }
+    var pendingSeason by remember { mutableStateOf<Int?>(null) }
+    var pendingEpisode by remember { mutableStateOf<Int?>(null) }
+
+    BackHandler(enabled = showQualityPicker) {
+        showQualityPicker = false
+    }
+
     fun finishAction() {
         if (isSerial) {
             val s = selectedSeason ?: return
@@ -279,13 +301,29 @@ fun SourceSelectionContentView(
             val translation = epObj.translations.firstOrNull {
                 allohaTranslationNamesMatch(it.name, tName, exactOnly = true)
             } ?: epObj.translations.firstOrNull() ?: return
-            onSelect(SourceSelectionResult(translation, s, e))
+
+            if (appSettings.preferredQuality == VideoQualityPreference.ASK) {
+                pendingTranslation = translation
+                pendingSeason = s
+                pendingEpisode = e
+                showQualityPicker = true
+            } else {
+                onSelect(SourceSelectionResult(translation, s, e, appSettings.preferredQuality.id))
+            }
         } else {
             val tName = selectedTranslationName ?: return
             val translation = allohaData.movie?.translations?.firstOrNull {
                 it.name == tName
             } ?: allohaData.movie?.translations?.firstOrNull() ?: return
-            onSelect(SourceSelectionResult(translation, null, null))
+
+            if (appSettings.preferredQuality == VideoQualityPreference.ASK) {
+                pendingTranslation = translation
+                pendingSeason = null
+                pendingEpisode = null
+                showQualityPicker = true
+            } else {
+                onSelect(SourceSelectionResult(translation, null, null, appSettings.preferredQuality.id))
+            }
         }
     }
 
@@ -296,9 +334,213 @@ fun SourceSelectionContentView(
         } catch (_: Exception) {}
     }
 
+    if (showQualityPicker && pendingTranslation != null) {
+        QualitySelectionContentView(
+            title = allohaData.title,
+            initialQuality = VideoQualityPreference.AUTO,
+            onConfirm = { chosenQuality, rememberChoice ->
+                if (rememberChoice) {
+                    appSettings.preferredQuality = chosenQuality
+                }
+                onSelect(
+                    SourceSelectionResult(
+                        translation = pendingTranslation!!,
+                        season = pendingSeason,
+                        episode = pendingEpisode,
+                        preferredQuality = chosenQuality.id
+                    )
+                )
+            },
+            onBack = {
+                showQualityPicker = false
+            }
+        )
+    } else {
+        Column(
+            modifier = Modifier
+                .widthIn(max = 940.dp)
+                .fillMaxHeight()
+                .clip(ContinuousRoundedRectangle(24.dp))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0xFF1C1C1E), Color(0xFF141416))
+                    )
+                )
+                .border(1.dp, Color.White.copy(alpha = 0.12f), ContinuousRoundedRectangle(24.dp))
+        ) {
+            // ─── Header ─────────────────────────────────────────
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 36.dp, end = 28.dp, top = 24.dp, bottom = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = allohaData.title,
+                        style = MaterialTheme.typography.headlineMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 24.sp,
+                            letterSpacing = (-0.5).sp
+                        ),
+                        color = Color.White
+                    )
+                    Text(
+                        text = if (isSerial) "Выбор озвучки, сезона и серии" else "Выбор озвучки",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 13.sp,
+                            color = Color.White.copy(alpha = 0.5f)
+                        ),
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.08f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Закрыть",
+                        tint = Color.White.copy(alpha = 0.6f),
+                        modifier = Modifier
+                            .size(18.dp)
+                            .clickable { onDismiss() }
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(Color.White.copy(alpha = 0.08f))
+            )
+
+            // ─── Scrollable Pickers ──────────────────────────────
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 36.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // 1. Translation picker
+                SectionHeader("Озвучка")
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    allTranslations.forEach { tName ->
+                        val isSelected = selectedTranslationName != null && allohaTranslationNamesMatch(tName, selectedTranslationName!!, exactOnly = true)
+                        val isAvailable = isTranslationAvailable(allohaData, tName, selectedSeason, selectedEpisode)
+                        SelectorChip(
+                            label = tName,
+                            isSelected = isSelected,
+                            isAvailable = isAvailable,
+                            onClick = { selectTranslation(tName) }
+                        )
+                    }
+                }
+
+                // 2. Season picker (if serial)
+                if (isSerial && allSeasons.size > 1) {
+                    SectionHeader("Сезон")
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        allSeasons.forEach { sNum ->
+                            val isSelected = selectedSeason == sNum
+                            val isAvailable = isSeasonAvailable(allohaData, sNum, selectedTranslationName)
+                            SelectorChip(
+                                label = "$sNum сезон",
+                                isSelected = isSelected,
+                                isAvailable = isAvailable,
+                                onClick = { selectSeason(sNum) }
+                            )
+                        }
+                    }
+                }
+
+                // 3. Episode picker (if serial)
+                if (isSerial && currentEpisodes.isNotEmpty()) {
+                    SectionHeader("Серия")
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        currentEpisodes.forEach { eNum ->
+                            val isSelected = selectedEpisode == eNum
+                            val isAvailable = isEpisodeAvailable(allohaData, selectedSeason, eNum, selectedTranslationName)
+                            SelectorChip(
+                                label = "$eNum серия",
+                                isSelected = isSelected,
+                                isAvailable = isAvailable,
+                                onClick = { selectEpisode(eNum) }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(4.dp))
+            }
+
+            // ─── Bottom "Смотреть" button ────────────────────────
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 36.dp, vertical = 20.dp)
+            ) {
+                PlayButton(
+                    isReadyToPlay = isReadyToPlay,
+                    focusRequester = playButtonFocusRequester,
+                    onClick = { if (isReadyToPlay) finishAction() }
+                )
+            }
+        }
+    }
+}
+
+// ─── Quality Selection View (iOS Parity) ──────────────────────────────────────
+
+@Composable
+fun QualitySelectionContentView(
+    title: String,
+    initialQuality: VideoQualityPreference = VideoQualityPreference.AUTO,
+    onConfirm: (VideoQualityPreference, Boolean) -> Unit,
+    onBack: () -> Unit
+) {
+    var selectedQuality by remember { mutableStateOf(initialQuality) }
+    var rememberChoice by remember { mutableStateOf(false) }
+
+    val continueButtonFocusRequester = remember { FocusRequester() }
+    val qualityOptions = remember {
+        listOf(
+            VideoQualityPreference.AUTO,
+            VideoQualityPreference.Q1080,
+            VideoQualityPreference.Q720,
+            VideoQualityPreference.Q480,
+            VideoQualityPreference.Q360
+        )
+    }
+
+    LaunchedEffect(Unit) {
+        try {
+            continueButtonFocusRequester.requestFocus()
+        } catch (_: Exception) {}
+    }
+
     Column(
         modifier = Modifier
-            .widthIn(max = 940.dp)
+            .widthIn(max = 620.dp)
             .fillMaxHeight()
             .clip(ContinuousRoundedRectangle(24.dp))
             .background(
@@ -312,13 +554,13 @@ fun SourceSelectionContentView(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 36.dp, end = 28.dp, top = 24.dp, bottom = 12.dp),
+                .padding(start = 36.dp, end = 28.dp, top = 28.dp, bottom = 16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = allohaData.title,
+                    text = "Качество видео",
                     style = MaterialTheme.typography.headlineMedium.copy(
                         fontWeight = FontWeight.Bold,
                         fontSize = 24.sp,
@@ -327,128 +569,232 @@ fun SourceSelectionContentView(
                     color = Color.White
                 )
                 Text(
-                    text = if (isSerial) "Выбор озвучки, сезона и серии" else "Выбор озвучки",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
-                    color = Color.White.copy(alpha = 0.50f),
-                    modifier = Modifier.padding(top = 4.dp)
+                    text = title.ifBlank { "Выберите качество для воспроизведения" },
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 13.sp,
+                        color = Color.White.copy(alpha = 0.5f)
+                    ),
+                    maxLines = 1,
+                    modifier = Modifier.padding(top = 2.dp)
                 )
             }
-
-            SlooshFocusableCard(
-                onClick = onDismiss,
-                shape = CircleShape,
-                modifier = Modifier.size(40.dp)
-            ) { isFocused ->
-                Box(
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.08f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Закрыть",
+                    tint = Color.White.copy(alpha = 0.6f),
                     modifier = Modifier
-                        .fillMaxSize()
-                        .clip(CircleShape)
-                        .background(if (isFocused) Color.White else Color.White.copy(alpha = 0.12f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Закрыть",
-                        tint = if (isFocused) Color.Black else Color.White,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+                        .size(18.dp)
+                        .clickable { onBack() }
+                )
             }
         }
 
-        // ─── Scrollable sections with multi-line FlowRow ──────
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 36.dp)
-        ) {
-            // ── Translations ─────────────────────────────────
-            if (allTranslations.isNotEmpty()) {
-                SectionLabel("Озвучка")
-                Spacer(Modifier.height(12.dp))
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 24.dp)
-                ) {
-                    allTranslations.forEach { tName ->
-                        val isSelected = selectedTranslationName == tName
-                        val isAvailable = isTranslationAvailable(allohaData, tName, selectedSeason, selectedEpisode)
-                        SelectorChip(
-                            label = com.sloosh.tv.ui.util.cleanTranslationName(tName),
-                            isSelected = isSelected,
-                            isAvailable = isAvailable,
-                            onClick = { selectTranslation(tName) }
-                        )
-                    }
-                }
-            }
-
-            // ── Seasons ──────────────────────────────────────
-            if (isSerial && allSeasons.isNotEmpty()) {
-                SectionLabel("Сезон")
-                Spacer(Modifier.height(12.dp))
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 24.dp)
-                ) {
-                    allSeasons.forEach { sNum ->
-                        val isSelected = selectedSeason == sNum
-                        val isAvailable = isSeasonAvailable(allohaData, sNum, selectedTranslationName)
-                        SelectorChip(
-                            label = "$sNum сезон",
-                            isSelected = isSelected,
-                            isAvailable = isAvailable,
-                            onClick = { selectSeason(sNum) }
-                        )
-                    }
-                }
-            }
-
-            // ── Episodes ─────────────────────────────────────
-            if (isSerial && currentEpisodes.isNotEmpty()) {
-                SectionLabel("Серия")
-                Spacer(Modifier.height(12.dp))
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 24.dp)
-                ) {
-                    currentEpisodes.forEach { eNum ->
-                        val isSelected = selectedEpisode == eNum
-                        val isAvailable = isEpisodeAvailable(allohaData, selectedSeason, eNum, selectedTranslationName)
-                        SelectorChip(
-                            label = "$eNum серия",
-                            isSelected = isSelected,
-                            isAvailable = isAvailable,
-                            onClick = { selectEpisode(eNum) }
-                        )
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(4.dp))
-        }
-
-        // ─── Bottom "Смотреть" button ────────────────────────
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 36.dp, vertical = 20.dp)
+                .height(1.dp)
+                .background(Color.White.copy(alpha = 0.08f))
+        )
+
+        // ─── Options List ────────────────────────────────────
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 36.dp, vertical = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            PlayButton(
-                isReadyToPlay = isReadyToPlay,
-                focusRequester = playButtonFocusRequester,
-                onClick = { if (isReadyToPlay) finishAction() }
+            qualityOptions.forEach { quality ->
+                val isSelected = selectedQuality == quality
+                var isFocused by remember { mutableStateOf(false) }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(ContinuousRoundedRectangle(14.dp))
+                        .background(
+                            if (isFocused) Color.White.copy(alpha = 0.16f)
+                            else if (isSelected) Color.White.copy(alpha = 0.08f)
+                            else Color.White.copy(alpha = 0.03f)
+                        )
+                        .border(
+                            width = if (isFocused) 1.5.dp else if (isSelected) 1.dp else 0.dp,
+                            color = if (isFocused) Color.White else if (isSelected) Color.White.copy(alpha = 0.3f) else Color.Transparent,
+                            shape = ContinuousRoundedRectangle(14.dp)
+                        )
+                        .onFocusChanged { isFocused = it.isFocused }
+                        .focusable()
+                        .clickable { selectedQuality = quality }
+                        .onPreviewKeyEvent { keyEvent ->
+                            if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                (keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
+                                 keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_ENTER)) {
+                                selectedQuality = quality
+                                true
+                            } else false
+                        }
+                        .padding(horizontal = 20.dp, vertical = 14.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = quality.title,
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                fontWeight = if (isSelected || isFocused) FontWeight.SemiBold else FontWeight.Normal,
+                                fontSize = 16.sp
+                            ),
+                            color = if (isSelected || isFocused) Color.White else Color.White.copy(alpha = 0.7f)
+                        )
+                        if (isSelected) {
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = Color.Black,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // ─── "Запомнить выбор" toggle row ────────────────
+            var isToggleFocused by remember { mutableStateOf(false) }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(ContinuousRoundedRectangle(14.dp))
+                    .background(
+                        if (isToggleFocused) Color.White.copy(alpha = 0.16f)
+                        else Color.White.copy(alpha = 0.05f)
+                    )
+                    .border(
+                        width = if (isToggleFocused) 1.5.dp else 1.dp,
+                        color = if (isToggleFocused) Color.White else Color.White.copy(alpha = 0.08f),
+                        shape = ContinuousRoundedRectangle(14.dp)
+                    )
+                    .onFocusChanged { isToggleFocused = it.isFocused }
+                    .focusable()
+                    .clickable { rememberChoice = !rememberChoice }
+                    .onPreviewKeyEvent { keyEvent ->
+                        if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                            (keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
+                             keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_ENTER)) {
+                            rememberChoice = !rememberChoice
+                            true
+                        } else false
+                    }
+                    .padding(horizontal = 20.dp, vertical = 14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Запомнить выбор",
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 15.sp
+                            ),
+                            color = Color.White
+                        )
+                        Text(
+                            text = "Вы всегда можете изменить качество по умолчанию в настройках",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 11.sp,
+                                color = Color.White.copy(alpha = 0.45f)
+                            ),
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (rememberChoice) Color.White else Color.White.copy(alpha = 0.15f)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (rememberChoice) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = Color.Black,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(Color.White.copy(alpha = 0.08f))
+        )
+
+        // ─── Bottom Actions ──────────────────────────────────
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 36.dp, vertical = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SlooshButton(
+                text = "Назад",
+                onClick = onBack,
+                isWhite = false,
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.ArrowBack,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                },
+                modifier = Modifier.weight(1f)
+            )
+
+            SlooshButton(
+                text = "Продолжить",
+                onClick = { onConfirm(selectedQuality, rememberChoice) },
+                isWhite = true,
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        tint = Color.Black,
+                        modifier = Modifier.size(20.dp)
+                    )
+                },
+                modifier = Modifier
+                    .weight(1.5f)
+                    .focusRequester(continueButtonFocusRequester)
             )
         }
     }

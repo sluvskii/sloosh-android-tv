@@ -55,6 +55,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     private var currentMediaId: String = ""
     private var currentIframeUrl: String = ""
+    private var requestedInitialQuality: String? = null
 
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -69,10 +70,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         episode: Int? = null,
         initialTitle: String? = null,
         selectedVoice: String? = null,
-        directStreamUrl: String? = null
+        directStreamUrl: String? = null,
+        initialQuality: String? = null
     ) {
         currentMediaId = mediaId
         currentIframeUrl = iframeUrl
+        requestedInitialQuality = initialQuality
 
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
@@ -173,7 +176,17 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 qualities.add(autoQuality)
                 qualities.addAll(sortedResolutions)
 
-                val activeQuality = autoQuality
+                val targetPref = initialQuality?.lowercase(Locale.ROOT)?.trim()
+                val matchedQuality = if (!targetPref.isNullOrBlank() && targetPref != "auto" && targetPref != "ask") {
+                    qualities.firstOrNull {
+                        it.label.equals(targetPref, ignoreCase = true) ||
+                        it.label.equals("${targetPref}p", ignoreCase = true) ||
+                        it.label.removeSuffix("p").equals(targetPref.removeSuffix("p"), ignoreCase = true)
+                    } ?: autoQuality
+                } else {
+                    autoQuality
+                }
+                val activeQuality = matchedQuality
 
                 // Gather available audio translations from catalog
                 val allohaResult = _uiState.value.allohaData
@@ -227,12 +240,18 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     )
                     return@launch
                 }
-                proxy.updateMasterUrl(activeStreamUrl)
 
-                val effectiveProxyUrl = if (activeStreamUrl.contains("127.0.0.1") || activeStreamUrl.contains("localhost")) {
-                    activeStreamUrl
+                val chosenQualityUrl = if (activeQuality != autoQuality && activeQuality.url.isNotBlank() && isPlayableMediaUrl(activeQuality.url)) {
+                    activeQuality.url
                 } else {
-                    proxy.proxyUrl(activeStreamUrl)
+                    activeStreamUrl
+                }
+                proxy.updateMasterUrl(chosenQualityUrl)
+
+                val effectiveProxyUrl = if (chosenQualityUrl.contains("127.0.0.1") || chosenQualityUrl.contains("localhost")) {
+                    chosenQualityUrl
+                } else {
+                    proxy.proxyUrl(chosenQualityUrl)
                 }
 
                 val streamWithProxy = resolvedStream.copy(
@@ -270,10 +289,26 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                                     val currentStream = _uiState.value.resolvedStream
                                     if (currentStream != null) {
                                         val curQ = _uiState.value.currentQuality
-                                        val preservedQuality = allQualities.firstOrNull { it.label == curQ?.label } ?: autoQuality
+                                        val reqPref = requestedInitialQuality?.lowercase(Locale.ROOT)?.trim()
+                                        val preservedQuality = allQualities.firstOrNull { it.label == curQ?.label }
+                                            ?: (if (!reqPref.isNullOrBlank() && reqPref != "auto" && reqPref != "ask") {
+                                                allQualities.firstOrNull {
+                                                    it.label.equals(reqPref, ignoreCase = true) ||
+                                                    it.label.equals("${reqPref}p", ignoreCase = true) ||
+                                                    it.label.removeSuffix("p").equals(reqPref.removeSuffix("p"), ignoreCase = true)
+                                                }
+                                            } else null)
+                                            ?: autoQuality
+                                        val updatedVideoUrl = if (preservedQuality != autoQuality && curQ == autoQuality && preservedQuality.url.isNotBlank() && isPlayableMediaUrl(preservedQuality.url)) {
+                                            proxy.updateMasterUrl(preservedQuality.url)
+                                            proxy.proxyUrl(preservedQuality.url)
+                                        } else {
+                                            _uiState.value.currentVideoUrl
+                                        }
                                         _uiState.value = _uiState.value.copy(
                                             resolvedStream = currentStream.copy(qualityVariants = allQualities),
-                                            currentQuality = preservedQuality
+                                            currentQuality = preservedQuality,
+                                            currentVideoUrl = updatedVideoUrl
                                         )
                                     }
                                 }

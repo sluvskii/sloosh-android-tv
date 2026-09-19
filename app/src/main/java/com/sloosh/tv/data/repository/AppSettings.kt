@@ -8,8 +8,37 @@ enum class DetailsScreenStyle(val id: String, val title: String) {
     SIDE_POSTER("side_poster", "С постером сбоку")
 }
 
+enum class VideoQualityPreference(val id: String, val title: String, val shortTitle: String) {
+    ASK("ask", "Спрашивать каждый раз", "Спрашивать"),
+    AUTO("auto", "Авто (до 1080p)", "Авто"),
+    Q1080("1080p", "1080p", "1080p"),
+    Q720("720p", "720p", "720p"),
+    Q480("480p", "480p", "480p"),
+    Q360("360p", "360p", "360p");
+
+    companion object {
+        fun fromId(id: String?): VideoQualityPreference {
+            if (id.isNullOrBlank()) return ASK
+            return values().firstOrNull {
+                it.id.equals(id, ignoreCase = true) ||
+                it.name.equals(id, ignoreCase = true) ||
+                it.title.equals(id, ignoreCase = true)
+            } ?: ASK
+        }
+    }
+}
+
 class AppSettings(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("sloosh_tv_settings", Context.MODE_PRIVATE)
+
+    var preferredQuality: VideoQualityPreference
+        get() {
+            val saved = prefs.getString("preferred_video_quality", VideoQualityPreference.ASK.id)
+            return VideoQualityPreference.fromId(saved)
+        }
+        set(value) {
+            prefs.edit().putString("preferred_video_quality", value.id).apply()
+        }
 
     var detailsStyle: DetailsScreenStyle
         get() {
@@ -38,3 +67,4 @@ class AppSettings(context: Context) {
             prefs.edit().putInt("grid_columns", value).apply()
         }
 }
+

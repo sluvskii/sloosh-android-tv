@@ -75,6 +75,7 @@ fun PlayerScreen(
     episode: Int? = null,
     selectedVoice: String? = null,
     directStreamUrl: String? = null,
+    initialQuality: String? = null,
     viewModel: PlayerViewModel = viewModel(),
     modifier: Modifier = Modifier
 ) {
@@ -101,8 +102,8 @@ fun PlayerScreen(
 
     var hasAutoRetried by remember { mutableStateOf(false) }
 
-    LaunchedEffect(iframeUrl, season, episode, title, selectedVoice, directStreamUrl) {
-        viewModel.initPlayer(iframeUrl, mediaId, season, episode, title, selectedVoice, directStreamUrl)
+    LaunchedEffect(iframeUrl, season, episode, title, selectedVoice, directStreamUrl, initialQuality) {
+        viewModel.initPlayer(iframeUrl, mediaId, season, episode, title, selectedVoice, directStreamUrl, initialQuality)
     }
 
     val exoPlayer = remember(context) {
@@ -117,6 +118,7 @@ fun PlayerScreen(
                 .setPreferredAudioLanguage("ru")
                 .setPreferredTextLanguage("ru")
                 .setSelectUndeterminedTextLanguage(true)
+                .setMaxVideoSize(1920, 1088)
                 .build()
         }
 
@@ -472,10 +474,10 @@ fun PlayerScreen(
         if (quality.label == "Авто") {
             exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
                 .buildUpon()
-                .clearVideoSizeConstraints()
+                .setMaxVideoSize(1920, 1088)
                 .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
                 .build()
-            Log.d("PlayerScreen", "ExoPlayer video quality set to Auto (adaptive)")
+            Log.d("PlayerScreen", "ExoPlayer video quality set to Auto (adaptive, capped at 1080p)")
         } else {
             val targetHeight = quality.label.removeSuffix("p").toIntOrNull()
                 ?: if (quality.label.contains("4k", ignoreCase = true) || quality.label.contains("uhd", ignoreCase = true)) 2160 else null

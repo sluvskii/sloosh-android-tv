@@ -34,6 +34,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.kyant.capsule.ContinuousCapsule
 import com.kyant.capsule.ContinuousRoundedRectangle
+import com.sloosh.tv.data.repository.VideoQualityPreference
 import com.sloosh.tv.ui.components.SlooshButton
 import com.sloosh.tv.ui.theme.*
 import kotlinx.coroutines.delay
@@ -57,6 +58,7 @@ fun SettingsScreen(
     var selectedCategory by remember { mutableStateOf(SettingsCategory.PLAYBACK) }
     var isHighPosterQuality by remember { mutableStateOf(appSettings.isHighPosterQuality) }
     var isAutoplayEnabled by remember { mutableStateOf(appSettings.isAutoplayEnabled) }
+    var preferredQuality by remember { mutableStateOf(appSettings.preferredQuality) }
     var gridColumns by remember { mutableStateOf(appSettings.gridColumns) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
 
@@ -288,6 +290,27 @@ fun SettingsScreen(
                                 SettingsCategory.PLAYBACK -> {
                                     item {
                                         SettingCard(
+                                            icon = Icons.Default.HighQuality,
+                                            title = "Качество видео по умолчанию",
+                                            description = "Использовать выбранное качество при запуске видео",
+                                            control = {
+                                                SegmentedToggle(
+                                                    options = VideoQualityPreference.values().map { it.shortTitle },
+                                                    selectedIndex = VideoQualityPreference.values().indexOf(preferredQuality).coerceAtLeast(0),
+                                                    onSelect = { index ->
+                                                        val chosen = VideoQualityPreference.values().getOrNull(index) ?: VideoQualityPreference.ASK
+                                                        preferredQuality = chosen
+                                                        appSettings.preferredQuality = chosen
+                                                    },
+                                                    focusRequester = firstActionFocusRequester,
+                                                    onNavigateLeft = returnToCategory
+                                                )
+                                            }
+                                        )
+                                    }
+
+                                    item {
+                                        SettingCard(
                                             icon = Icons.Default.FastForward,
                                             title = "Автопереход к следующей серии",
                                             description = "Автоматически включать следующую серию",
@@ -298,7 +321,6 @@ fun SettingsScreen(
                                                         isAutoplayEnabled = it
                                                         appSettings.isAutoplayEnabled = it
                                                     },
-                                                    focusRequester = firstActionFocusRequester,
                                                     onNavigateLeft = returnToCategory
                                                 )
                                             }
