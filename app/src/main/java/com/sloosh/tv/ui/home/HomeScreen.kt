@@ -487,19 +487,10 @@ fun MediaCard(
         LaunchedEffect(Unit) { onFocus() }
     }
 
-    val cardScale by animateFloatAsState(
-        targetValue = if (isFocused) 1.035f else 1.0f,
-        animationSpec = spring(
-            dampingRatio = 0.82f,
-            stiffness = 340f
-        ),
-        label = "cardScale"
-    )
-
-    val cardBgColor by animateColorAsState(
-        targetValue = if (isFocused) Color.White else Color.Transparent,
+    val bgAlpha by animateFloatAsState(
+        targetValue = if (isFocused) 1f else 0f,
         animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
-        label = "cardBgColor"
+        label = "cardBgAlpha"
     )
 
     val titleColor by animateColorAsState(
@@ -512,6 +503,12 @@ fun MediaCard(
         targetValue = if (isFocused) Color.Black.copy(alpha = 0.65f) else Color.White.copy(alpha = 0.50f),
         animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
         label = "cardMetaColor"
+    )
+
+    val posterAlpha by animateFloatAsState(
+        targetValue = if (isFocused) 1.0f else 0.88f,
+        animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+        label = "posterAlpha"
     )
 
     val cardPaddingHorizontal = if (compact) 5.dp else 6.dp
@@ -530,16 +527,12 @@ fun MediaCard(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            .zIndex(if (isFocused) 10f else 1f)
-            .graphicsLayer {
-                scaleX = cardScale
-                scaleY = cardScale
-            },
+            .zIndex(if (isFocused) 10f else 1f),
         interactionSource = interactionSource,
         shape = CardDefaults.shape(shape = cardShape),
         colors = CardDefaults.colors(
-            containerColor = cardBgColor,
-            focusedContainerColor = cardBgColor
+            containerColor = Color.Transparent,
+            focusedContainerColor = Color.Transparent
         ),
         scale = CardDefaults.scale(
             scale = 1.0f,
@@ -563,6 +556,8 @@ fun MediaCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .clip(cardShape)
+                .background(Color.White.copy(alpha = bgAlpha))
                 .padding(
                     start = cardPaddingHorizontal,
                     top = cardPaddingTop,
@@ -577,6 +572,7 @@ fun MediaCard(
                     .aspectRatio(2f / 3f)
                     .clip(posterShape)
                     .background(SurfaceDark)
+                    .graphicsLayer { alpha = posterAlpha }
             ) {
                 AsyncImage(
                     model = item.getDisplayPosterUrl(),
