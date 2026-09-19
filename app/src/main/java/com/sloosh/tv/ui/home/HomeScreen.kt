@@ -46,8 +46,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.sloosh.tv.data.api.MediaDto
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
@@ -471,8 +470,8 @@ private val CompactPosterShape = ContinuousRoundedRectangle(13.dp)
 private val StandardBadgeShape = ContinuousRoundedRectangle(7.dp)
 private val CompactBadgeShape = ContinuousRoundedRectangle(6.dp)
 
-private const val SHEEN_COS_THETA = 0.88295f // cos(28 deg)
-private const val SHEEN_SIN_THETA = 0.46947f // sin(28 deg)
+private const val SHEEN_COS_25 = 0.9063f // cos(25 deg)
+private const val SHEEN_SIN_25 = 0.4226f // sin(25 deg)
 
 @Composable
 fun MediaCard(
@@ -607,9 +606,6 @@ fun MediaCard(
                     contentDescription = item.displayTitle,
                     modifier = Modifier
                         .fillMaxSize()
-                        .graphicsLayer(
-                            compositingStrategy = if (isSheenActive) CompositingStrategy.Offscreen else CompositingStrategy.Auto
-                        )
                         .drawWithContent {
                             drawContent()
                             if (isSheenActive) {
@@ -619,38 +615,38 @@ fun MediaCard(
                                     val progress = sheenProgress.value
                                     // Плавная синусоидальная огибающая: 0 на границах, 1.0 в центре
                                     val envelope = kotlin.math.sin(progress * Math.PI.toFloat())
-                                    val maxProj = w * SHEEN_COS_THETA + h * SHEEN_SIN_THETA
-                                    val beamRadius = maxProj * 0.22f
-                                    val startC = -beamRadius * 1.5f
-                                    val endC = maxProj + beamRadius * 1.5f
-                                    val currentC = startC + (endC - startC) * progress
+                                    // Деликатная полупрозрачность (пик 20% белого света, 80% постера видно насквозь)
+                                    val peakAlpha = 0.20f * envelope
 
-                                    val peakAlpha = 0.65f * envelope
                                     if (peakAlpha > 0.005f) {
-                                        val pStart = androidx.compose.ui.geometry.Offset(
-                                            (currentC - beamRadius) * SHEEN_COS_THETA,
-                                            (currentC - beamRadius) * SHEEN_SIN_THETA
-                                        )
-                                        val pEnd = androidx.compose.ui.geometry.Offset(
-                                            (currentC + beamRadius) * SHEEN_COS_THETA,
-                                            (currentC + beamRadius) * SHEEN_SIN_THETA
-                                        )
-                                        drawRect(
-                                            brush = Brush.linearGradient(
-                                                0.00f to Color.Transparent,
-                                                0.20f to Color.White.copy(alpha = peakAlpha * 0.10f),
-                                                0.38f to Color.White.copy(alpha = peakAlpha * 0.35f),
-                                                0.46f to Color.White.copy(alpha = peakAlpha * 0.80f),
-                                                0.50f to Color.White.copy(alpha = peakAlpha),
-                                                0.54f to Color.White.copy(alpha = peakAlpha * 0.80f),
-                                                0.62f to Color.White.copy(alpha = peakAlpha * 0.35f),
-                                                0.80f to Color.White.copy(alpha = peakAlpha * 0.10f),
-                                                1.00f to Color.Transparent,
-                                                start = pStart,
-                                                end = pEnd
-                                            ),
-                                            blendMode = BlendMode.Screen
-                                        )
+                                        val beamWidth = w * 0.45f
+                                        val halfBeam = beamWidth / 2f
+                                        val diagonal = kotlin.math.hypot(w, h)
+                                        val beamHeight = diagonal * 1.5f
+
+                                        val spanX = w * SHEEN_COS_25 + h * SHEEN_SIN_25
+                                        val startX = (w / 2f) - (spanX / 2f) - halfBeam - 20f
+                                        val endX = (w / 2f) + (spanX / 2f) + halfBeam + 20f
+                                        val currentX = startX + (endX - startX) * progress
+
+                                        rotate(degrees = -25f, pivot = center) {
+                                            drawRect(
+                                                brush = Brush.horizontalGradient(
+                                                    0.00f to Color.White.copy(alpha = 0f),
+                                                    0.25f to Color.White.copy(alpha = peakAlpha * 0.35f),
+                                                    0.50f to Color.White.copy(alpha = peakAlpha),
+                                                    0.75f to Color.White.copy(alpha = peakAlpha * 0.35f),
+                                                    1.00f to Color.White.copy(alpha = 0f),
+                                                    startX = currentX - halfBeam,
+                                                    endX = currentX + halfBeam
+                                                ),
+                                                topLeft = androidx.compose.ui.geometry.Offset(
+                                                    currentX - halfBeam,
+                                                    (h / 2f) - (beamHeight / 2f)
+                                                ),
+                                                size = androidx.compose.ui.geometry.Size(beamWidth, beamHeight)
+                                            )
+                                        }
                                     }
                                 }
                             }
