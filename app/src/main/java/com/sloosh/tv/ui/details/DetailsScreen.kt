@@ -3,6 +3,7 @@ package com.sloosh.tv.ui.details
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -10,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -39,6 +41,9 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import android.view.KeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -164,8 +169,33 @@ private fun SidePosterDetailsLayout(
     val coroutineScope = rememberCoroutineScope()
     val backButtonFocusRequester = remember { FocusRequester() }
     val moreButtonFocusRequester = remember { FocusRequester() }
+    val firstCastFocusRequester = remember { FocusRequester() }
+    val firstSimilarFocusRequester = remember { FocusRequester() }
     var isExpanded by remember { mutableStateOf(false) }
     var canExpand by remember(details.description) { mutableStateOf(false) }
+
+    var screenHeightPx by remember { mutableFloatStateOf(0f) }
+    var castSectionY by remember { mutableFloatStateOf(0f) }
+    var castSectionHeight by remember { mutableFloatStateOf(0f) }
+    var similarSectionY by remember { mutableFloatStateOf(0f) }
+    var similarSectionHeight by remember { mutableFloatStateOf(0f) }
+    var focusedSection by remember { mutableStateOf("top") } // "top", "cast", "similar"
+
+    val scrollToCenter: (Float, Float) -> Unit = { contentY, contentHeight ->
+        if (screenHeightPx > 0f) {
+            val target = (contentY - (screenHeightPx / 2f) + (contentHeight / 2f)).coerceAtLeast(0f).toInt()
+            coroutineScope.launch {
+                scrollState.animateScrollTo(
+                    value = target,
+                    animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing)
+                )
+            }
+        } else {
+            coroutineScope.launch {
+                scrollState.animateScrollTo(contentY.toInt())
+            }
+        }
+    }
 
     val context = androidx.compose.ui.platform.LocalContext.current
     val posterUrl = details.getDisplayPosterUrl()
@@ -201,10 +231,17 @@ private fun SidePosterDetailsLayout(
         )
     }
 
+    // Dynamic backdrop dissolve on vertical scroll
+    val currentScroll = scrollState.value
+    val backdropAlpha = (1f - (currentScroll / 260f)).coerceIn(0f, 1f)
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(ambientColor)
+            .onGloballyPositioned { coordinates ->
+                screenHeightPx = coordinates.size.height.toFloat()
+            }
     ) {
         // Subtle depth gradient
         Box(
@@ -213,596 +250,748 @@ private fun SidePosterDetailsLayout(
                 .background(depthGradient)
         )
 
-        // Native aspect-ratio backdrop shifted to the right, with ultra-smooth alpha fade on its left edge
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.CenterEnd
-        ) {
-            AsyncImage(
-                model = backdropUrl,
-                contentDescription = null,
+        // Native aspect-ratio backdrop shifted to the right, smoothly dissolving on scroll down
+        if (backdropAlpha > 0.005f) {
+            Box(
                 modifier = Modifier
-                    .fillMaxHeight()
-                    .aspectRatio(16f / 9f)
-                    .offset(x = 155.dp)
-                    .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
-                    .drawWithContent {
-                        drawContent()
-                        drawRect(
-                            brush = Brush.horizontalGradient(
-                                colorStops = fadeGradientStops,
-                                startX = 0f,
-                                endX = size.width * 0.72f
-                            ),
-                            blendMode = BlendMode.DstIn
-                        )
-                    },
-                contentScale = ContentScale.FillHeight
-            )
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = backdropAlpha },
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                AsyncImage(
+                    model = backdropUrl,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .aspectRatio(16f / 9f)
+                        .offset(x = 155.dp)
+                        .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                        .drawWithContent {
+                            drawContent()
+                            drawRect(
+                                brush = Brush.horizontalGradient(
+                                    colorStops = fadeGradientStops,
+                                    startX = 0f,
+                                    endX = size.width * 0.72f
+                                ),
+                                blendMode = BlendMode.DstIn
+                            )
+                        },
+                    contentScale = ContentScale.FillHeight
+                )
+            }
         }
 
+        // Full-screen vertical scrollable column (unrestricted width for carousels)
         Column(
             modifier = Modifier
-                .fillMaxHeight()
-                .fillMaxWidth(0.56f)
+                .fillMaxSize()
                 .verticalScroll(scrollState)
-                .padding(start = 56.dp, top = 36.dp, end = 24.dp, bottom = 48.dp)
+                .padding(bottom = 64.dp)
         ) {
-            // ─── Top Back Button ──────────────────────────────────────────────
-            if (onBackClick != null) {
-                SlooshFocusableCard(
-                    onClick = onBackClick,
-                    shape = CircleShape,
-                    modifier = Modifier
-                        .size(44.dp)
-                        .focusRequester(backButtonFocusRequester)
-                        .onPreviewKeyEvent { keyEvent ->
-                            if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
-                                keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN
-                            ) {
-                                try {
-                                    watchButtonFocusRequester.requestFocus()
-                                    true
-                                } catch (e: Exception) {
-                                    false
-                                }
-                            } else false
-                        }
-                ) { isFocused ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                if (isFocused) Color.White.copy(alpha = 0.30f)
-                                else Color.White.copy(alpha = 0.12f)
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = "Назад",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(20.dp))
-            }
-
-            // ─── Logo or Title ────────────────────────────────────────────────
-            val logoUrl = details.getDisplayLogoUrl()
-            if (logoUrl != null) {
-                AsyncImage(
-                    model = logoUrl,
-                    contentDescription = details.title,
-                    modifier = Modifier
-                        .height(80.dp)
-                        .widthIn(max = 320.dp),
-                    contentScale = ContentScale.Fit
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-            } else {
-                Text(
-                    text = details.title ?: details.originalTitle ?: "Без названия",
-                    fontSize = 36.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    lineHeight = 42.sp,
-                    letterSpacing = (-0.4).sp
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            // ─── Top Details Section (Left 54% width) ─────────────────
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth(0.54f)
+                    .padding(start = 56.dp, top = 36.dp, end = 24.dp)
             ) {
-                val kpRating = details.ratings?.kp
-                if (kpRating != null && kpRating > 0) {
-                    Box(
+                // Top Back Button
+                if (onBackClick != null) {
+                    SlooshFocusableCard(
+                        onClick = onBackClick,
+                        shape = CircleShape,
                         modifier = Modifier
-                            .clip(ContinuousRoundedRectangle(7.dp))
-                            .background(ratingColor(kpRating))
-                            .padding(horizontal = 6.5.dp, vertical = 2.5.dp)
-                    ) {
+                            .size(44.dp)
+                            .focusRequester(backButtonFocusRequester)
+                            .onFocusChanged {
+                                if (it.isFocused && focusedSection != "top") {
+                                    focusedSection = "top"
+                                    coroutineScope.launch {
+                                        scrollState.animateScrollTo(0, animationSpec = tween(350, easing = FastOutSlowInEasing))
+                                    }
+                                }
+                            }
+                            .onPreviewKeyEvent { keyEvent ->
+                                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
+                                    keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN
+                                ) {
+                                    try {
+                                        watchButtonFocusRequester.requestFocus()
+                                        true
+                                    } catch (e: Exception) {
+                                        false
+                                    }
+                                } else false
+                            }
+                    ) { isFocused ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    if (isFocused) Color.White.copy(alpha = 0.30f)
+                                    else Color.White.copy(alpha = 0.12f)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ArrowBack,
+                                contentDescription = "Назад",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
+
+                // Logo or Title
+                val logoUrl = details.getDisplayLogoUrl()
+                if (logoUrl != null) {
+                    AsyncImage(
+                        model = logoUrl,
+                        contentDescription = details.title,
+                        modifier = Modifier
+                            .height(80.dp)
+                            .widthIn(max = 320.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                } else {
+                    Text(
+                        text = details.title ?: details.originalTitle ?: "Без названия",
+                        fontSize = 36.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        lineHeight = 42.sp,
+                        letterSpacing = (-0.4).sp
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    val kpRating = details.ratings?.kp
+                    if (kpRating != null && kpRating > 0) {
+                        Box(
+                            modifier = Modifier
+                                .clip(ContinuousRoundedRectangle(7.dp))
+                                .background(ratingColor(kpRating))
+                                .padding(horizontal = 6.5.dp, vertical = 2.5.dp)
+                        ) {
+                            Text(
+                                text = String.format(java.util.Locale.US, "%.1f", kpRating),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 13.5.sp,
+                                    letterSpacing = (-0.2).sp
+                                ),
+                                color = Color.White
+                            )
+                        }
+                    }
+
+                    if (details.year != null) {
                         Text(
-                            text = String.format(java.util.Locale.US, "%.1f", kpRating),
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 13.5.sp,
-                                letterSpacing = (-0.2).sp
-                            ),
-                            color = Color.White
+                            text = "${details.year}",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = TextSecondaryDark
                         )
                     }
-                }
 
-                if (details.year != null) {
-                    Text(
-                        text = "${details.year}",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = TextSecondaryDark
-                    )
-                }
+                    if (details.duration != null && details.duration > 0) {
+                        val h = details.duration / 60
+                        val m = details.duration % 60
+                        val durStr = if (h > 0) "${h} ч ${m} мин" else "$m мин"
+                        Text(
+                            text = durStr,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = TextSecondaryDark
+                        )
+                    }
 
-                if (details.duration != null && details.duration > 0) {
-                    val h = details.duration / 60
-                    val m = details.duration % 60
-                    val durText = if (h > 0) "${h} ч ${m} мин" else "${m} мин"
-                    Text(
-                        durText,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = TextSecondaryDark
-                    )
-                }
-
-                if (!details.countries.isNullOrEmpty()) {
-                    Text(
-                        text = details.countries.take(2).joinToString(", "),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = TextSecondaryDark
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            if (!details.genres.isNullOrEmpty()) {
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(end = 16.dp)
-                ) {
-                    items(details.genres) { genre ->
+                    if (!details.ageRating.isNullOrEmpty()) {
                         Box(
                             modifier = Modifier
                                 .clip(ContinuousCapsule)
                                 .background(Color.White.copy(alpha = 0.12f))
-                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                text = genre,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.White.copy(alpha = 0.9f)
+                                text = details.ageRating,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White.copy(alpha = 0.8f)
                             )
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(16.dp))
+
+                // Genres
+                val genres = details.genres
+                if (!genres.isNullOrEmpty()) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text(
+                        text = genres.joinToString(" • "),
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = 13.5.sp,
+                            letterSpacing = (-0.1).sp
+                        ),
+                        color = TextSecondaryDark,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                // Description
+                val desc = details.description
+                if (!desc.isNullOrEmpty()) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = desc,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontSize = 13.5.sp,
+                                lineHeight = 19.5.sp
+                            ),
+                            color = Color.White.copy(alpha = 0.72f),
+                            textAlign = TextAlign.Start,
+                            maxLines = if (isExpanded) Int.MAX_VALUE else 4,
+                            overflow = TextOverflow.Ellipsis,
+                            onTextLayout = { textLayoutResult ->
+                                if (!isExpanded) {
+                                    canExpand = textLayoutResult.hasVisualOverflow || textLayoutResult.lineCount > 4
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        if (canExpand) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            SlooshFocusableCard(
+                                onClick = { isExpanded = !isExpanded },
+                                shape = ContinuousCapsule,
+                                modifier = Modifier
+                                    .wrapContentSize()
+                                    .focusRequester(moreButtonFocusRequester)
+                                    .onFocusChanged {
+                                        if (it.isFocused && focusedSection != "top") {
+                                            focusedSection = "top"
+                                            coroutineScope.launch {
+                                                scrollState.animateScrollTo(0, animationSpec = tween(350, easing = FastOutSlowInEasing))
+                                            }
+                                        }
+                                    }
+                                    .onPreviewKeyEvent { keyEvent ->
+                                        if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                                            when (keyEvent.nativeKeyEvent.keyCode) {
+                                                KeyEvent.KEYCODE_DPAD_UP -> {
+                                                    try {
+                                                        if (onBackClick != null) {
+                                                            backButtonFocusRequester.requestFocus()
+                                                            true
+                                                        } else false
+                                                    } catch (e: Exception) {
+                                                        false
+                                                    }
+                                                }
+                                                KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                                    try {
+                                                        watchButtonFocusRequester.requestFocus()
+                                                        true
+                                                    } catch (e: Exception) {
+                                                        false
+                                                    }
+                                                }
+                                                else -> false
+                                            }
+                                        } else false
+                                    }
+                            ) { isFocused ->
+                                Box(
+                                    modifier = Modifier
+                                        .clip(ContinuousCapsule)
+                                        .background(
+                                            if (isFocused) Color.White.copy(alpha = 0.28f)
+                                            else Color.White.copy(alpha = 0.12f)
+                                        )
+                                        .padding(horizontal = 14.dp, vertical = 5.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = if (isExpanded) "Свернуть" else "Ещё",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 12.sp,
+                                            letterSpacing = 0.sp
+                                        ),
+                                        color = if (isFocused) Color.White else Color.White.copy(alpha = 0.85f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(18.dp))
+                }
+
+                // Progress Bar
+                val prog = state.progress
+                if (prog != null && prog.progressFraction > 0.01f) {
+                    val posSec = prog.positionSec.toInt()
+                    val durSec = prog.durationSec.toInt()
+                    val posStr = String.format("%02d:%02d", posSec / 60, posSec % 60)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    ) {
+                        Text(
+                            text = "Просмотрено $posStr",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.90f)
+                        )
+                        if (durSec > 0) {
+                            val durStr = if (durSec >= 3600)
+                                String.format("%d:%02d:%02d", durSec / 3600, (durSec % 3600) / 60, durSec % 60)
+                            else
+                                String.format("%02d:%02d", durSec / 60, durSec % 60)
+                            Text(
+                                text = " / $durStr",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextMutedDark
+                            )
+                        }
+                    }
+                    LinearProgressIndicator(
+                        progress = { prog.progressFraction },
+                        color = Color.White,
+                        trackColor = Color.White.copy(alpha = 0.18f),
+                        modifier = Modifier
+                            .fillMaxWidth(0.9f)
+                            .height(3.dp)
+                            .clip(ContinuousCapsule)
+                    )
+                    Spacer(modifier = Modifier.height(18.dp))
+                }
+
+                // Action Buttons (Watch & Favorite)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    val hasProgress = prog != null && prog.positionSec > 10
+                    val buttonText = if (hasProgress) {
+                        val posStr = String.format("%02d:%02d", prog!!.positionSec.toInt() / 60, prog.positionSec.toInt() % 60)
+                        "Продолжить с $posStr"
+                    } else "Смотреть"
+
+                    SlooshButton(
+                        text = buttonText,
+                        onClick = { viewModel.openSourceSheet() },
+                        isWhite = true,
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = null,
+                                tint = Color.Black,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        },
+                        modifier = Modifier
+                            .widthIn(max = 240.dp)
+                            .focusRequester(watchButtonFocusRequester)
+                            .onFocusChanged {
+                                if (it.isFocused && focusedSection != "top") {
+                                    focusedSection = "top"
+                                    coroutineScope.launch {
+                                        scrollState.animateScrollTo(0, animationSpec = tween(350, easing = FastOutSlowInEasing))
+                                    }
+                                }
+                            }
+                            .onPreviewKeyEvent { keyEvent ->
+                                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                                    when (keyEvent.nativeKeyEvent.keyCode) {
+                                        KeyEvent.KEYCODE_DPAD_UP -> {
+                                            try {
+                                                if (canExpand) {
+                                                    moreButtonFocusRequester.requestFocus()
+                                                    true
+                                                } else if (onBackClick != null) {
+                                                    backButtonFocusRequester.requestFocus()
+                                                    true
+                                                } else false
+                                            } catch (e: Exception) {
+                                                false
+                                            }
+                                        }
+                                        KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                            val cast = details.cast
+                                            val similar = details.similar
+                                            if (!cast.isNullOrEmpty()) {
+                                                firstCastFocusRequester.requestFocus()
+                                                true
+                                            } else if (!similar.isNullOrEmpty()) {
+                                                firstSimilarFocusRequester.requestFocus()
+                                                true
+                                            } else false
+                                        }
+                                        else -> false
+                                    }
+                                } else false
+                            }
+                    )
+
+                    var favBounce by remember { mutableStateOf(false) }
+                    val favScale by animateFloatAsState(
+                        targetValue = if (favBounce) 1.4f else 1.0f,
+                        animationSpec = spring(dampingRatio = 0.4f, stiffness = 400f),
+                        finishedListener = { favBounce = false },
+                        label = "favScale"
+                    )
+                    SlooshFocusableCard(
+                        onClick = {
+                            favBounce = true
+                            viewModel.toggleFavorite()
+                        },
+                        shape = CircleShape,
+                        modifier = Modifier
+                            .size(52.dp)
+                            .onFocusChanged {
+                                if (it.isFocused && focusedSection != "top") {
+                                    focusedSection = "top"
+                                    coroutineScope.launch {
+                                        scrollState.animateScrollTo(0, animationSpec = tween(350, easing = FastOutSlowInEasing))
+                                    }
+                                }
+                            }
+                            .onPreviewKeyEvent { keyEvent ->
+                                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                                    when (keyEvent.nativeKeyEvent.keyCode) {
+                                        KeyEvent.KEYCODE_DPAD_UP -> {
+                                            try {
+                                                if (canExpand) {
+                                                    moreButtonFocusRequester.requestFocus()
+                                                    true
+                                                } else if (onBackClick != null) {
+                                                    backButtonFocusRequester.requestFocus()
+                                                    true
+                                                } else false
+                                            } catch (e: Exception) {
+                                                false
+                                            }
+                                        }
+                                        KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                            val cast = details.cast
+                                            val similar = details.similar
+                                            if (!cast.isNullOrEmpty()) {
+                                                firstCastFocusRequester.requestFocus()
+                                                true
+                                            } else if (!similar.isNullOrEmpty()) {
+                                                firstSimilarFocusRequester.requestFocus()
+                                                true
+                                            } else false
+                                        }
+                                        else -> false
+                                    }
+                                } else false
+                            }
+                    ) { _ ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    if (state.isFavorite) Color.White.copy(alpha = 0.25f)
+                                    else Color.White.copy(alpha = 0.1f)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (state.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = "Избранное",
+                                tint = if (state.isFavorite) Color.White else Color.White.copy(alpha = 0.8f),
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .scale(favScale)
+                            )
+                        }
+                    }
+                }
             }
 
-            // Description
-            if (!details.description.isNullOrEmpty()) {
-                val desc = details.description
-
+            // ─── Cast / Actors Section (Full 100% Screen Width) ───────
+            val cast = details.cast
+            if (!cast.isNullOrEmpty()) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(end = 16.dp)
+                        .onGloballyPositioned { coordinates ->
+                            castSectionY = coordinates.positionInParent().y + scrollState.value
+                            castSectionHeight = coordinates.size.height.toFloat()
+                        }
                 ) {
+                    Spacer(modifier = Modifier.height(28.dp))
                     Text(
-                        text = desc,
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontSize = 13.5.sp,
-                            lineHeight = 19.5.sp
+                        text = "В главных ролях",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            letterSpacing = (-0.2).sp
                         ),
-                        color = Color.White.copy(alpha = 0.72f),
-                        textAlign = TextAlign.Start,
-                        maxLines = if (isExpanded) Int.MAX_VALUE else 4,
-                        overflow = TextOverflow.Ellipsis,
-                        onTextLayout = { textLayoutResult ->
-                            if (!isExpanded) {
-                                canExpand = textLayoutResult.hasVisualOverflow || textLayoutResult.lineCount > 4
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
+                        color = Color.White,
+                        modifier = Modifier.padding(start = 56.dp)
                     )
-
-                    if (canExpand) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        SlooshFocusableCard(
-                            onClick = { isExpanded = !isExpanded },
-                            shape = ContinuousCapsule,
-                            modifier = Modifier
-                                .wrapContentSize()
-                                .focusRequester(moreButtonFocusRequester)
-                                .onPreviewKeyEvent { keyEvent ->
-                                    if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
-                                        when (keyEvent.nativeKeyEvent.keyCode) {
-                                            android.view.KeyEvent.KEYCODE_DPAD_UP -> {
-                                                try {
-                                                    if (onBackClick != null) {
-                                                        backButtonFocusRequester.requestFocus()
-                                                        true
-                                                    } else false
-                                                } catch (e: Exception) {
-                                                    false
-                                                }
-                                            }
-                                            android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
-                                                try {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        contentPadding = PaddingValues(start = 56.dp, end = 56.dp)
+                    ) {
+                        itemsIndexed(cast.take(24)) { index, actor ->
+                            SlooshFocusableCard(
+                                onClick = {
+                                    onNavigateToPerson?.invoke(actor.id.toString())
+                                },
+                                shape = ContinuousRoundedRectangle(16.dp),
+                                modifier = Modifier
+                                    .width(104.dp)
+                                    .then(if (index == 0) Modifier.focusRequester(firstCastFocusRequester) else Modifier)
+                                    .onFocusChanged {
+                                        if (it.isFocused && focusedSection != "cast") {
+                                            focusedSection = "cast"
+                                            scrollToCenter(castSectionY, castSectionHeight)
+                                        }
+                                    }
+                                    .onPreviewKeyEvent { keyEvent ->
+                                        if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                                            when (keyEvent.nativeKeyEvent.keyCode) {
+                                                KeyEvent.KEYCODE_DPAD_UP -> {
                                                     watchButtonFocusRequester.requestFocus()
                                                     true
-                                                } catch (e: Exception) {
-                                                    false
                                                 }
+                                                KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                                    val similar = details.similar
+                                                    if (!similar.isNullOrEmpty()) {
+                                                        firstSimilarFocusRequester.requestFocus()
+                                                        true
+                                                    } else false
+                                                }
+                                                else -> false
                                             }
-                                            else -> false
+                                        } else false
+                                    }
+                            ) { isFocused ->
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 10.dp, horizontal = 6.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(72.dp)
+                                            .clip(CircleShape)
+                                            .background(if (isFocused) Color.White.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.08f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        val photoUrl = actor.getDisplayPhotoUrl()
+                                        if (!photoUrl.isNullOrEmpty()) {
+                                            AsyncImage(
+                                                model = photoUrl,
+                                                contentDescription = actor.name,
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentScale = ContentScale.Crop
+                                            )
+                                        } else {
+                                            Text(
+                                                text = actor.name.take(1),
+                                                style = MaterialTheme.typography.titleMedium.copy(
+                                                    fontWeight = FontWeight.Bold
+                                                ),
+                                                color = Color.White.copy(alpha = 0.7f)
+                                            )
                                         }
-                                    } else false
-                                }
-                        ) { isFocused ->
-                            Box(
-                                modifier = Modifier
-                                    .clip(ContinuousCapsule)
-                                    .background(
-                                        if (isFocused) Color.White.copy(alpha = 0.28f)
-                                        else Color.White.copy(alpha = 0.12f)
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = actor.name,
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 12.sp,
+                                            lineHeight = 15.sp,
+                                            fontWeight = if (isFocused) FontWeight.Bold else FontWeight.Medium,
+                                            textAlign = TextAlign.Center
+                                        ),
+                                        color = if (isFocused) Color.White else Color.White.copy(alpha = 0.88f),
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
                                     )
-                                    .padding(horizontal = 14.dp, vertical = 5.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = if (isExpanded) "Свернуть" else "Ещё",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 12.sp,
-                                        letterSpacing = 0.sp
-                                    ),
-                                    color = if (isFocused) Color.White else Color.White.copy(alpha = 0.85f)
-                                )
+                                    if (!actor.character.isNullOrBlank()) {
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = actor.character,
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 10.sp,
+                                                lineHeight = 12.sp,
+                                                textAlign = TextAlign.Center
+                                            ),
+                                            color = TextMutedDark,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(20.dp))
             }
 
-            val prog = state.progress
-            if (prog != null && prog.progressFraction > 0.01f) {
-                val posSec = prog.positionSec.toInt()
-                val durSec = prog.durationSec.toInt()
-                val posStr = String.format("%02d:%02d", posSec / 60, posSec % 60)
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(bottom = 8.dp)
+            // ─── Similar Movies Section (Full 100% Screen Width) ──────
+            val similar = details.similar
+            if (!similar.isNullOrEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onGloballyPositioned { coordinates ->
+                            similarSectionY = coordinates.positionInParent().y + scrollState.value
+                            similarSectionHeight = coordinates.size.height.toFloat()
+                        }
                 ) {
+                    Spacer(modifier = Modifier.height(32.dp))
                     Text(
-                        text = "Просмотрено $posStr",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White.copy(alpha = 0.90f)
+                        text = "Похожие",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            letterSpacing = (-0.2).sp
+                        ),
+                        color = Color.White,
+                        modifier = Modifier.padding(start = 56.dp)
                     )
-                    if (durSec > 0) {
-                        val durStr = if (durSec >= 3600)
-                            String.format("%d:%02d:%02d", durSec / 3600, (durSec % 3600) / 60, durSec % 60)
-                        else
-                            String.format("%02d:%02d", durSec / 60, durSec % 60)
-                        Text(
-                            text = " / $durStr",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = TextMutedDark
-                        )
-                    }
-                }
-                LinearProgressIndicator(
-                    progress = { prog.progressFraction },
-                    color = Color.White,
-                    trackColor = Color.White.copy(alpha = 0.18f),
-                    modifier = Modifier
-                        .fillMaxWidth(0.9f)
-                        .height(3.dp)
-                        .clip(ContinuousCapsule)
-                )
-                Spacer(modifier = Modifier.height(20.dp))
-            }
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                val hasProgress = prog != null && prog.positionSec > 10
-                val buttonText = if (hasProgress) {
-                    val posStr = String.format("%02d:%02d", prog!!.positionSec.toInt() / 60, prog.positionSec.toInt() % 60)
-                    "Продолжить с $posStr"
-                } else "Смотреть"
-
-                SlooshButton(
-                    text = buttonText,
-                    onClick = { viewModel.openSourceSheet() },
-                    isWhite = true,
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = null,
-                            tint = Color.Black,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    },
-                    modifier = Modifier
-                        .widthIn(max = 240.dp)
-                        .focusRequester(watchButtonFocusRequester)
-                        .onPreviewKeyEvent { keyEvent ->
-                            if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
-                                keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP
-                            ) {
-                                try {
-                                    if (canExpand) {
-                                        moreButtonFocusRequester.requestFocus()
-                                        true
-                                    } else if (onBackClick != null) {
-                                        backButtonFocusRequester.requestFocus()
-                                        true
-                                    } else false
-                                } catch (e: Exception) {
-                                    false
-                                }
-                            } else false
-                        }
-                )
-
-                var favBounce by remember { mutableStateOf(false) }
-                val favScale by animateFloatAsState(
-                    targetValue = if (favBounce) 1.4f else 1.0f,
-                    animationSpec = spring(dampingRatio = 0.4f, stiffness = 400f),
-                    finishedListener = { favBounce = false },
-                    label = "favScale"
-                )
-                SlooshFocusableCard(
-                    onClick = {
-                        favBounce = true
-                        viewModel.toggleFavorite()
-                    },
-                    shape = CircleShape,
-                    modifier = Modifier
-                        .size(52.dp)
-                        .onPreviewKeyEvent { keyEvent ->
-                            if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
-                                keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP
-                            ) {
-                                try {
-                                    if (canExpand) {
-                                        moreButtonFocusRequester.requestFocus()
-                                        true
-                                    } else if (onBackClick != null) {
-                                        backButtonFocusRequester.requestFocus()
-                                        true
-                                    } else false
-                                } catch (e: Exception) {
-                                    false
-                                }
-                            } else false
-                        }
-                ) { _ ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                if (state.isFavorite) Color.White.copy(alpha = 0.25f)
-                                else Color.White.copy(alpha = 0.1f)
-                            ),
-                        contentAlignment = Alignment.Center
+                    Spacer(modifier = Modifier.height(14.dp))
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        contentPadding = PaddingValues(start = 56.dp, end = 56.dp)
                     ) {
-                        Icon(
-                            imageVector = if (state.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = "Избранное",
-                            tint = if (state.isFavorite) Color.White else Color.White.copy(alpha = 0.8f),
-                            modifier = Modifier
-                                .size(24.dp)
-                                .scale(favScale)
-                        )
-                    }
-                }
-            }
-
-            // ─── Cast / Actors Section ────────────────────────────────────
-            val cast = details.cast
-            if (!cast.isNullOrEmpty()) {
-                Spacer(modifier = Modifier.height(28.dp))
-                Text(
-                    text = "В главных ролях",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp,
-                        letterSpacing = (-0.2).sp
-                    ),
-                    color = Color.White
-                )
-                Spacer(modifier = Modifier.height(14.dp))
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    contentPadding = PaddingValues(end = 24.dp)
-                ) {
-                    items(cast.take(16)) { actor ->
-                        SlooshFocusableCard(
-                            onClick = {
-                                onNavigateToPerson?.invoke(actor.id.toString())
-                            },
-                            shape = ContinuousRoundedRectangle(16.dp),
-                            modifier = Modifier.width(96.dp)
-                        ) { isFocused ->
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
+                        itemsIndexed(similar.take(20)) { index, item ->
+                            val targetId = item.originalId ?: item.identifier
+                            SlooshFocusableCard(
+                                onClick = {
+                                    if (targetId.isNotBlank()) {
+                                        onNavigateToMedia?.invoke(targetId)
+                                    }
+                                },
+                                shape = ContinuousRoundedRectangle(16.dp),
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp, horizontal = 6.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(68.dp)
-                                        .clip(CircleShape)
-                                        .background(if (isFocused) Color.White.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.08f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    val photoUrl = actor.getDisplayPhotoUrl()
-                                    if (!photoUrl.isNullOrEmpty()) {
+                                    .width(130.dp)
+                                    .height(195.dp)
+                                    .then(if (index == 0) Modifier.focusRequester(firstSimilarFocusRequester) else Modifier)
+                                    .onFocusChanged {
+                                        if (it.isFocused && focusedSection != "similar") {
+                                            focusedSection = "similar"
+                                            scrollToCenter(similarSectionY, similarSectionHeight)
+                                        }
+                                    }
+                                    .onPreviewKeyEvent { keyEvent ->
+                                        if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                                            when (keyEvent.nativeKeyEvent.keyCode) {
+                                                KeyEvent.KEYCODE_DPAD_UP -> {
+                                                    val cast = details.cast
+                                                    if (!cast.isNullOrEmpty()) {
+                                                        firstCastFocusRequester.requestFocus()
+                                                        true
+                                                    } else {
+                                                        watchButtonFocusRequester.requestFocus()
+                                                        true
+                                                    }
+                                                }
+                                                else -> false
+                                            }
+                                        } else false
+                                    }
+                            ) { isFocused ->
+                                Box(modifier = Modifier.fillMaxSize()) {
+                                    val itemPoster = item.getDisplayPosterUrl()
+                                    if (!itemPoster.isNullOrEmpty()) {
                                         AsyncImage(
-                                            model = photoUrl,
-                                            contentDescription = actor.name,
+                                            model = itemPoster,
+                                            contentDescription = item.displayTitle,
                                             modifier = Modifier.fillMaxSize(),
                                             contentScale = ContentScale.Crop
                                         )
                                     } else {
-                                        Text(
-                                            text = actor.name.take(1),
-                                            style = MaterialTheme.typography.titleMedium.copy(
-                                                fontWeight = FontWeight.Bold
-                                            ),
-                                            color = Color.White.copy(alpha = 0.7f)
-                                        )
-                                    }
-                                }
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = actor.name,
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontSize = 12.sp,
-                                        lineHeight = 14.sp,
-                                        textAlign = TextAlign.Center
-                                    ),
-                                    color = if (isFocused) Color.White else Color.White.copy(alpha = 0.88f),
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                if (!actor.character.isNullOrBlank()) {
-                                    Text(
-                                        text = actor.character,
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontSize = 10.sp,
-                                            lineHeight = 12.sp,
-                                            textAlign = TextAlign.Center
-                                        ),
-                                        color = TextMutedDark,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ─── Similar Movies Section ───────────────────────────────────
-            val similar = details.similar
-            if (!similar.isNullOrEmpty()) {
-                Spacer(modifier = Modifier.height(28.dp))
-                Text(
-                    text = "Похожие",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp,
-                        letterSpacing = (-0.2).sp
-                    ),
-                    color = Color.White
-                )
-                Spacer(modifier = Modifier.height(14.dp))
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    contentPadding = PaddingValues(end = 24.dp)
-                ) {
-                    items(similar.take(14)) { item ->
-                        val targetId = item.originalId ?: item.identifier
-                        SlooshFocusableCard(
-                            onClick = {
-                                if (targetId.isNotBlank()) {
-                                    onNavigateToMedia?.invoke(targetId)
-                                }
-                            },
-                            shape = ContinuousRoundedRectangle(14.dp),
-                            modifier = Modifier
-                                .width(120.dp)
-                                .height(180.dp)
-                        ) { _ ->
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                val itemPoster = item.getDisplayPosterUrl()
-                                if (!itemPoster.isNullOrEmpty()) {
-                                    AsyncImage(
-                                        model = itemPoster,
-                                        contentDescription = item.displayTitle,
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop
-                                    )
-                                } else {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(SurfaceDark),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = item.displayTitle,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = Color.White.copy(alpha = 0.7f),
-                                            textAlign = TextAlign.Center,
-                                            modifier = Modifier.padding(8.dp)
-                                        )
-                                    }
-                                }
-
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(60.dp)
-                                        .align(Alignment.BottomCenter)
-                                        .background(
-                                            Brush.verticalGradient(
-                                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(SurfaceDark),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = item.displayTitle,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color.White.copy(alpha = 0.7f),
+                                                textAlign = TextAlign.Center,
+                                                modifier = Modifier.padding(8.dp)
                                             )
-                                        )
-                                )
-
-                                val rating = item.rating ?: item.ratings?.kp ?: item.ratings?.imdb
-                                if (rating != null && rating > 0.0) {
-                                    val ratingColor = when {
-                                        rating >= 7.0 -> RatingIosGreen
-                                        rating >= 5.0 -> RatingIosGray
-                                        else -> RatingIosRed
+                                        }
                                     }
+
                                     Box(
                                         modifier = Modifier
-                                            .align(Alignment.TopEnd)
-                                            .padding(6.dp)
-                                            .clip(ContinuousCapsule)
-                                            .background(Color.Black.copy(alpha = 0.75f))
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    ) {
-                                        Text(
-                                            text = String.format(Locale.ROOT, "%.1f", rating),
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold
-                                            ),
-                                            color = ratingColor
-                                        )
+                                            .fillMaxWidth()
+                                            .height(65.dp)
+                                            .align(Alignment.BottomCenter)
+                                            .background(
+                                                Brush.verticalGradient(
+                                                    listOf(Color.Transparent, Color.Black.copy(alpha = 0.88f))
+                                                )
+                                            )
+                                    )
+
+                                    val rating = item.rating ?: item.ratings?.kp ?: item.ratings?.imdb
+                                    if (rating != null && rating > 0.0) {
+                                        val ratingColor = when {
+                                            rating >= 7.0 -> RatingIosGreen
+                                            rating >= 5.0 -> RatingIosGray
+                                            else -> RatingIosRed
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .padding(6.dp)
+                                                .clip(ContinuousCapsule)
+                                                .background(Color.Black.copy(alpha = 0.75f))
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = String.format(Locale.ROOT, "%.1f", rating),
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                ),
+                                                color = ratingColor
+                                            )
+                                        }
                                     }
+
+                                    Text(
+                                        text = item.displayTitle,
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium
+                                        ),
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier
+                                            .align(Alignment.BottomStart)
+                                            .padding(8.dp)
+                                    )
                                 }
                             }
                         }
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.height(48.dp))
         }
     }
 }
-
