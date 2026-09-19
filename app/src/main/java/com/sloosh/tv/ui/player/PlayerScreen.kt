@@ -31,6 +31,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
@@ -895,7 +896,7 @@ fun PlayerScreen(
                                 isWhite = true,
                                 onClick = {
                                     playerError = null
-                                    hasAutoRetried = false
+                                    retryAttempts = 0
                                     val pos = currentPositionMs.takeIf { it > 0 }
                                         ?: lastPreservedPositionMs
                                         ?: (state.startPositionSec * 1000).toLong()
@@ -1780,48 +1781,42 @@ fun PlayerScreen(
                     .align(Alignment.BottomEnd)
                     .padding(end = 48.dp, bottom = 48.dp)
             ) {
-                var isNextBtnFocused by remember { mutableStateOf(false) }
-                Box(
-                    modifier = Modifier
-                        .focusRequester(nextEpisodeFocusRequester)
-                        .onFocusChanged { isNextBtnFocused = it.isFocused }
-                        .focusable()
-                        .onKeyEvent { keyEvent ->
-                            if (keyEvent.type == KeyEventType.KeyDown &&
-                                (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
-                                 keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ENTER ||
-                                 keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)
-                            ) {
-                                nextEpisodeCountdown = -1
-                                viewModel.playNextEpisode()
-                                true
-                            } else false
-                        }
-                        .clip(ContinuousCapsule)
-                        .background(if (isNextBtnFocused) Color.White else GlassSurfaceDark)
-                        .border(
-                            1.dp,
-                            if (isNextBtnFocused) Color.White else Color.White.copy(alpha = 0.3f),
-                            ContinuousCapsule
-                        )
-                        .padding(horizontal = 20.dp, vertical = 12.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                SlooshFocusableCard(
+                    onClick = {
+                        nextEpisodeCountdown = -1
+                        viewModel.playNextEpisode()
+                    },
+                    shape = ContinuousCapsule,
+                    modifier = Modifier.focusRequester(nextEpisodeFocusRequester)
+                ) { isFocused ->
+                    Box(
+                        modifier = Modifier
+                            .clip(ContinuousCapsule)
+                            .background(if (isFocused) Color.White else GlassSurfaceDark)
+                            .border(
+                                1.dp,
+                                if (isFocused) Color.White else Color.White.copy(alpha = 0.3f),
+                                ContinuousCapsule
+                            )
+                            .padding(horizontal = 20.dp, vertical = 12.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.SkipNext,
-                            contentDescription = null,
-                            tint = if (isNextBtnFocused) Color.Black else Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Text(
-                            text = "Следующая серия через $nextEpisodeCountdown с",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (isNextBtnFocused) Color.Black else Color.White
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SkipNext,
+                                contentDescription = null,
+                                tint = if (isFocused) Color.Black else Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = "Следующая серия через $nextEpisodeCountdown с",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isFocused) Color.Black else Color.White
+                            )
+                        }
                     }
                 }
             }

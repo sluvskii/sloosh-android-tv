@@ -418,6 +418,7 @@ class AllohaRepository(private val context: Context) {
             } catch (e: Exception) {
                 Log.w("AllohaRepository", "Failed to fetch stream tokens from backend: ${e.message}")
             }
+            Unit
         }
 
         return getHealthyCandidateTokens()
