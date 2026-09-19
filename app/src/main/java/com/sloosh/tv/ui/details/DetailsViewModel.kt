@@ -5,6 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.sloosh.tv.data.api.AllohaApiResult
 import com.sloosh.tv.data.api.MediaDetailsDto
+import com.sloosh.tv.data.api.MovieCollectionDto
+import com.sloosh.tv.data.api.RelatedStudioResponse
 import com.sloosh.tv.data.db.FavoriteEntity
 import com.sloosh.tv.data.db.ProgressEntity
 import com.sloosh.tv.data.repository.AllohaRepository
@@ -24,6 +26,8 @@ data class DetailsUiState(
     val progress: ProgressEntity? = null,
     val isFavorite: Boolean = false,
     val errorMessage: String? = null,
+    val movieCollection: MovieCollectionDto? = null,
+    val relatedStudio: RelatedStudioResponse? = null,
 
     // ─── Source selection sheet state ───────────────────────────
     val isFetchingSources: Boolean = false,
@@ -63,6 +67,45 @@ class DetailsViewModel(application: Application) : AndroidViewModel(application)
                 progress = progress,
                 isFavorite = isFav
             )
+
+            if (details != null) {
+                val cleanRawId = mediaId.replace("kp_", "").replace("tv_", "").replace("movie_", "")
+                val type = details.type ?: "movie"
+
+                // 1. Franchise collection
+                launch {
+                    val existingCollection = details.collection
+                    if (existingCollection != null && !existingCollection.parts.isNullOrEmpty()) {
+                        _uiState.value = _uiState.value.copy(movieCollection = existingCollection)
+                    } else if (!details.isTvSeries) {
+                        val fetched = repository.getMovieCollection(cleanRawId)
+                        if (fetched != null && !fetched.parts.isNullOrEmpty()) {
+                            _uiState.value = _uiState.value.copy(movieCollection = fetched)
+                        }
+                    }
+                }
+
+                // 2. Related studio releases
+                launch {
+                    val studioResult = repository.getRelatedByStudio(type, cleanRawId)
+                    if (studioResult != null) {
+                        val items = studioResult.allItems
+                        if (items.isNotEmpty()) {
+                            val filtered = items.filter {
+                                val itemCleanId = it.id.replace("kp_", "").replace("tv_", "").replace("movie_", "")
+                                itemCleanId != cleanRawId && it.id != mediaId
+                            }
+                            if (filtered.isNotEmpty()) {
+                                _uiState.value = _uiState.value.copy(
+                                    relatedStudio = studioResult.copy(
+                                        items = filtered.take(20)
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 

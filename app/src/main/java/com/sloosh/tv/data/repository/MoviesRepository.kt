@@ -2,8 +2,10 @@ package com.sloosh.tv.data.repository
 
 import com.sloosh.tv.data.api.MediaDetailsDto
 import com.sloosh.tv.data.api.MediaDto
+import com.sloosh.tv.data.api.MovieCollectionDto
 import com.sloosh.tv.data.api.MoviesApi
 import com.sloosh.tv.data.api.PersonDetailDto
+import com.sloosh.tv.data.api.RelatedStudioResponse
 import com.sloosh.tv.data.api.TvEpisodeDetailsDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -130,6 +132,25 @@ class MoviesRepository {
                 detailsCache[cleanId] = details
             }
             details
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    suspend fun getMovieCollection(id: String): MovieCollectionDto? = withContext(Dispatchers.IO) {
+        val cleanId = id.replace("kp_", "").replace("tv_", "").replace("movie_", "")
+        try {
+            api.getMovieCollection(cleanId).data
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    suspend fun getRelatedByStudio(type: String, id: String, page: Int = 1): RelatedStudioResponse? = withContext(Dispatchers.IO) {
+        val cleanType = if (type.lowercase().contains("tv") || type.lowercase().contains("serial")) "tv" else "movie"
+        val cleanId = id.replace("kp_", "").replace("tv_", "").replace("movie_", "")
+        try {
+            api.getRelatedByStudio(cleanType, cleanId, page).data
         } catch (e: Exception) {
             null
         }

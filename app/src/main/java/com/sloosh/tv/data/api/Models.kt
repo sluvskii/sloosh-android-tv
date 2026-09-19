@@ -293,6 +293,18 @@ data class MovieCollectionDto(
     @SerializedName("parts") val parts: List<MediaDto>? = null
 )
 
+data class RelatedStudioResponse(
+    @SerializedName("items") val items: List<MediaDto>? = null,
+    @SerializedName("results") val results: List<MediaDto>? = null,
+    @SerializedName("label") val label: String? = null,
+    @SerializedName("page") val page: Int? = null,
+    @SerializedName("totalPages") val totalPages: Int? = null,
+    @SerializedName("totalResults") val totalResults: Int? = null
+) {
+    val allItems: List<MediaDto>
+        get() = items ?: results ?: emptyList()
+}
+
 data class TvSeasonSummaryDto(
     @SerializedName("id") val id: Int?,
     @SerializedName("seasonNumber") val seasonNumber: Int?,

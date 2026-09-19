@@ -71,6 +71,18 @@ interface MoviesApiService {
         @Query("page") page: Int = 1
     ): ApiEnvelope<MediaResponse>
 
+    @GET("api/v1/media/movie/{id}/collection")
+    suspend fun getMovieCollection(
+        @Path("id") id: String
+    ): ApiEnvelope<MovieCollectionDto>
+
+    @GET("api/v1/media/{type}/{id}/related/studio")
+    suspend fun getRelatedByStudio(
+        @Path("type") type: String,
+        @Path("id") id: String,
+        @Query("page") page: Int = 1
+    ): ApiEnvelope<RelatedStudioResponse>
+
     @GET("api/v1/tv/{id}/season/{season}")
     suspend fun getSeason(
         @Path("id") id: String,

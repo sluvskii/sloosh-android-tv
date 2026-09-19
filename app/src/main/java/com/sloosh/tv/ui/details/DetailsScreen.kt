@@ -65,6 +65,8 @@ import com.kyant.capsule.ContinuousCapsule
 import com.kyant.capsule.ContinuousRoundedRectangle
 import com.sloosh.tv.data.api.MediaDetailsDto
 import com.sloosh.tv.data.api.MediaDto
+import com.sloosh.tv.data.api.MovieCollectionDto
+import com.sloosh.tv.data.api.RelatedStudioResponse
 import com.sloosh.tv.ui.components.SlooshButton
 import com.sloosh.tv.ui.components.SlooshFocusableCard
 import com.sloosh.tv.ui.theme.*
@@ -175,23 +177,31 @@ private fun SidePosterDetailsLayout(
     val scrollState = rememberScrollState()
     val coroutineScope = rememberCoroutineScope()
     val castListState = rememberLazyListState()
+    val franchiseListState = rememberLazyListState()
     val similarListState = rememberLazyListState()
+    val studioListState = rememberLazyListState()
     val density = LocalDensity.current
     val edgePaddingPx = with(density) { 56.dp.toPx() }
     val scrollMarginPx = with(density) { 80.dp.toPx() }
     val backButtonFocusRequester = remember { FocusRequester() }
     val moreButtonFocusRequester = remember { FocusRequester() }
     val firstCastFocusRequester = remember { FocusRequester() }
+    val firstFranchiseFocusRequester = remember { FocusRequester() }
     val firstSimilarFocusRequester = remember { FocusRequester() }
+    val firstStudioFocusRequester = remember { FocusRequester() }
     var isExpanded by remember { mutableStateOf(false) }
     var canExpand by remember(details.description) { mutableStateOf(false) }
 
     var screenHeightPx by remember { mutableFloatStateOf(0f) }
     var castSectionY by remember { mutableFloatStateOf(0f) }
     var castSectionHeight by remember { mutableFloatStateOf(0f) }
+    var franchiseSectionY by remember { mutableFloatStateOf(0f) }
+    var franchiseSectionHeight by remember { mutableFloatStateOf(0f) }
     var similarSectionY by remember { mutableFloatStateOf(0f) }
     var similarSectionHeight by remember { mutableFloatStateOf(0f) }
-    var focusedSection by remember { mutableStateOf("top") } // "top", "cast", "similar"
+    var studioSectionY by remember { mutableFloatStateOf(0f) }
+    var studioSectionHeight by remember { mutableFloatStateOf(0f) }
+    var focusedSection by remember { mutableStateOf("top") } // "top", "cast", "franchise", "similar", "studio"
 
     @OptIn(ExperimentalFoundationApi::class)
     val noOpBringIntoViewResponder = remember {
@@ -204,7 +214,7 @@ private fun SidePosterDetailsLayout(
     }
 
     // Centering scroll automation on focused section changes
-    LaunchedEffect(focusedSection, castSectionY, similarSectionY) {
+    LaunchedEffect(focusedSection, castSectionY, franchiseSectionY, similarSectionY, studioSectionY) {
         when (focusedSection) {
             "top" -> {
                 scrollState.animateScrollTo(0, animationSpec = tween(300, easing = FastOutSlowInEasing))
@@ -216,9 +226,23 @@ private fun SidePosterDetailsLayout(
                     scrollState.animateScrollTo(target, animationSpec = tween(300, easing = FastOutSlowInEasing))
                 }
             }
+            "franchise" -> {
+                if (franchiseSectionY > 0f && screenHeightPx > 0f) {
+                    val center = franchiseSectionY + (franchiseSectionHeight / 2f)
+                    val target = (center - (screenHeightPx / 2f)).coerceAtLeast(0f).toInt()
+                    scrollState.animateScrollTo(target, animationSpec = tween(300, easing = FastOutSlowInEasing))
+                }
+            }
             "similar" -> {
                 if (similarSectionY > 0f && screenHeightPx > 0f) {
                     val center = similarSectionY + (similarSectionHeight / 2f)
+                    val target = (center - (screenHeightPx / 2f)).coerceAtLeast(0f).toInt()
+                    scrollState.animateScrollTo(target, animationSpec = tween(300, easing = FastOutSlowInEasing))
+                }
+            }
+            "studio" -> {
+                if (studioSectionY > 0f && screenHeightPx > 0f) {
+                    val center = studioSectionY + (studioSectionHeight / 2f)
                     val target = (center - (screenHeightPx / 2f)).coerceAtLeast(0f).toInt()
                     scrollState.animateScrollTo(target, animationSpec = tween(300, easing = FastOutSlowInEasing))
                 }
@@ -657,20 +681,25 @@ private fun SidePosterDetailsLayout(
                                         }
                                         KeyEvent.KEYCODE_DPAD_DOWN -> {
                                             val cast = details.cast
+                                            val movieCollection = state.movieCollection ?: details.collection
+                                            val franchiseParts = movieCollection?.parts
                                             val similar = details.similar
+                                            val studio = state.relatedStudio?.allItems
                                             if (!cast.isNullOrEmpty()) {
                                                 focusedSection = "cast"
                                                 firstCastFocusRequester.requestFocus()
-                                                coroutineScope.launch {
-                                                    castListState.animateScrollToItem(0, 0)
-                                                }
+                                                true
+                                            } else if (!franchiseParts.isNullOrEmpty()) {
+                                                focusedSection = "franchise"
+                                                firstFranchiseFocusRequester.requestFocus()
                                                 true
                                             } else if (!similar.isNullOrEmpty()) {
                                                 focusedSection = "similar"
                                                 firstSimilarFocusRequester.requestFocus()
-                                                coroutineScope.launch {
-                                                    similarListState.animateScrollToItem(0, 0)
-                                                }
+                                                true
+                                            } else if (!studio.isNullOrEmpty()) {
+                                                focusedSection = "studio"
+                                                firstStudioFocusRequester.requestFocus()
                                                 true
                                             } else false
                                         }
@@ -718,20 +747,25 @@ private fun SidePosterDetailsLayout(
                                         }
                                         KeyEvent.KEYCODE_DPAD_DOWN -> {
                                             val cast = details.cast
+                                            val movieCollection = state.movieCollection ?: details.collection
+                                            val franchiseParts = movieCollection?.parts
                                             val similar = details.similar
+                                            val studio = state.relatedStudio?.allItems
                                             if (!cast.isNullOrEmpty()) {
                                                 focusedSection = "cast"
                                                 firstCastFocusRequester.requestFocus()
-                                                coroutineScope.launch {
-                                                    castListState.animateScrollToItem(0, 0)
-                                                }
+                                                true
+                                            } else if (!franchiseParts.isNullOrEmpty()) {
+                                                focusedSection = "franchise"
+                                                firstFranchiseFocusRequester.requestFocus()
                                                 true
                                             } else if (!similar.isNullOrEmpty()) {
                                                 focusedSection = "similar"
                                                 firstSimilarFocusRequester.requestFocus()
-                                                coroutineScope.launch {
-                                                    similarListState.animateScrollToItem(0, 0)
-                                                }
+                                                true
+                                            } else if (!studio.isNullOrEmpty()) {
+                                                focusedSection = "studio"
+                                                firstStudioFocusRequester.requestFocus()
                                                 true
                                             } else false
                                         }
@@ -877,12 +911,23 @@ private fun SidePosterDetailsLayout(
                                                     true
                                                 }
                                                 KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                                    val movieCollection = state.movieCollection ?: details.collection
+                                                    val franchiseParts = movieCollection?.parts
                                                     val similar = details.similar
-                                                    if (!similar.isNullOrEmpty()) {
+                                                    val studio = state.relatedStudio?.allItems
+                                                    if (!franchiseParts.isNullOrEmpty()) {
+                                                        focusedSection = "franchise"
+                                                        firstFranchiseFocusRequester.requestFocus()
+                                                        true
+                                                    } else if (!similar.isNullOrEmpty()) {
                                                         focusedSection = "similar"
                                                         firstSimilarFocusRequester.requestFocus()
                                                         true
-                                                    } else false
+                                                    } else if (!studio.isNullOrEmpty()) {
+                                                        focusedSection = "studio"
+                                                        firstStudioFocusRequester.requestFocus()
+                                                        true
+                                                    } else true
                                                 }
                                                 KeyEvent.KEYCODE_DPAD_LEFT -> {
                                                     if (index == 0) true else false
@@ -960,11 +1005,121 @@ private fun SidePosterDetailsLayout(
                 }
             }
 
-            // ─── Similar Movies Section (Full 100% Screen Width) ──────
+            // ─── Franchise Collection Section ("Все части франшизы") ──────
+            val movieCollection = state.movieCollection ?: details.collection
+            val franchiseParts = movieCollection?.parts
+            if (!franchiseParts.isNullOrEmpty()) {
+                val franchiseItems = remember(franchiseParts) { franchiseParts.take(20) }
+                val franchiseCount = franchiseItems.size
+                val franchiseResponderProvider = rememberCarouselResponders(franchiseCount, edgePaddingPx, scrollMarginPx)
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onGloballyPositioned { coordinates ->
+                            franchiseSectionY = coordinates.positionInRoot().y + scrollState.value
+                            franchiseSectionHeight = coordinates.size.height.toFloat()
+                        }
+                ) {
+                    Spacer(modifier = Modifier.height(32.dp))
+                    Column(modifier = Modifier.padding(start = 56.dp)) {
+                        Text(
+                            text = "Все части франшизы",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp,
+                                letterSpacing = (-0.2).sp
+                            ),
+                            color = Color.White
+                        )
+                        if (!movieCollection.name.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = movieCollection.name,
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    letterSpacing = (-0.1).sp
+                                ),
+                                color = TextSecondaryDark
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(14.dp))
+                    LazyRow(
+                        state = franchiseListState,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .bringIntoViewResponder(noOpBringIntoViewResponder),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        contentPadding = PaddingValues(start = 56.dp, end = 56.dp)
+                    ) {
+                        itemsIndexed(franchiseItems) { index, item ->
+                            val cardResponder = franchiseResponderProvider(index)
+                            MoviePosterRowCard(
+                                item = item,
+                                index = index,
+                                count = franchiseCount,
+                                firstFocusRequester = firstFranchiseFocusRequester,
+                                cardResponder = cardResponder,
+                                onFocus = { focusedSection = "franchise" },
+                                onPreviewKeyEvent = { keyEvent ->
+                                    if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                                        when (keyEvent.nativeKeyEvent.keyCode) {
+                                            KeyEvent.KEYCODE_DPAD_UP -> {
+                                                val cast = details.cast
+                                                if (!cast.isNullOrEmpty()) {
+                                                    focusedSection = "cast"
+                                                    firstCastFocusRequester.requestFocus()
+                                                    true
+                                                } else {
+                                                    focusedSection = "top"
+                                                    watchButtonFocusRequester.requestFocus()
+                                                    true
+                                                }
+                                            }
+                                            KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                                val similar = details.similar
+                                                val studio = state.relatedStudio?.allItems
+                                                if (!similar.isNullOrEmpty()) {
+                                                    focusedSection = "similar"
+                                                    firstSimilarFocusRequester.requestFocus()
+                                                    true
+                                                } else if (!studio.isNullOrEmpty()) {
+                                                    focusedSection = "studio"
+                                                    firstStudioFocusRequester.requestFocus()
+                                                    true
+                                                } else false
+                                            }
+                                            KeyEvent.KEYCODE_DPAD_LEFT -> {
+                                                if (index == 0) true else false
+                                            }
+                                            KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                                                if (index == franchiseCount - 1) true else false
+                                            }
+                                            else -> false
+                                        }
+                                    } else false
+                                },
+                                onClick = {
+                                    val targetId = item.originalId ?: item.identifier
+                                    if (targetId.isNotBlank()) {
+                                        onNavigateToMedia?.invoke(targetId)
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // ─── Similar Movies / Series Section ───────────────────────
             val similar = details.similar
             if (!similar.isNullOrEmpty()) {
                 val similarItems = remember(similar) { similar.take(20) }
                 val similarCount = similarItems.size
+                val similarResponderProvider = rememberCarouselResponders(similarCount, edgePaddingPx, scrollMarginPx)
+
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -974,8 +1129,9 @@ private fun SidePosterDetailsLayout(
                         }
                 ) {
                     Spacer(modifier = Modifier.height(32.dp))
+                    val similarTitle = if (details.isTvSeries) "Похожие сериалы" else "Похожие фильмы"
                     Text(
-                        text = "Похожие",
+                        text = similarTitle,
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp,
@@ -985,58 +1141,6 @@ private fun SidePosterDetailsLayout(
                         modifier = Modifier.padding(start = 56.dp)
                     )
                     Spacer(modifier = Modifier.height(14.dp))
-                    val similarFirstItemBringIntoViewResponder = remember(edgePaddingPx, scrollMarginPx) {
-                        object : BringIntoViewResponder {
-                            override fun calculateRectForParent(localRect: Rect): Rect {
-                                return Rect(
-                                    left = localRect.left - edgePaddingPx,
-                                    top = localRect.top,
-                                    right = localRect.right + scrollMarginPx,
-                                    bottom = localRect.bottom
-                                )
-                            }
-                            override suspend fun bringChildIntoView(localRect: () -> Rect?) {}
-                        }
-                    }
-                    val similarLastItemBringIntoViewResponder = remember(similarCount, edgePaddingPx, scrollMarginPx) {
-                        object : BringIntoViewResponder {
-                            override fun calculateRectForParent(localRect: Rect): Rect {
-                                return Rect(
-                                    left = localRect.left - scrollMarginPx,
-                                    top = localRect.top,
-                                    right = localRect.right + edgePaddingPx,
-                                    bottom = localRect.bottom
-                                )
-                            }
-                            override suspend fun bringChildIntoView(localRect: () -> Rect?) {}
-                        }
-                    }
-                    val similarSingleItemBringIntoViewResponder = remember(edgePaddingPx) {
-                        object : BringIntoViewResponder {
-                            override fun calculateRectForParent(localRect: Rect): Rect {
-                                return Rect(
-                                    left = localRect.left - edgePaddingPx,
-                                    top = localRect.top,
-                                    right = localRect.right + edgePaddingPx,
-                                    bottom = localRect.bottom
-                                )
-                            }
-                            override suspend fun bringChildIntoView(localRect: () -> Rect?) {}
-                        }
-                    }
-                    val similarMiddleItemBringIntoViewResponder = remember(scrollMarginPx) {
-                        object : BringIntoViewResponder {
-                            override fun calculateRectForParent(localRect: Rect): Rect {
-                                return Rect(
-                                    left = localRect.left - scrollMarginPx,
-                                    top = localRect.top,
-                                    right = localRect.right + scrollMarginPx,
-                                    bottom = localRect.bottom
-                                )
-                            }
-                            override suspend fun bringChildIntoView(localRect: () -> Rect?) {}
-                        }
-                    }
                     LazyRow(
                         state = similarListState,
                         modifier = Modifier
@@ -1046,143 +1150,374 @@ private fun SidePosterDetailsLayout(
                         contentPadding = PaddingValues(start = 56.dp, end = 56.dp)
                     ) {
                         itemsIndexed(similarItems) { index, item ->
-                            val targetId = item.originalId ?: item.identifier
-                            val cardResponder = when {
-                                similarCount == 1 -> similarSingleItemBringIntoViewResponder
-                                index == 0 -> similarFirstItemBringIntoViewResponder
-                                index == similarCount - 1 -> similarLastItemBringIntoViewResponder
-                                else -> similarMiddleItemBringIntoViewResponder
-                            }
-                            SlooshFocusableCard(
+                            val cardResponder = similarResponderProvider(index)
+                            MoviePosterRowCard(
+                                item = item,
+                                index = index,
+                                count = similarCount,
+                                firstFocusRequester = firstSimilarFocusRequester,
+                                cardResponder = cardResponder,
+                                onFocus = { focusedSection = "similar" },
+                                onPreviewKeyEvent = { keyEvent ->
+                                    if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                                        when (keyEvent.nativeKeyEvent.keyCode) {
+                                            KeyEvent.KEYCODE_DPAD_UP -> {
+                                                val movieCollection = state.movieCollection ?: details.collection
+                                                val franchiseParts = movieCollection?.parts
+                                                val cast = details.cast
+                                                if (!franchiseParts.isNullOrEmpty()) {
+                                                    focusedSection = "franchise"
+                                                    firstFranchiseFocusRequester.requestFocus()
+                                                    true
+                                                } else if (!cast.isNullOrEmpty()) {
+                                                    focusedSection = "cast"
+                                                    firstCastFocusRequester.requestFocus()
+                                                    true
+                                                } else {
+                                                    focusedSection = "top"
+                                                    watchButtonFocusRequester.requestFocus()
+                                                    true
+                                                }
+                                            }
+                                            KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                                val studio = state.relatedStudio?.allItems
+                                                if (!studio.isNullOrEmpty()) {
+                                                    focusedSection = "studio"
+                                                    firstStudioFocusRequester.requestFocus()
+                                                    true
+                                                } else true
+                                            }
+                                            KeyEvent.KEYCODE_DPAD_LEFT -> {
+                                                if (index == 0) true else false
+                                            }
+                                            KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                                                if (index == similarCount - 1) true else false
+                                            }
+                                            else -> false
+                                        }
+                                    } else false
+                                },
                                 onClick = {
+                                    val targetId = item.originalId ?: item.identifier
                                     if (targetId.isNotBlank()) {
                                         onNavigateToMedia?.invoke(targetId)
                                     }
-                                },
-                                shape = ContinuousRoundedRectangle(16.dp),
-                                modifier = Modifier
-                                    .width(130.dp)
-                                    .height(195.dp)
-                                    .then(if (index == 0) Modifier.focusRequester(firstSimilarFocusRequester) else Modifier)
-                                    .bringIntoViewResponder(cardResponder)
-                                    .onFocusChanged {
-                                        if (it.isFocused) {
-                                            focusedSection = "similar"
-                                        }
-                                    }
-                                    .onPreviewKeyEvent { keyEvent ->
-                                        if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
-                                            when (keyEvent.nativeKeyEvent.keyCode) {
-                                                KeyEvent.KEYCODE_DPAD_UP -> {
-                                                    val cast = details.cast
-                                                    if (!cast.isNullOrEmpty()) {
-                                                        focusedSection = "cast"
-                                                        firstCastFocusRequester.requestFocus()
-                                                        true
-                                                    } else {
-                                                        focusedSection = "top"
-                                                        watchButtonFocusRequester.requestFocus()
-                                                        true
-                                                    }
-                                                }
-                                                KeyEvent.KEYCODE_DPAD_DOWN -> {
-                                                    // Bottom-most section on Details screen: block overscroll downwards
-                                                    true
-                                                }
-                                                KeyEvent.KEYCODE_DPAD_LEFT -> {
-                                                    if (index == 0) true else false
-                                                }
-                                                KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                                                    if (index == similarCount - 1) true else false
-                                                }
-                                                else -> false
-                                            }
-                                        } else false
-                                    }
-                            ) { isFocused ->
-                                Box(modifier = Modifier.fillMaxSize()) {
-                                    val itemPoster = item.getDisplayPosterUrl()
-                                    if (!itemPoster.isNullOrEmpty()) {
-                                        AsyncImage(
-                                            model = itemPoster,
-                                            contentDescription = item.displayTitle,
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentScale = ContentScale.Crop
-                                        )
-                                    } else {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .background(SurfaceDark),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = item.displayTitle,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = Color.White.copy(alpha = 0.7f),
-                                                textAlign = TextAlign.Center,
-                                                modifier = Modifier.padding(8.dp)
-                                            )
-                                        }
-                                    }
-
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(65.dp)
-                                            .align(Alignment.BottomCenter)
-                                            .background(
-                                                Brush.verticalGradient(
-                                                    listOf(Color.Transparent, Color.Black.copy(alpha = 0.88f))
-                                                )
-                                            )
-                                    )
-
-                                    val rating = item.rating ?: item.ratings?.kp ?: item.ratings?.imdb
-                                    if (rating != null && rating > 0.0) {
-                                        val ratingColor = when {
-                                            rating >= 7.0 -> RatingIosGreen
-                                            rating >= 5.0 -> RatingIosGray
-                                            else -> RatingIosRed
-                                        }
-                                        Box(
-                                            modifier = Modifier
-                                                .align(Alignment.TopEnd)
-                                                .padding(6.dp)
-                                                .clip(ContinuousCapsule)
-                                                .background(Color.Black.copy(alpha = 0.75f))
-                                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                                        ) {
-                                            Text(
-                                                text = String.format(Locale.ROOT, "%.1f", rating),
-                                                style = MaterialTheme.typography.labelSmall.copy(
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                ),
-                                                color = ratingColor
-                                            )
-                                        }
-                                    }
-
-                                    Text(
-                                        text = item.displayTitle,
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Medium
-                                        ),
-                                        color = Color.White,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier
-                                            .align(Alignment.BottomStart)
-                                            .padding(8.dp)
-                                    )
                                 }
-                            }
+                            )
                         }
                     }
                 }
             }
+
+            // ─── Related Studio Section ("Другие релизы") ──────────────
+            val relatedStudio = state.relatedStudio
+            val studioItems = relatedStudio?.allItems
+            if (!studioItems.isNullOrEmpty()) {
+                val studioList = remember(studioItems) { studioItems.take(20) }
+                val studioCount = studioList.size
+                val studioResponderProvider = rememberCarouselResponders(studioCount, edgePaddingPx, scrollMarginPx)
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onGloballyPositioned { coordinates ->
+                            studioSectionY = coordinates.positionInRoot().y + scrollState.value
+                            studioSectionHeight = coordinates.size.height.toFloat()
+                        }
+                ) {
+                    Spacer(modifier = Modifier.height(32.dp))
+                    Row(
+                        modifier = Modifier.padding(start = 56.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "Другие релизы",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp,
+                                letterSpacing = (-0.2).sp
+                            ),
+                            color = Color.White
+                        )
+                        if (!relatedStudio.label.isNullOrBlank()) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(ContinuousCapsule)
+                                    .background(Color.White.copy(alpha = 0.14f))
+                                    .padding(horizontal = 12.dp, vertical = 5.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = relatedStudio.label,
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        letterSpacing = (-0.1).sp
+                                    ),
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(14.dp))
+                    LazyRow(
+                        state = studioListState,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .bringIntoViewResponder(noOpBringIntoViewResponder),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        contentPadding = PaddingValues(start = 56.dp, end = 56.dp)
+                    ) {
+                        itemsIndexed(studioList) { index, item ->
+                            val cardResponder = studioResponderProvider(index)
+                            MoviePosterRowCard(
+                                item = item,
+                                index = index,
+                                count = studioCount,
+                                firstFocusRequester = firstStudioFocusRequester,
+                                cardResponder = cardResponder,
+                                onFocus = { focusedSection = "studio" },
+                                onPreviewKeyEvent = { keyEvent ->
+                                    if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                                        when (keyEvent.nativeKeyEvent.keyCode) {
+                                            KeyEvent.KEYCODE_DPAD_UP -> {
+                                                val similar = details.similar
+                                                val movieCollection = state.movieCollection ?: details.collection
+                                                val franchiseParts = movieCollection?.parts
+                                                val cast = details.cast
+                                                if (!similar.isNullOrEmpty()) {
+                                                    focusedSection = "similar"
+                                                    firstSimilarFocusRequester.requestFocus()
+                                                    true
+                                                } else if (!franchiseParts.isNullOrEmpty()) {
+                                                    focusedSection = "franchise"
+                                                    firstFranchiseFocusRequester.requestFocus()
+                                                    true
+                                                } else if (!cast.isNullOrEmpty()) {
+                                                    focusedSection = "cast"
+                                                    firstCastFocusRequester.requestFocus()
+                                                    true
+                                                } else {
+                                                    focusedSection = "top"
+                                                    watchButtonFocusRequester.requestFocus()
+                                                    true
+                                                }
+                                            }
+                                            KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                                // Bottom-most section on screen: block overscroll downwards
+                                                true
+                                            }
+                                            KeyEvent.KEYCODE_DPAD_LEFT -> {
+                                                if (index == 0) true else false
+                                            }
+                                            KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                                                if (index == studioCount - 1) true else false
+                                            }
+                                            else -> false
+                                        }
+                                    } else false
+                                },
+                                onClick = {
+                                    val targetId = item.originalId ?: item.identifier
+                                    if (targetId.isNotBlank()) {
+                                        onNavigateToMedia?.invoke(targetId)
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(60.dp))
+        }
+    }
+}
+
+// ─── Helpers for Carousels & Poster Cards ─────────────────────────────────────
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun rememberCarouselResponders(
+    count: Int,
+    edgePaddingPx: Float,
+    scrollMarginPx: Float
+): (Int) -> BringIntoViewResponder {
+    val firstResponder = remember(edgePaddingPx, scrollMarginPx) {
+        object : BringIntoViewResponder {
+            override fun calculateRectForParent(localRect: Rect): Rect {
+                return Rect(
+                    left = localRect.left - edgePaddingPx,
+                    top = localRect.top,
+                    right = localRect.right + scrollMarginPx,
+                    bottom = localRect.bottom
+                )
+            }
+            override suspend fun bringChildIntoView(localRect: () -> Rect?) {}
+        }
+    }
+    val lastResponder = remember(count, edgePaddingPx, scrollMarginPx) {
+        object : BringIntoViewResponder {
+            override fun calculateRectForParent(localRect: Rect): Rect {
+                return Rect(
+                    left = localRect.left - scrollMarginPx,
+                    top = localRect.top,
+                    right = localRect.right + edgePaddingPx,
+                    bottom = localRect.bottom
+                )
+            }
+            override suspend fun bringChildIntoView(localRect: () -> Rect?) {}
+        }
+    }
+    val singleResponder = remember(edgePaddingPx) {
+        object : BringIntoViewResponder {
+            override fun calculateRectForParent(localRect: Rect): Rect {
+                return Rect(
+                    left = localRect.left - edgePaddingPx,
+                    top = localRect.top,
+                    right = localRect.right + edgePaddingPx,
+                    bottom = localRect.bottom
+                )
+            }
+            override suspend fun bringChildIntoView(localRect: () -> Rect?) {}
+        }
+    }
+    val middleResponder = remember(scrollMarginPx) {
+        object : BringIntoViewResponder {
+            override fun calculateRectForParent(localRect: Rect): Rect {
+                return Rect(
+                    left = localRect.left - scrollMarginPx,
+                    top = localRect.top,
+                    right = localRect.right + scrollMarginPx,
+                    bottom = localRect.bottom
+                )
+            }
+            override suspend fun bringChildIntoView(localRect: () -> Rect?) {}
+        }
+    }
+
+    return remember(count, firstResponder, lastResponder, singleResponder, middleResponder) {
+        { index: Int ->
+            when {
+                count == 1 -> singleResponder
+                index == 0 -> firstResponder
+                index == count - 1 -> lastResponder
+                else -> middleResponder
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun MoviePosterRowCard(
+    item: MediaDto,
+    index: Int,
+    count: Int,
+    firstFocusRequester: FocusRequester?,
+    cardResponder: BringIntoViewResponder,
+    onFocus: () -> Unit,
+    onPreviewKeyEvent: (androidx.compose.ui.input.key.KeyEvent) -> Boolean,
+    onClick: () -> Unit
+) {
+    val targetId = item.originalId ?: item.identifier
+    SlooshFocusableCard(
+        onClick = {
+            if (targetId.isNotBlank()) {
+                onClick()
+            }
+        },
+        shape = ContinuousRoundedRectangle(16.dp),
+        modifier = Modifier
+            .width(130.dp)
+            .height(195.dp)
+            .then(if (index == 0 && firstFocusRequester != null) Modifier.focusRequester(firstFocusRequester) else Modifier)
+            .bringIntoViewResponder(cardResponder)
+            .onFocusChanged {
+                if (it.isFocused) {
+                    onFocus()
+                }
+            }
+            .onPreviewKeyEvent { onPreviewKeyEvent(it) }
+    ) { isFocused ->
+        Box(modifier = Modifier.fillMaxSize()) {
+            val itemPoster = item.getDisplayPosterUrl()
+            if (!itemPoster.isNullOrEmpty()) {
+                AsyncImage(
+                    model = itemPoster,
+                    contentDescription = item.displayTitle,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(SurfaceDark),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = item.displayTitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.7f),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(8.dp)
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(65.dp)
+                    .align(Alignment.BottomCenter)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.88f))
+                        )
+                    )
+            )
+
+            val rating = item.rating ?: item.ratings?.kp ?: item.ratings?.imdb
+            if (rating != null && rating > 0.0) {
+                val ratingColor = when {
+                    rating >= 7.0 -> RatingIosGreen
+                    rating >= 5.0 -> RatingIosGray
+                    else -> RatingIosRed
+                }
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .clip(ContinuousCapsule)
+                        .background(Color.Black.copy(alpha = 0.75f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = String.format(Locale.ROOT, "%.1f", rating),
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = ratingColor
+                    )
+                }
+            }
+
+            Text(
+                text = item.displayTitle,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium
+                ),
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(8.dp)
+            )
         }
     }
 }
