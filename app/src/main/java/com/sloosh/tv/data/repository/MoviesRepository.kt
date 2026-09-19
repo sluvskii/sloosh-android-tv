@@ -146,24 +146,31 @@ class MoviesRepository {
 
     fun setPreviewDetails(item: MediaDto) {
         val cleanId = item.identifier.replace("tv_", "").replace("movie_", "")
+        val parsedYear = when (val y = item.year) {
+            is Number -> y.toInt()
+            is String -> y.toIntOrNull()
+            else -> null
+        }
         val preview = MediaDetailsDto(
             id = item.id,
-            title = item.title,
+            title = item.displayTitle,
             originalTitle = item.originalTitle,
             description = item.description,
             type = item.type,
-            year = item.year,
+            year = parsedYear,
             releaseDate = null,
             genres = item.genres?.mapNotNull { it.name ?: it.id },
             countries = null,
             duration = null,
-            poster = item.posterUrl ?: item.posterPath,
-            backdrop = item.backdropUrl,
+            poster = item.poster ?: item.posterUrl ?: item.posterPath,
+            backdrop = item.backdrop ?: item.backdropPath,
             rawRating = item.rating,
+            ratings = item.ratings,
+            externalIds = item.externalIds,
             ids = IdsDto(
-                kp = item.id.replace("kp_", "").replace("tv_", "").replace("movie_", "").toIntOrNull() ?: item.kpId?.toIntOrNull(),
-                imdb = item.imdbId,
-                tmdb = item.tmdbId?.toIntOrNull()
+                kp = item.id.replace("kp_", "").replace("tv_", "").replace("movie_", "").toIntOrNull() ?: item.externalIds?.kp,
+                imdb = item.externalIds?.imdb,
+                tmdb = item.externalIds?.tmdb
             )
         )
         previewDetailsCache[item.identifier] = preview
