@@ -487,15 +487,30 @@ fun MediaCard(
         LaunchedEffect(Unit) { onFocus() }
     }
 
+    val cardScale by animateFloatAsState(
+        targetValue = if (isFocused) 1.035f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = 0.82f,
+            stiffness = 340f
+        ),
+        label = "cardScale"
+    )
+
+    val cardBgColor by animateColorAsState(
+        targetValue = if (isFocused) Color.White else Color.Transparent,
+        animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+        label = "cardBgColor"
+    )
+
     val titleColor by animateColorAsState(
         targetValue = if (isFocused) Color.Black else Color.White.copy(alpha = 0.92f),
-        animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
         label = "cardTitleColor"
     )
 
     val metaColor by animateColorAsState(
         targetValue = if (isFocused) Color.Black.copy(alpha = 0.65f) else Color.White.copy(alpha = 0.50f),
-        animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
         label = "cardMetaColor"
     )
 
@@ -515,12 +530,16 @@ fun MediaCard(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            .zIndex(if (isFocused) 10f else 1f),
+            .zIndex(if (isFocused) 10f else 1f)
+            .graphicsLayer {
+                scaleX = cardScale
+                scaleY = cardScale
+            },
         interactionSource = interactionSource,
         shape = CardDefaults.shape(shape = cardShape),
         colors = CardDefaults.colors(
-            containerColor = Color.Transparent,
-            focusedContainerColor = Color.White
+            containerColor = cardBgColor,
+            focusedContainerColor = cardBgColor
         ),
         scale = CardDefaults.scale(
             scale = 1.0f,
