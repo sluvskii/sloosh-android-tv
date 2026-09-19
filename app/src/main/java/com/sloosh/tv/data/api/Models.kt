@@ -85,6 +85,8 @@ data class MediaDto(
 
     val isMovie: Boolean
         get() = !isTvSeries && !isCartoon
+
+    val id: String get() = originalId ?: identifier
 }
 
 data class MediaDetailsDto(
@@ -120,6 +122,12 @@ data class MediaDetailsDto(
     val displayTitle: String get() = title ?: originalTitle ?: "Без названия"
     val rating: Double? get() = ratings?.kp ?: ratings?.imdb ?: ratings?.tmdb
     val yearString: String get() = year?.toString() ?: ""
+
+    val isTvSeries: Boolean
+        get() {
+            val typeLower = type?.lowercase()?.trim() ?: ""
+            return typeLower in listOf("tv", "series", "serial", "show") || !seasons.isNullOrEmpty()
+        }
 
     fun getDisplayPosterUrl(isLowQuality: Boolean = false): String? {
         return normalizeImageUrl(path = poster, id = id, isLowQuality = isLowQuality)
