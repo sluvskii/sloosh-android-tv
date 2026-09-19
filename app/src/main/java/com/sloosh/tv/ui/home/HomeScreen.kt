@@ -501,10 +501,10 @@ fun MediaCard(
 
     val cardPaddingHorizontal = if (compact) 5.dp else 6.dp
     val cardPaddingTop = if (compact) 5.dp else 6.dp
-    val cardPaddingBottom = if (compact) 10.dp else 12.dp
-    val posterToTitleSpacing = if (compact) 6.dp else 7.dp
-    val titleToMetaSpacing = if (compact) 2.dp else 2.5.dp
-    val textHorizontalPadding = if (compact) 5.dp else 7.dp
+    val cardPaddingBottom = if (compact) 6.dp else 7.5.dp
+    val posterToTitleSpacing = if (compact) 5.5.dp else 6.5.dp
+    val titleToMetaSpacing = if (compact) 1.5.dp else 2.dp
+    val textHorizontalPadding = if (compact) 5.dp else 6.5.dp
 
     val titleSize = if (compact) 13.sp else 14.5.sp
     val titleLineHeight = if (compact) 16.sp else 18.sp
@@ -644,8 +644,6 @@ fun MediaCard(
                     .fillMaxWidth()
                     .padding(horizontal = textHorizontalPadding)
             )
-
-            Spacer(modifier = Modifier.height(if (compact) 2.dp else 3.dp))
         }
     }
 }
