@@ -488,71 +488,40 @@ fun MediaCard(
         LaunchedEffect(Unit) { onFocus() }
     }
 
-    // 1. Упругое раскрытие белой подложки (от 0.94f до 1.0f — строго внутри ячейки!)
-    val bgScale by animateFloatAsState(
-        targetValue = if (isFocused) 1.0f else 0.94f,
-        animationSpec = spring(
-            dampingRatio = 0.74f,
-            stiffness = 380f
-        ),
-        label = "bgScale"
-    )
-
-    // 2. Плавное проявление белого фона
     val bgAlpha by animateFloatAsState(
         targetValue = if (isFocused) 1f else 0f,
-        animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 140, easing = FastOutSlowInEasing),
         label = "cardBgAlpha"
     )
 
-    // 3. Синхронное перетекание цвета текста
+    // Мягкая рассеянная тень глубины при фокусе
+    val shadowElevation by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (isFocused) 8.dp else 0.dp,
+        animationSpec = tween(durationMillis = 140, easing = FastOutSlowInEasing),
+        label = "cardShadow"
+    )
+
+    // Синхронное быстрое перетекание цвета текста (140 мс)
     val titleColor by animateColorAsState(
         targetValue = if (isFocused) Color.Black else Color.White.copy(alpha = 0.92f),
-        animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 140, easing = FastOutSlowInEasing),
         label = "cardTitleColor"
     )
 
     val metaColor by animateColorAsState(
         targetValue = if (isFocused) Color.Black.copy(alpha = 0.65f) else Color.White.copy(alpha = 0.50f),
-        animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 140, easing = FastOutSlowInEasing),
         label = "cardMetaColor"
     )
 
-    // 4. Тонкий микро-параллакс текста: при фокусе текст плавно поднимается на 3.dp
-    val textOffsetY by androidx.compose.animation.core.animateDpAsState(
-        targetValue = if (isFocused) 0.dp else 3.dp,
-        animationSpec = spring(
-            dampingRatio = 0.74f,
-            stiffness = 380f
-        ),
-        label = "textOffsetY"
-    )
-
-    // 5. Освещение постера (88% -> 100%)
-    val posterAlpha by animateFloatAsState(
-        targetValue = if (isFocused) 1.0f else 0.88f,
-        animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
-        label = "posterAlpha"
-    )
-
-    // 6. Упругий акцент бейджа рейтинга
-    val badgeScale by animateFloatAsState(
-        targetValue = if (isFocused) 1.0f else 0.90f,
-        animationSpec = spring(
-            dampingRatio = 0.74f,
-            stiffness = 380f
-        ),
-        label = "badgeScale"
-    )
-
-    // 7. Деликатный стеклянный блик (однократный диагональный проход за 340мс)
+    // Деликатный стеклянный блик (однократный диагональный проход за 320мс)
     val sheenProgress = remember { androidx.compose.animation.core.Animatable(0f) }
     LaunchedEffect(isFocused) {
         if (isFocused) {
             sheenProgress.snapTo(0f)
             sheenProgress.animateTo(
                 targetValue = 1f,
-                animationSpec = tween(durationMillis = 340, easing = FastOutSlowInEasing)
+                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
             )
         } else {
             sheenProgress.snapTo(0f)
@@ -575,7 +544,12 @@ fun MediaCard(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            .zIndex(if (isFocused) 10f else 1f),
+            .zIndex(if (isFocused) 10f else 1f)
+            .graphicsLayer {
+                this.shadowElevation = shadowElevation.toPx()
+                this.shape = cardShape
+                this.clip = false
+            },
         interactionSource = interactionSource,
         shape = CardDefaults.shape(shape = cardShape),
         colors = CardDefaults.colors(
@@ -604,10 +578,6 @@ fun MediaCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .graphicsLayer {
-                    scaleX = bgScale
-                    scaleY = bgScale
-                }
                 .clip(cardShape)
                 .background(Color.White.copy(alpha = bgAlpha))
                 .padding(
@@ -624,7 +594,6 @@ fun MediaCard(
                     .aspectRatio(2f / 3f)
                     .clip(posterShape)
                     .background(SurfaceDark)
-                    .graphicsLayer { alpha = posterAlpha }
             ) {
                 AsyncImage(
                     model = item.getDisplayPosterUrl(),
@@ -659,7 +628,7 @@ fun MediaCard(
                     )
                 }
 
-                // Adaptive rating badge top-left with spring bounce
+                // Adaptive rating badge top-left
                 if (item.rating != null && item.rating > 0) {
                     val badgePaddingHorizontal = if (compact) 5.dp else 6.5.dp
                     val badgePaddingVertical = if (compact) 2.dp else 2.5.dp
@@ -670,10 +639,6 @@ fun MediaCard(
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .padding(badgeMargin)
-                            .graphicsLayer {
-                                scaleX = badgeScale
-                                scaleY = badgeScale
-                            }
                             .clip(badgeShape)
                             .background(ratingColor(item.rating))
                             .padding(
@@ -700,13 +665,12 @@ fun MediaCard(
                 }
             }
 
-            // ─── Movie Title & Metadata with Text Parallax ──────────────────
+            // ─── Movie Title & Metadata ─────────────────────────────────────
             Spacer(modifier = Modifier.height(posterToTitleSpacing))
 
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .offset(y = textOffsetY)
                     .padding(horizontal = textHorizontalPadding)
             ) {
                 Text(
