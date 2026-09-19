@@ -46,6 +46,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.sloosh.tv.data.api.MediaDto
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
@@ -469,6 +470,9 @@ private val CompactPosterShape = ContinuousRoundedRectangle(13.dp)
 private val StandardBadgeShape = ContinuousRoundedRectangle(7.dp)
 private val CompactBadgeShape = ContinuousRoundedRectangle(6.dp)
 
+private const val SHEEN_COS_THETA = 0.88295f // cos(28 deg)
+private const val SHEEN_SIN_THETA = 0.46947f // sin(28 deg)
+
 @Composable
 fun MediaCard(
     item: MediaDto,
@@ -514,14 +518,14 @@ fun MediaCard(
         label = "cardMetaColor"
     )
 
-    // Деликатный стеклянный блик (однократный диагональный проход за 320мс)
+    // Деликатный стеклянный блик (однократный диагональный проход за 440мс с эффектом наложения Screen)
     val sheenProgress = remember { androidx.compose.animation.core.Animatable(0f) }
     LaunchedEffect(isFocused) {
         if (isFocused) {
             sheenProgress.snapTo(0f)
             sheenProgress.animateTo(
                 targetValue = 1f,
-                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
+                animationSpec = tween(durationMillis = 440, easing = FastOutSlowInEasing)
             )
         } else {
             sheenProgress.snapTo(0f)
@@ -598,35 +602,53 @@ fun MediaCard(
                 AsyncImage(
                     model = item.getDisplayPosterUrl(),
                     contentDescription = item.displayTitle,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-
-                // Glass sheen light sweep on focus
-                if (isFocused && sheenProgress.value > 0f && sheenProgress.value < 1f) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .drawWithContent {
-                                drawContent()
-                                val progress = sheenProgress.value
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .drawWithContent {
+                            drawContent()
+                            val progress = sheenProgress.value
+                            if (isFocused && progress > 0f && progress < 1f) {
                                 val w = size.width
                                 val h = size.height
-                                val xOffset = (w + h) * progress - h
-                                drawRect(
-                                    brush = Brush.linearGradient(
-                                        colors = listOf(
-                                            Color.Transparent,
-                                            Color.White.copy(alpha = 0.16f),
-                                            Color.Transparent
-                                        ),
-                                        start = androidx.compose.ui.geometry.Offset(xOffset - 40f, 0f),
-                                        end = androidx.compose.ui.geometry.Offset(xOffset + 40f, h)
-                                    )
-                                )
+                                if (w > 0f && h > 0f) {
+                                    // Плавная синусоидальная огибающая: 0 на границах, 1.0 в центре
+                                    val envelope = kotlin.math.sin(progress * Math.PI.toFloat())
+                                    val maxProj = w * SHEEN_COS_THETA + h * SHEEN_SIN_THETA
+                                    val beamRadius = maxProj * 0.24f
+                                    val startC = -beamRadius * 1.5f
+                                    val endC = maxProj + beamRadius * 1.5f
+                                    val currentC = startC + (endC - startC) * progress
+
+                                    val peakAlpha = 0.40f * envelope
+                                    if (peakAlpha > 0.005f) {
+                                        val pStart = androidx.compose.ui.geometry.Offset(
+                                            (currentC - beamRadius) * SHEEN_COS_THETA,
+                                            (currentC - beamRadius) * SHEEN_SIN_THETA
+                                        )
+                                        val pEnd = androidx.compose.ui.geometry.Offset(
+                                            (currentC + beamRadius) * SHEEN_COS_THETA,
+                                            (currentC + beamRadius) * SHEEN_SIN_THETA
+                                        )
+                                        drawRect(
+                                            brush = Brush.linearGradient(
+                                                0.0f to Color.Transparent,
+                                                0.20f to Color.White.copy(alpha = peakAlpha * 0.15f),
+                                                0.40f to Color.White.copy(alpha = peakAlpha * 0.70f),
+                                                0.50f to Color.White.copy(alpha = peakAlpha),
+                                                0.60f to Color.White.copy(alpha = peakAlpha * 0.70f),
+                                                0.80f to Color.White.copy(alpha = peakAlpha * 0.15f),
+                                                1.0f to Color.Transparent,
+                                                start = pStart,
+                                                end = pEnd
+                                            ),
+                                            blendMode = BlendMode.Screen
+                                        )
+                                    }
+                                }
                             }
-                    )
-                }
+                        },
+                    contentScale = ContentScale.Crop
+                )
 
                 // Adaptive rating badge top-left
                 if (item.rating != null && item.rating > 0) {
