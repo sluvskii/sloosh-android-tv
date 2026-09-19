@@ -61,16 +61,49 @@ fun SearchScreen(
     val verticalGridSpacing = if (isCompact) 2.dp else 4.dp
     val resultsGridState = rememberTvLazyGridState()
 
+    var isFirstLaunch by rememberSaveable { mutableStateOf(true) }
     var lastFocusedArea by rememberSaveable { mutableStateOf("input") }
     var lastFocusedResultIndex by rememberSaveable { mutableIntStateOf(0) }
     var lastFocusedRecentIndex by rememberSaveable { mutableIntStateOf(0) }
 
-    // Initial autofocus on search input field
-    LaunchedEffect(Unit) {
-        try {
-            searchInputFocusRequester.requestFocus()
-        } catch (e: Exception) {
-            // ignore
+    // ─── Lifecycle Focus Management & Memory Restoration ────────────
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, lastFocusedArea, state.results.isNotEmpty(), state.recentSearches.isNotEmpty()) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                if (isFirstLaunch) {
+                    isFirstLaunch = false
+                    try {
+                        searchInputFocusRequester.requestFocus()
+                    } catch (_: Exception) {}
+                } else {
+                    // Resuming from child screen (DetailsScreen, etc.)
+                    if (lastFocusedArea == "result" && state.results.isNotEmpty()) {
+                        val safeTarget = lastFocusedResultIndex.coerceIn(0, state.results.lastIndex)
+                        coroutineScope.launch {
+                            try {
+                                resultsGridState.scrollToItem(safeTarget)
+                                delay(40)
+                                activeResultFocusRequester.requestFocus()
+                            } catch (_: Exception) {
+                                try { activeResultFocusRequester.requestFocus() } catch (_: Exception) {}
+                            }
+                        }
+                    } else if (lastFocusedArea == "recent" && state.recentSearches.isNotEmpty()) {
+                        try {
+                            activeRecentFocusRequester.requestFocus()
+                        } catch (_: Exception) {}
+                    } else {
+                        try {
+                            searchInputFocusRequester.requestFocus()
+                        } catch (_: Exception) {}
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 

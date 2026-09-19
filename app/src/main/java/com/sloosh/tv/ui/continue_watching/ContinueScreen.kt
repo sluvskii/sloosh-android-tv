@@ -55,23 +55,52 @@ fun ContinueScreen(
     val focusBridge = com.sloosh.tv.LocalSideDrawerFocusBridge.current
     val gridState = rememberTvLazyGridState()
 
+    var isFirstLaunch by rememberSaveable { mutableStateOf(true) }
     var lastFocusedIndex by rememberSaveable { mutableIntStateOf(0) }
 
-    // Autofocus on active continue watching card or empty state button when loaded
-    LaunchedEffect(Unit) {
-        try {
-            if (state.items.isNotEmpty()) {
-                activeItemFocusRequester.requestFocus()
-            } else {
-                emptyStateFocusRequester.requestFocus()
+    // ─── Lifecycle Focus Management & Memory Restoration ────────────
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, state.items.isNotEmpty()) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                if (isFirstLaunch) {
+                    isFirstLaunch = false
+                    try {
+                        if (state.items.isNotEmpty()) {
+                            activeItemFocusRequester.requestFocus()
+                        } else {
+                            emptyStateFocusRequester.requestFocus()
+                        }
+                    } catch (_: Exception) {}
+                } else {
+                    // Resuming from DetailsScreen or playback
+                    if (state.items.isNotEmpty()) {
+                        val safeTarget = lastFocusedIndex.coerceIn(0, state.items.lastIndex)
+                        coroutineScope.launch {
+                            try {
+                                gridState.scrollToItem(safeTarget)
+                                delay(40)
+                                activeItemFocusRequester.requestFocus()
+                            } catch (_: Exception) {
+                                try { activeItemFocusRequester.requestFocus() } catch (_: Exception) {}
+                            }
+                        }
+                    } else {
+                        try {
+                            emptyStateFocusRequester.requestFocus()
+                        } catch (_: Exception) {}
+                    }
+                }
             }
-        } catch (e: Exception) {
-            // ignore
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
     LaunchedEffect(state.items.isNotEmpty()) {
-        if (state.items.isNotEmpty() && !focusBridge.isDrawerOpen) {
+        if (state.items.isNotEmpty() && !focusBridge.isDrawerOpen && isFirstLaunch) {
             try {
                 activeItemFocusRequester.requestFocus()
             } catch (e: Exception) {

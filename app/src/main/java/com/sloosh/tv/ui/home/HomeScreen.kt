@@ -84,44 +84,77 @@ fun HomeScreen(
     val focusBridge = com.sloosh.tv.LocalSideDrawerFocusBridge.current
     val activeCardFocusRequester = remember { FocusRequester() }
     val categoryFocusRequesters = remember { Array(categories.size) { FocusRequester() } }
+    var isFirstLaunch by rememberSaveable { mutableStateOf(true) }
     var lastFocusedArea by rememberSaveable { mutableStateOf("tab") }
-    var lastFocusedCardIndex by rememberSaveable { mutableIntStateOf(0) }
+    val categoryCardIndices = rememberSaveable { mutableStateMapOf<String, Int>() }
 
     val pageCategory = state.selectedCategory
     val categoryItems = state.categoryItems[pageCategory] ?: emptyList()
 
-    // ─── Initial D-pad Focus on Startup ─────────────────────────────
-    // 1. Initially focus category tab 0 so remote navigation is active immediately
-    LaunchedEffect(Unit) {
-        try {
-            categoryFocusRequesters[0].requestFocus()
-        } catch (e: Exception) {
-            // ignore
+    // ─── Lifecycle Focus Management & Memory Restoration ────────────
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, pageCategory, categoryItems.isNotEmpty()) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                if (isFirstLaunch) {
+                    isFirstLaunch = false
+                    try {
+                        categoryFocusRequesters[0].requestFocus()
+                    } catch (_: Exception) {}
+                } else {
+                    // Resuming from child screen (DetailsScreen, player, etc.)
+                    if (lastFocusedArea == "card" && categoryItems.isNotEmpty()) {
+                        val savedIndex = categoryCardIndices[pageCategory.name] ?: 0
+                        val safeTarget = savedIndex.coerceIn(0, categoryItems.lastIndex)
+                        coroutineScope.launch {
+                            try {
+                                gridState.scrollToItem(safeTarget)
+                                delay(40)
+                                activeCardFocusRequester.requestFocus()
+                            } catch (_: Exception) {
+                                try { activeCardFocusRequester.requestFocus() } catch (_: Exception) {}
+                            }
+                        }
+                    } else {
+                        try {
+                            categoryFocusRequesters[pageCategory.ordinal].requestFocus()
+                        } catch (_: Exception) {}
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
-    // 2. Once catalog items load, smoothly focus the active card in the grid if user moved to card area
+    // Smoothly focus the active card in the grid when items populate if user selected cards
     LaunchedEffect(categoryItems.isNotEmpty()) {
         if (categoryItems.isNotEmpty() && !focusBridge.isDrawerOpen && lastFocusedArea == "card") {
+            val savedIndex = categoryCardIndices[pageCategory.name] ?: 0
+            val safeTarget = savedIndex.coerceIn(0, categoryItems.lastIndex)
             try {
                 activeCardFocusRequester.requestFocus()
             } catch (e: Exception) {
-                // ignore
+                coroutineScope.launch {
+                    try {
+                        gridState.scrollToItem(safeTarget)
+                        delay(32)
+                        activeCardFocusRequester.requestFocus()
+                    } catch (_: Exception) {}
+                }
             }
         }
     }
 
-    // 3. Reset card focus index when category tab changes
-    LaunchedEffect(state.selectedCategory) {
-        lastFocusedCardIndex = 0
-    }
-
-    // 4. Register side drawer exit focus callback with exact card index restoration
-    DisposableEffect(focusBridge, lastFocusedArea, state.selectedCategory, categoryItems.isNotEmpty(), lastFocusedCardIndex) {
+    // Register side drawer exit focus callback with exact category card index restoration
+    DisposableEffect(focusBridge, lastFocusedArea, state.selectedCategory, categoryItems.isNotEmpty()) {
         focusBridge.contentFocusCallback = {
             var focused = false
             if (lastFocusedArea == "card" && categoryItems.isNotEmpty()) {
-                val safeTarget = lastFocusedCardIndex.coerceIn(0, categoryItems.lastIndex)
+                val savedIndex = categoryCardIndices[state.selectedCategory.name] ?: 0
+                val safeTarget = savedIndex.coerceIn(0, categoryItems.lastIndex)
                 try {
                     activeCardFocusRequester.requestFocus()
                     focused = true
@@ -193,7 +226,8 @@ fun HomeScreen(
 
                     val isFirstColumn = index % gridColumns == 0
                     val isTopRow = index < gridColumns
-                    val targetIndex = lastFocusedCardIndex.coerceIn(0, (categoryItems.size - 1).coerceAtLeast(0))
+                    val savedIndex = categoryCardIndices[pageCategory.name] ?: 0
+                    val targetIndex = savedIndex.coerceIn(0, (categoryItems.size - 1).coerceAtLeast(0))
                     val isTargetCard = (index == targetIndex)
 
                     val cardModifier = Modifier
@@ -201,7 +235,7 @@ fun HomeScreen(
                         .onFocusChanged {
                             if (it.isFocused) {
                                 lastFocusedArea = "card"
-                                lastFocusedCardIndex = index
+                                categoryCardIndices[pageCategory.name] = index
                             }
                         }
                         .onPreviewKeyEvent { keyEvent ->
@@ -242,7 +276,7 @@ fun HomeScreen(
                         modifier = cardModifier,
                         onFocus = {
                             lastFocusedArea = "card"
-                            lastFocusedCardIndex = index
+                            categoryCardIndices[pageCategory.name] = index
                         }
                     )
                 }
@@ -391,14 +425,15 @@ fun HomeScreen(
                                     indication = null
                                 ) {
                                     viewModel.selectCategory(cat)
-                                    coroutineScope.launch { gridState.scrollToItem(0) }
+                                    val targetIndex = (categoryCardIndices[cat.name] ?: 0).coerceIn(0, (categoryItems.size - 1).coerceAtLeast(0))
+                                    coroutineScope.launch { gridState.scrollToItem(targetIndex) }
                                 }
                                 .onPreviewKeyEvent { keyEvent ->
                                     if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
                                         when (keyEvent.nativeKeyEvent.keyCode) {
                                              android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
                                                  if (categoryItems.isNotEmpty()) {
-                                                     val safeTarget = lastFocusedCardIndex.coerceIn(0, categoryItems.lastIndex)
+                                                     val safeTarget = (categoryCardIndices[cat.name] ?: 0).coerceIn(0, categoryItems.lastIndex)
                                                      try {
                                                          activeCardFocusRequester.requestFocus()
                                                          true

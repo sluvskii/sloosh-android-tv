@@ -76,25 +76,9 @@ fun ProfileScreen(
     val categoryFocusRequesters = remember { Array(categories.size) { FocusRequester() } }
     val gridState = rememberTvLazyGridState()
 
+    var isFirstLaunch by rememberSaveable { mutableStateOf(true) }
     var lastFocusedArea by rememberSaveable { mutableStateOf("tab") }
-    var lastFocusedCardIndex by rememberSaveable { mutableIntStateOf(0) }
-
-    // Initial autofocus on favorite category tabs
-    LaunchedEffect(Unit) {
-        try {
-            categoryFocusRequesters[0].requestFocus()
-        } catch (e: Exception) {
-            // ignore
-        }
-    }
-
-    // Reset card focus index when category tab changes
-    LaunchedEffect(selectedCategory) {
-        lastFocusedCardIndex = 0
-        try {
-            gridState.scrollToItem(0)
-        } catch (_: Exception) {}
-    }
+    val categoryCardIndices = rememberSaveable { mutableStateMapOf<String, Int>() }
 
     val filteredFavorites = remember(state.favorites, selectedCategory) {
         val raw = when (selectedCategory) {
@@ -130,11 +114,58 @@ fun ProfileScreen(
         }
     }
 
-    DisposableEffect(focusBridge, lastFocusedArea, selectedCategory, filteredFavorites.isNotEmpty(), lastFocusedCardIndex) {
+    // ─── Lifecycle Focus Management & Memory Restoration ────────────
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, selectedCategory, filteredFavorites.isNotEmpty()) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                if (isFirstLaunch) {
+                    isFirstLaunch = false
+                    try {
+                        categoryFocusRequesters[0].requestFocus()
+                    } catch (_: Exception) {}
+                } else {
+                    // Resuming from DetailsScreen or back navigation
+                    if (lastFocusedArea == "card" && filteredFavorites.isNotEmpty()) {
+                        val savedIndex = categoryCardIndices[selectedCategory.name] ?: 0
+                        val safeTarget = savedIndex.coerceIn(0, filteredFavorites.lastIndex)
+                        coroutineScope.launch {
+                            try {
+                                gridState.scrollToItem(safeTarget)
+                                delay(40)
+                                activeCardFocusRequester.requestFocus()
+                            } catch (_: Exception) {
+                                try { activeCardFocusRequester.requestFocus() } catch (_: Exception) {}
+                            }
+                        }
+                    } else {
+                        try {
+                            categoryFocusRequesters[selectedCategory.ordinal].requestFocus()
+                        } catch (_: Exception) {}
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    // Scroll to category saved position when category tab changes
+    LaunchedEffect(selectedCategory) {
+        val savedIndex = (categoryCardIndices[selectedCategory.name] ?: 0).coerceIn(0, (filteredFavorites.size - 1).coerceAtLeast(0))
+        try {
+            gridState.scrollToItem(savedIndex)
+        } catch (_: Exception) {}
+    }
+
+    DisposableEffect(focusBridge, lastFocusedArea, selectedCategory, filteredFavorites.isNotEmpty()) {
         focusBridge.contentFocusCallback = {
             var focused = false
             if (lastFocusedArea == "card" && filteredFavorites.isNotEmpty()) {
-                val safeTarget = lastFocusedCardIndex.coerceIn(0, filteredFavorites.lastIndex)
+                val savedIndex = categoryCardIndices[selectedCategory.name] ?: 0
+                val safeTarget = savedIndex.coerceIn(0, filteredFavorites.lastIndex)
                 try {
                     activeCardFocusRequester.requestFocus()
                     focused = true
@@ -303,7 +334,7 @@ fun ProfileScreen(
                                         when (keyEvent.nativeKeyEvent.keyCode) {
                                             android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
                                                 if (filteredFavorites.isNotEmpty()) {
-                                                    val safeTarget = lastFocusedCardIndex.coerceIn(0, filteredFavorites.lastIndex)
+                                                    val safeTarget = (categoryCardIndices[cat.name] ?: 0).coerceIn(0, filteredFavorites.lastIndex)
                                                     try {
                                                         activeCardFocusRequester.requestFocus()
                                                         true
@@ -417,7 +448,8 @@ fun ProfileScreen(
                         val item = filteredFavorites[index]
                         val isFirstColumn = index % gridColumns == 0
                         val isTopRow = index < gridColumns
-                        val targetIndex = lastFocusedCardIndex.coerceIn(0, (filteredFavorites.size - 1).coerceAtLeast(0))
+                        val savedIndex = categoryCardIndices[selectedCategory.name] ?: 0
+                        val targetIndex = savedIndex.coerceIn(0, (filteredFavorites.size - 1).coerceAtLeast(0))
                         val isTargetCard = (index == targetIndex)
 
                         val cardModifier = Modifier
@@ -425,7 +457,7 @@ fun ProfileScreen(
                             .onFocusChanged {
                                 if (it.isFocused) {
                                     lastFocusedArea = "card"
-                                    lastFocusedCardIndex = index
+                                    categoryCardIndices[selectedCategory.name] = index
                                 }
                             }
                             .onPreviewKeyEvent { keyEvent: KeyEvent ->
@@ -466,7 +498,7 @@ fun ProfileScreen(
                             modifier = cardModifier,
                             onFocus = {
                                 lastFocusedArea = "card"
-                                lastFocusedCardIndex = index
+                                categoryCardIndices[selectedCategory.name] = index
                             }
                         )
                     }

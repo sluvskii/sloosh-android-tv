@@ -74,6 +74,10 @@ import com.sloosh.tv.ui.theme.*
 import com.sloosh.tv.ui.util.rememberAdaptiveAmbientColor
 import java.util.Locale
 import kotlinx.coroutines.launch
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.runtime.saveable.rememberSaveable
 
 @Composable
 fun DetailsScreen(
@@ -95,15 +99,6 @@ fun DetailsScreen(
 
     LaunchedEffect(mediaId) {
         viewModel.loadDetails(mediaId)
-    }
-
-    LaunchedEffect(state.isLoading, state.details != null) {
-        if (!state.isLoading && state.details != null) {
-            if (!safeRequestFocus(watchButtonFocusRequester)) {
-                kotlinx.coroutines.delay(60)
-                safeRequestFocus(watchButtonFocusRequester)
-            }
-        }
     }
 
     // ─── Loading ──────────────────────────────────────────────────────────────
@@ -189,23 +184,94 @@ private fun SidePosterDetailsLayout(
     val scrollMarginPx = with(density) { 80.dp.toPx() }
     val backButtonFocusRequester = remember { FocusRequester() }
     val moreButtonFocusRequester = remember { FocusRequester() }
-    val firstCastFocusRequester = remember { FocusRequester() }
-    val firstFranchiseFocusRequester = remember { FocusRequester() }
-    val firstSimilarFocusRequester = remember { FocusRequester() }
-    val firstStudioFocusRequester = remember { FocusRequester() }
+    val activeCastFocusRequester = remember { FocusRequester() }
+    val activeFranchiseFocusRequester = remember { FocusRequester() }
+    val activeSimilarFocusRequester = remember { FocusRequester() }
+    val activeStudioFocusRequester = remember { FocusRequester() }
     var isExpanded by remember { mutableStateOf(false) }
     var canExpand by remember(details.description) { mutableStateOf(false) }
 
-    var screenHeightPx by remember { mutableFloatStateOf(0f) }
-    var castSectionY by remember { mutableFloatStateOf(0f) }
-    var castSectionHeight by remember { mutableFloatStateOf(0f) }
-    var franchiseSectionY by remember { mutableFloatStateOf(0f) }
-    var franchiseSectionHeight by remember { mutableFloatStateOf(0f) }
-    var similarSectionY by remember { mutableFloatStateOf(0f) }
-    var similarSectionHeight by remember { mutableFloatStateOf(0f) }
-    var studioSectionY by remember { mutableFloatStateOf(0f) }
-    var studioSectionHeight by remember { mutableFloatStateOf(0f) }
-    var focusedSection by remember { mutableStateOf("top") } // "top", "cast", "franchise", "similar", "studio"
+    var isFirstLaunch by rememberSaveable { mutableStateOf(true) }
+    var lastFocusedCastIndex by rememberSaveable { mutableIntStateOf(0) }
+    var lastFocusedFranchiseIndex by rememberSaveable { mutableIntStateOf(0) }
+    var lastFocusedSimilarIndex by rememberSaveable { mutableIntStateOf(0) }
+    var lastFocusedStudioIndex by rememberSaveable { mutableIntStateOf(0) }
+    var focusedSection by rememberSaveable { mutableStateOf("top") } // "top", "cast", "franchise", "similar", "studio"
+
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                if (isFirstLaunch) {
+                    isFirstLaunch = false
+                    safeRequestFocus(watchButtonFocusRequester)
+                } else {
+                    when (focusedSection) {
+                        "cast" -> {
+                            coroutineScope.launch {
+                                try {
+                                    castListState.scrollToItem(lastFocusedCastIndex)
+                                    delay(40)
+                                    safeRequestFocus(activeCastFocusRequester)
+                                } catch (_: Exception) {
+                                    safeRequestFocus(activeCastFocusRequester)
+                                }
+                            }
+                        }
+                        "franchise" -> {
+                            coroutineScope.launch {
+                                try {
+                                    franchiseListState.scrollToItem(lastFocusedFranchiseIndex)
+                                    delay(40)
+                                    safeRequestFocus(activeFranchiseFocusRequester)
+                                } catch (_: Exception) {
+                                    safeRequestFocus(activeFranchiseFocusRequester)
+                                }
+                            }
+                        }
+                        "similar" -> {
+                            coroutineScope.launch {
+                                try {
+                                    similarListState.scrollToItem(lastFocusedSimilarIndex)
+                                    delay(40)
+                                    safeRequestFocus(activeSimilarFocusRequester)
+                                } catch (_: Exception) {
+                                    safeRequestFocus(activeSimilarFocusRequester)
+                                }
+                            }
+                        }
+                        "studio" -> {
+                            coroutineScope.launch {
+                                try {
+                                    studioListState.scrollToItem(lastFocusedStudioIndex)
+                                    delay(40)
+                                    safeRequestFocus(activeStudioFocusRequester)
+                                } catch (_: Exception) {
+                                    safeRequestFocus(activeStudioFocusRequester)
+                                }
+                            }
+                        }
+                        else -> {
+                            safeRequestFocus(watchButtonFocusRequester)
+                        }
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (isFirstLaunch) {
+            if (!safeRequestFocus(watchButtonFocusRequester)) {
+                delay(60)
+                safeRequestFocus(watchButtonFocusRequester)
+            }
+        }
+    }
 
     @OptIn(ExperimentalFoundationApi::class)
     val noOpBringIntoViewResponder = remember {
@@ -712,19 +778,35 @@ private fun SidePosterDetailsLayout(
                                                      val studio = state.relatedStudio?.allItems
                                                      if (!cast.isNullOrEmpty()) {
                                                          focusedSection = "cast"
-                                                         safeRequestFocus(firstCastFocusRequester)
+                                                         val target = lastFocusedCastIndex.coerceIn(0, cast.size - 1)
+                                                         coroutineScope.launch {
+                                                             try { castListState.scrollToItem(target); delay(24) } catch (_: Exception) {}
+                                                             safeRequestFocus(activeCastFocusRequester)
+                                                         }
                                                          true
                                                      } else if (!franchiseParts.isNullOrEmpty()) {
                                                          focusedSection = "franchise"
-                                                         safeRequestFocus(firstFranchiseFocusRequester)
+                                                         val target = lastFocusedFranchiseIndex.coerceIn(0, franchiseParts.size - 1)
+                                                         coroutineScope.launch {
+                                                             try { franchiseListState.scrollToItem(target); delay(24) } catch (_: Exception) {}
+                                                             safeRequestFocus(activeFranchiseFocusRequester)
+                                                         }
                                                          true
                                                      } else if (!similar.isNullOrEmpty()) {
                                                          focusedSection = "similar"
-                                                         safeRequestFocus(firstSimilarFocusRequester)
+                                                         val target = lastFocusedSimilarIndex.coerceIn(0, similar.size - 1)
+                                                         coroutineScope.launch {
+                                                             try { similarListState.scrollToItem(target); delay(24) } catch (_: Exception) {}
+                                                             safeRequestFocus(activeSimilarFocusRequester)
+                                                         }
                                                          true
                                                      } else if (!studio.isNullOrEmpty()) {
                                                          focusedSection = "studio"
-                                                         safeRequestFocus(firstStudioFocusRequester)
+                                                         val target = lastFocusedStudioIndex.coerceIn(0, studio.size - 1)
+                                                         coroutineScope.launch {
+                                                             try { studioListState.scrollToItem(target); delay(24) } catch (_: Exception) {}
+                                                             safeRequestFocus(activeStudioFocusRequester)
+                                                         }
                                                          true
                                                      } else false
                                                  }
@@ -774,19 +856,35 @@ private fun SidePosterDetailsLayout(
                                             val studio = state.relatedStudio?.allItems
                                             if (!cast.isNullOrEmpty()) {
                                                 focusedSection = "cast"
-                                                safeRequestFocus(firstCastFocusRequester)
+                                                val target = lastFocusedCastIndex.coerceIn(0, cast.size - 1)
+                                                coroutineScope.launch {
+                                                    try { castListState.scrollToItem(target); delay(24) } catch (_: Exception) {}
+                                                    safeRequestFocus(activeCastFocusRequester)
+                                                }
                                                 true
                                             } else if (!franchiseParts.isNullOrEmpty()) {
                                                 focusedSection = "franchise"
-                                                safeRequestFocus(firstFranchiseFocusRequester)
+                                                val target = lastFocusedFranchiseIndex.coerceIn(0, franchiseParts.size - 1)
+                                                coroutineScope.launch {
+                                                    try { franchiseListState.scrollToItem(target); delay(24) } catch (_: Exception) {}
+                                                    safeRequestFocus(activeFranchiseFocusRequester)
+                                                }
                                                 true
                                             } else if (!similar.isNullOrEmpty()) {
                                                 focusedSection = "similar"
-                                                safeRequestFocus(firstSimilarFocusRequester)
+                                                val target = lastFocusedSimilarIndex.coerceIn(0, similar.size - 1)
+                                                coroutineScope.launch {
+                                                    try { similarListState.scrollToItem(target); delay(24) } catch (_: Exception) {}
+                                                    safeRequestFocus(activeSimilarFocusRequester)
+                                                }
                                                 true
                                             } else if (!studio.isNullOrEmpty()) {
                                                 focusedSection = "studio"
-                                                safeRequestFocus(firstStudioFocusRequester)
+                                                val target = lastFocusedStudioIndex.coerceIn(0, studio.size - 1)
+                                                coroutineScope.launch {
+                                                    try { studioListState.scrollToItem(target); delay(24) } catch (_: Exception) {}
+                                                    safeRequestFocus(activeStudioFocusRequester)
+                                                }
                                                 true
                                             } else false
                                         }
@@ -909,6 +1007,7 @@ private fun SidePosterDetailsLayout(
                                 index == castCount - 1 -> castLastItemBringIntoViewResponder
                                 else -> castMiddleItemBringIntoViewResponder
                             }
+                            val isTargetCast = (index == lastFocusedCastIndex.coerceIn(0, castCount - 1))
                             SlooshFocusableCard(
                                 onClick = {
                                     onNavigateToPerson?.invoke(actor.id.toString())
@@ -916,11 +1015,12 @@ private fun SidePosterDetailsLayout(
                                 shape = ContinuousRoundedRectangle(16.dp),
                                 modifier = Modifier
                                     .width(104.dp)
-                                    .then(if (index == 0) Modifier.focusRequester(firstCastFocusRequester) else Modifier)
+                                    .then(if (isTargetCast) Modifier.focusRequester(activeCastFocusRequester) else Modifier)
                                     .bringIntoViewResponder(cardResponder)
                                     .onFocusChanged {
                                         if (it.isFocused) {
                                             focusedSection = "cast"
+                                            lastFocusedCastIndex = index
                                         }
                                     }
                                     .onPreviewKeyEvent { keyEvent ->
@@ -938,15 +1038,27 @@ private fun SidePosterDetailsLayout(
                                                     val studio = state.relatedStudio?.allItems
                                                     if (!franchiseParts.isNullOrEmpty()) {
                                                         focusedSection = "franchise"
-                                                        safeRequestFocus(firstFranchiseFocusRequester)
+                                                        val target = lastFocusedFranchiseIndex.coerceIn(0, franchiseParts.size - 1)
+                                                        coroutineScope.launch {
+                                                            try { franchiseListState.scrollToItem(target); delay(24) } catch (_: Exception) {}
+                                                            safeRequestFocus(activeFranchiseFocusRequester)
+                                                        }
                                                         true
                                                     } else if (!similar.isNullOrEmpty()) {
                                                         focusedSection = "similar"
-                                                        safeRequestFocus(firstSimilarFocusRequester)
+                                                        val target = lastFocusedSimilarIndex.coerceIn(0, similar.size - 1)
+                                                        coroutineScope.launch {
+                                                            try { similarListState.scrollToItem(target); delay(24) } catch (_: Exception) {}
+                                                            safeRequestFocus(activeSimilarFocusRequester)
+                                                        }
                                                         true
                                                     } else if (!studio.isNullOrEmpty()) {
                                                         focusedSection = "studio"
-                                                        safeRequestFocus(firstStudioFocusRequester)
+                                                        val target = lastFocusedStudioIndex.coerceIn(0, studio.size - 1)
+                                                        coroutineScope.launch {
+                                                            try { studioListState.scrollToItem(target); delay(24) } catch (_: Exception) {}
+                                                            safeRequestFocus(activeStudioFocusRequester)
+                                                        }
                                                         true
                                                     } else true
                                                 }
@@ -1077,13 +1189,18 @@ private fun SidePosterDetailsLayout(
                     ) {
                         itemsIndexed(franchiseItems) { index, item ->
                             val cardResponder = franchiseResponderProvider(index)
+                            val isTargetFranchise = (index == lastFocusedFranchiseIndex.coerceIn(0, franchiseCount - 1))
                             MoviePosterRowCard(
                                 item = item,
                                 index = index,
                                 count = franchiseCount,
-                                firstFocusRequester = firstFranchiseFocusRequester,
+                                targetFocusRequester = activeFranchiseFocusRequester,
+                                isTarget = isTargetFranchise,
                                 cardResponder = cardResponder,
-                                onFocus = { focusedSection = "franchise" },
+                                onFocus = {
+                                    focusedSection = "franchise"
+                                    lastFocusedFranchiseIndex = index
+                                },
                                 onPreviewKeyEvent = { keyEvent ->
                                     if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
                                         when (keyEvent.nativeKeyEvent.keyCode) {
@@ -1091,7 +1208,11 @@ private fun SidePosterDetailsLayout(
                                                 val cast = details.cast
                                                 if (!cast.isNullOrEmpty()) {
                                                     focusedSection = "cast"
-                                                    safeRequestFocus(firstCastFocusRequester)
+                                                    val target = lastFocusedCastIndex.coerceIn(0, cast.size - 1)
+                                                    coroutineScope.launch {
+                                                        try { castListState.scrollToItem(target); delay(24) } catch (_: Exception) {}
+                                                        safeRequestFocus(activeCastFocusRequester)
+                                                    }
                                                     true
                                                 } else {
                                                     focusedSection = "top"
@@ -1104,11 +1225,19 @@ private fun SidePosterDetailsLayout(
                                                 val studio = state.relatedStudio?.allItems
                                                 if (!similar.isNullOrEmpty()) {
                                                     focusedSection = "similar"
-                                                    safeRequestFocus(firstSimilarFocusRequester)
+                                                    val target = lastFocusedSimilarIndex.coerceIn(0, similar.size - 1)
+                                                    coroutineScope.launch {
+                                                        try { similarListState.scrollToItem(target); delay(24) } catch (_: Exception) {}
+                                                        safeRequestFocus(activeSimilarFocusRequester)
+                                                    }
                                                     true
                                                 } else if (!studio.isNullOrEmpty()) {
                                                     focusedSection = "studio"
-                                                    safeRequestFocus(firstStudioFocusRequester)
+                                                    val target = lastFocusedStudioIndex.coerceIn(0, studio.size - 1)
+                                                    coroutineScope.launch {
+                                                        try { studioListState.scrollToItem(target); delay(24) } catch (_: Exception) {}
+                                                        safeRequestFocus(activeStudioFocusRequester)
+                                                    }
                                                     true
                                                 } else false
                                             }
@@ -1172,13 +1301,18 @@ private fun SidePosterDetailsLayout(
                     ) {
                         itemsIndexed(similarItems) { index, item ->
                             val cardResponder = similarResponderProvider(index)
+                            val isTargetSimilar = (index == lastFocusedSimilarIndex.coerceIn(0, similarCount - 1))
                             MoviePosterRowCard(
                                 item = item,
                                 index = index,
                                 count = similarCount,
-                                firstFocusRequester = firstSimilarFocusRequester,
+                                targetFocusRequester = activeSimilarFocusRequester,
+                                isTarget = isTargetSimilar,
                                 cardResponder = cardResponder,
-                                onFocus = { focusedSection = "similar" },
+                                onFocus = {
+                                    focusedSection = "similar"
+                                    lastFocusedSimilarIndex = index
+                                },
                                 onPreviewKeyEvent = { keyEvent ->
                                     if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
                                         when (keyEvent.nativeKeyEvent.keyCode) {
@@ -1188,11 +1322,19 @@ private fun SidePosterDetailsLayout(
                                                 val cast = details.cast
                                                 if (!franchiseParts.isNullOrEmpty()) {
                                                     focusedSection = "franchise"
-                                                    safeRequestFocus(firstFranchiseFocusRequester)
+                                                    val target = lastFocusedFranchiseIndex.coerceIn(0, franchiseParts.size - 1)
+                                                    coroutineScope.launch {
+                                                        try { franchiseListState.scrollToItem(target); delay(24) } catch (_: Exception) {}
+                                                        safeRequestFocus(activeFranchiseFocusRequester)
+                                                    }
                                                     true
                                                 } else if (!cast.isNullOrEmpty()) {
                                                     focusedSection = "cast"
-                                                    safeRequestFocus(firstCastFocusRequester)
+                                                    val target = lastFocusedCastIndex.coerceIn(0, cast.size - 1)
+                                                    coroutineScope.launch {
+                                                        try { castListState.scrollToItem(target); delay(24) } catch (_: Exception) {}
+                                                        safeRequestFocus(activeCastFocusRequester)
+                                                    }
                                                     true
                                                 } else {
                                                     focusedSection = "top"
@@ -1204,7 +1346,11 @@ private fun SidePosterDetailsLayout(
                                                 val studio = state.relatedStudio?.allItems
                                                 if (!studio.isNullOrEmpty()) {
                                                     focusedSection = "studio"
-                                                    safeRequestFocus(firstStudioFocusRequester)
+                                                    val target = lastFocusedStudioIndex.coerceIn(0, studio.size - 1)
+                                                    coroutineScope.launch {
+                                                        try { studioListState.scrollToItem(target); delay(24) } catch (_: Exception) {}
+                                                        safeRequestFocus(activeStudioFocusRequester)
+                                                    }
                                                     true
                                                 } else true
                                             }
@@ -1292,13 +1438,18 @@ private fun SidePosterDetailsLayout(
                     ) {
                         itemsIndexed(studioList) { index, item ->
                             val cardResponder = studioResponderProvider(index)
+                            val isTargetStudio = (index == lastFocusedStudioIndex.coerceIn(0, studioCount - 1))
                             MoviePosterRowCard(
                                 item = item,
                                 index = index,
                                 count = studioCount,
-                                firstFocusRequester = firstStudioFocusRequester,
+                                targetFocusRequester = activeStudioFocusRequester,
+                                isTarget = isTargetStudio,
                                 cardResponder = cardResponder,
-                                onFocus = { focusedSection = "studio" },
+                                onFocus = {
+                                    focusedSection = "studio"
+                                    lastFocusedStudioIndex = index
+                                },
                                 onPreviewKeyEvent = { keyEvent ->
                                     if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
                                         when (keyEvent.nativeKeyEvent.keyCode) {
@@ -1309,15 +1460,27 @@ private fun SidePosterDetailsLayout(
                                                 val cast = details.cast
                                                 if (!similar.isNullOrEmpty()) {
                                                     focusedSection = "similar"
-                                                    safeRequestFocus(firstSimilarFocusRequester)
+                                                    val target = lastFocusedSimilarIndex.coerceIn(0, similar.size - 1)
+                                                    coroutineScope.launch {
+                                                        try { similarListState.scrollToItem(target); delay(24) } catch (_: Exception) {}
+                                                        safeRequestFocus(activeSimilarFocusRequester)
+                                                    }
                                                     true
                                                 } else if (!franchiseParts.isNullOrEmpty()) {
                                                     focusedSection = "franchise"
-                                                    safeRequestFocus(firstFranchiseFocusRequester)
+                                                    val target = lastFocusedFranchiseIndex.coerceIn(0, franchiseParts.size - 1)
+                                                    coroutineScope.launch {
+                                                        try { franchiseListState.scrollToItem(target); delay(24) } catch (_: Exception) {}
+                                                        safeRequestFocus(activeFranchiseFocusRequester)
+                                                    }
                                                     true
                                                 } else if (!cast.isNullOrEmpty()) {
                                                     focusedSection = "cast"
-                                                    safeRequestFocus(firstCastFocusRequester)
+                                                    val target = lastFocusedCastIndex.coerceIn(0, cast.size - 1)
+                                                    coroutineScope.launch {
+                                                        try { castListState.scrollToItem(target); delay(24) } catch (_: Exception) {}
+                                                        safeRequestFocus(activeCastFocusRequester)
+                                                    }
                                                     true
                                                 } else {
                                                     focusedSection = "top"
@@ -1436,7 +1599,8 @@ private fun MoviePosterRowCard(
     item: MediaDto,
     index: Int,
     count: Int,
-    firstFocusRequester: FocusRequester?,
+    targetFocusRequester: FocusRequester? = null,
+    isTarget: Boolean = false,
     cardResponder: BringIntoViewResponder,
     onFocus: () -> Unit,
     onPreviewKeyEvent: (androidx.compose.ui.input.key.KeyEvent) -> Boolean,
@@ -1453,7 +1617,7 @@ private fun MoviePosterRowCard(
         modifier = Modifier
             .width(130.dp)
             .height(195.dp)
-            .then(if (index == 0 && firstFocusRequester != null) Modifier.focusRequester(firstFocusRequester) else Modifier)
+            .then(if (isTarget && targetFocusRequester != null) Modifier.focusRequester(targetFocusRequester) else Modifier)
             .bringIntoViewResponder(cardResponder)
             .onFocusChanged {
                 if (it.isFocused) {

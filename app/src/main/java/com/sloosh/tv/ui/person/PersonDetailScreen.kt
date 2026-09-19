@@ -7,9 +7,16 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.runtime.saveable.rememberSaveable
+import kotlinx.coroutines.delay
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
@@ -155,6 +162,12 @@ fun PersonDetailScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val backFocusRequester = remember { FocusRequester() }
+    val activeFilmFocusRequester = remember { FocusRequester() }
+    val filmListState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+    var isFirstLaunch by rememberSaveable { mutableStateOf(true) }
+    var lastFocusedArea by rememberSaveable { mutableStateOf("back") }
+    var lastFocusedFilmIndex by rememberSaveable { mutableIntStateOf(0) }
 
     BackHandler {
         onBackClick()
@@ -164,8 +177,41 @@ fun PersonDetailScreen(
         viewModel.loadPerson(personId)
     }
 
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, state.details != null) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                if (isFirstLaunch) {
+                    isFirstLaunch = false
+                    try { backFocusRequester.requestFocus() } catch (_: Exception) {}
+                } else {
+                    // Returning from media details screen!
+                    if (lastFocusedArea == "film" && !state.details?.filmography.isNullOrEmpty()) {
+                        val filmCount = state.details?.filmography?.size ?: 0
+                        val safeTarget = lastFocusedFilmIndex.coerceIn(0, (filmCount - 1).coerceAtLeast(0))
+                        coroutineScope.launch {
+                            try {
+                                filmListState.scrollToItem(safeTarget)
+                                delay(40)
+                                activeFilmFocusRequester.requestFocus()
+                            } catch (_: Exception) {
+                                try { activeFilmFocusRequester.requestFocus() } catch (_: Exception) {}
+                            }
+                        }
+                    } else {
+                        try { backFocusRequester.requestFocus() } catch (_: Exception) {}
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     LaunchedEffect(state.isLoading) {
-        if (!state.isLoading) {
+        if (!state.isLoading && isFirstLaunch) {
             try {
                 backFocusRequester.requestFocus()
             } catch (_: Exception) {}
@@ -310,6 +356,11 @@ fun PersonDetailScreen(
                 modifier = Modifier
                     .size(44.dp)
                     .focusRequester(backFocusRequester)
+                    .onFocusChanged {
+                        if (it.isFocused) {
+                            lastFocusedArea = "back"
+                        }
+                    }
             ) { isFocused ->
                 Box(
                     modifier = Modifier
@@ -524,14 +575,18 @@ fun PersonDetailScreen(
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 LazyRow(
+                    state = filmListState,
                     horizontalArrangement = Arrangement.spacedBy(14.dp),
                     contentPadding = PaddingValues(end = 24.dp)
                 ) {
-                    items(filmography) { item ->
+                    itemsIndexed(filmography) { index, item ->
                         val targetId = item.originalId ?: item.identifier
+                        val isTargetFilm = (index == lastFocusedFilmIndex.coerceIn(0, (filmography.size - 1).coerceAtLeast(0)))
                         SlooshFocusableCard(
                             onClick = {
                                 if (targetId.isNotBlank()) {
+                                    lastFocusedArea = "film"
+                                    lastFocusedFilmIndex = index
                                     onNavigateToMedia(targetId)
                                 }
                             },
@@ -539,6 +594,13 @@ fun PersonDetailScreen(
                             modifier = Modifier
                                 .width(120.dp)
                                 .height(180.dp)
+                                .then(if (isTargetFilm) Modifier.focusRequester(activeFilmFocusRequester) else Modifier)
+                                .onFocusChanged {
+                                    if (it.isFocused) {
+                                        lastFocusedArea = "film"
+                                        lastFocusedFilmIndex = index
+                                    }
+                                }
                         ) { _ ->
                             Box(modifier = Modifier.fillMaxSize()) {
                                 val itemPoster = item.getDisplayPosterUrl()
