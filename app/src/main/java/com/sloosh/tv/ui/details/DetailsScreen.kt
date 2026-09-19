@@ -96,9 +96,12 @@ fun DetailsScreen(
         viewModel.loadDetails(mediaId)
     }
 
-    LaunchedEffect(state.isLoading) {
-        if (!state.isLoading) {
-            safeRequestFocus(watchButtonFocusRequester)
+    LaunchedEffect(state.isLoading, state.details != null) {
+        if (!state.isLoading && state.details != null) {
+            if (!safeRequestFocus(watchButtonFocusRequester)) {
+                kotlinx.coroutines.delay(60)
+                safeRequestFocus(watchButtonFocusRequester)
+            }
         }
     }
 

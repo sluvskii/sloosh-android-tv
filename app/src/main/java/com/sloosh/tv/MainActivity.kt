@@ -3,12 +3,21 @@ package com.sloosh.tv
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -17,7 +26,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import androidx.compose.ui.focus.FocusRequester
 import androidx.navigation.navArgument
 import com.sloosh.tv.ui.components.NavSection
 import com.sloosh.tv.ui.components.SlooshSideDrawer
@@ -124,37 +132,37 @@ class MainActivity : ComponentActivity() {
                             .fillMaxSize()
                             .background(BackgroundDark)
                     ) {
-                        // 1. Content Layer (AppNavHost permanently mounted, padded 72dp on tab screens)
-                        val drawerDockWidth = 72.dp
-                        val contentStartPadding = if (showDrawer) drawerDockWidth else 0.dp
-
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(start = contentStartPadding)
-                        ) {
-                            AppNavHost(navController = navController)
-                        }
+                        // 1. Content Layer (AppNavHost permanently mounted, full size without dynamic padding)
+                        AppNavHost(navController = navController)
 
                         // 2. Cinematic Scrim over Content when Sidebar is Open
-                        if (showDrawer) {
-                            val scrimAlpha by androidx.compose.animation.core.animateFloatAsState(
-                                targetValue = if (isDrawerOpen) 0.60f else 0.0f,
-                                animationSpec = androidx.compose.animation.core.tween(180),
-                                label = "drawerScrim"
+                        val scrimAlpha by animateFloatAsState(
+                            targetValue = if (isDrawerOpen && showDrawer) 0.60f else 0.0f,
+                            animationSpec = tween(180),
+                            label = "drawerScrim"
+                        )
+                        if (scrimAlpha > 0.01f) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(start = 72.dp)
+                                    .background(Color.Black.copy(alpha = scrimAlpha))
                             )
-                            if (scrimAlpha > 0.01f) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(start = 72.dp)
-                                        .background(Color.Black.copy(alpha = scrimAlpha))
-                                )
-                            }
                         }
 
-                        // 3. Side Navigation Rail Layer (Seamless background, smooth in-place expansion)
-                        if (showDrawer) {
+                        // 3. Side Navigation Rail Layer (Seamless background, smooth animated slide/fade)
+                        val drawerAlpha by animateFloatAsState(
+                            targetValue = if (showDrawer) 1f else 0f,
+                            animationSpec = tween(200, easing = FastOutSlowInEasing),
+                            label = "drawerAlpha"
+                        )
+                        val drawerOffset by animateDpAsState(
+                            targetValue = if (showDrawer) 0.dp else (-72).dp,
+                            animationSpec = tween(200, easing = FastOutSlowInEasing),
+                            label = "drawerOffset"
+                        )
+
+                        if (drawerAlpha > 0.001f) {
                             SlooshSideDrawer(
                                 selectedSection = selectedSection,
                                 isOpen = isDrawerOpen,
@@ -178,7 +186,11 @@ class MainActivity : ComponentActivity() {
                                         delay(50)
                                         focusBridge.requestContentFocus()
                                     }
-                                }
+                                },
+                                modifier = Modifier
+                                    .offset(x = drawerOffset)
+                                    .graphicsLayer { alpha = drawerAlpha }
+                                    .focusProperties { canFocus = showDrawer }
                             )
                         }
 
@@ -213,73 +225,83 @@ private fun AppNavHost(
         navController = navController,
         startDestination = "home",
         enterTransition = {
-            androidx.compose.animation.fadeIn(
-                animationSpec = androidx.compose.animation.core.tween(240, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-            ) + androidx.compose.animation.scaleIn(
-                initialScale = 0.96f,
-                animationSpec = androidx.compose.animation.core.tween(240, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-            )
+            fadeIn(animationSpec = tween(220, easing = FastOutSlowInEasing))
         },
         exitTransition = {
-            androidx.compose.animation.fadeOut(
-                animationSpec = androidx.compose.animation.core.tween(180, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-            ) + androidx.compose.animation.scaleOut(
-                targetScale = 1.03f,
-                animationSpec = androidx.compose.animation.core.tween(180, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-            )
+            fadeOut(animationSpec = tween(160, easing = FastOutSlowInEasing))
         },
         popEnterTransition = {
-            androidx.compose.animation.fadeIn(
-                animationSpec = androidx.compose.animation.core.tween(220, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-            ) + androidx.compose.animation.scaleIn(
-                initialScale = 1.03f,
-                animationSpec = androidx.compose.animation.core.tween(220, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-            )
+            fadeIn(animationSpec = tween(200, easing = FastOutSlowInEasing))
         },
         popExitTransition = {
-            androidx.compose.animation.fadeOut(
-                animationSpec = androidx.compose.animation.core.tween(180, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-            ) + androidx.compose.animation.scaleOut(
-                targetScale = 0.96f,
-                animationSpec = androidx.compose.animation.core.tween(180, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-            )
+            fadeOut(animationSpec = tween(160, easing = FastOutSlowInEasing))
         },
         modifier = Modifier.fillMaxSize()
     ) {
         composable("home") {
-            HomeScreen(
-                onMediaSelected = { mediaId ->
-                    navController.navigate("details/${mediaId}")
-                }
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(start = 72.dp)
+            ) {
+                HomeScreen(
+                    onMediaSelected = { mediaId ->
+                        navController.navigate("details/${mediaId}")
+                    }
+                )
+            }
         }
 
         composable("search") {
-            SearchScreen(
-                onMediaSelected = { mediaId ->
-                    navController.navigate("details/${mediaId}")
-                }
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(start = 72.dp)
+            ) {
+                SearchScreen(
+                    onMediaSelected = { mediaId ->
+                        navController.navigate("details/${mediaId}")
+                    }
+                )
+            }
         }
 
         composable("continue") {
-            ContinueScreen(
-                onMediaSelected = { mediaId ->
-                    navController.navigate("details/${mediaId}")
-                }
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(start = 72.dp)
+            ) {
+                ContinueScreen(
+                    onMediaSelected = { mediaId ->
+                        navController.navigate("details/${mediaId}")
+                    }
+                )
+            }
         }
 
         composable("favorites") {
-            ProfileScreen(
-                onMediaSelected = { mediaId ->
-                    navController.navigate("details/${mediaId}")
-                }
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(start = 72.dp)
+            ) {
+                ProfileScreen(
+                    onMediaSelected = { mediaId ->
+                        navController.navigate("details/${mediaId}")
+                    }
+                )
+            }
         }
 
         composable("settings") {
-            SettingsScreen()
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(start = 72.dp)
+            ) {
+                SettingsScreen()
+            }
         }
 
         composable(

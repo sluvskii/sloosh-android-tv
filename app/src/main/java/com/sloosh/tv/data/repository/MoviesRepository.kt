@@ -1,5 +1,6 @@
 package com.sloosh.tv.data.repository
 
+import com.sloosh.tv.data.api.IdsDto
 import com.sloosh.tv.data.api.MediaDetailsDto
 import com.sloosh.tv.data.api.MediaDto
 import com.sloosh.tv.data.api.MovieCollectionDto
@@ -19,6 +20,7 @@ class MoviesRepository {
         val instance by lazy { MoviesRepository() }
 
         private val detailsCache = ConcurrentHashMap<String, MediaDetailsDto>()
+        private val previewDetailsCache = ConcurrentHashMap<String, MediaDetailsDto>()
         private val personCache = ConcurrentHashMap<String, PersonDetailDto>()
         private val popularMoviesCache = ConcurrentHashMap<Int, List<MediaDto>>()
         private val topMoviesCache = ConcurrentHashMap<Int, List<MediaDto>>()
@@ -135,6 +137,37 @@ class MoviesRepository {
         } catch (e: Exception) {
             null
         }
+    }
+
+    fun getPreviewDetails(id: String): MediaDetailsDto? {
+        val cleanId = id.replace("tv_", "").replace("movie_", "")
+        return detailsCache[id] ?: detailsCache[cleanId] ?: previewDetailsCache[id] ?: previewDetailsCache[cleanId]
+    }
+
+    fun setPreviewDetails(item: MediaDto) {
+        val cleanId = item.identifier.replace("tv_", "").replace("movie_", "")
+        val preview = MediaDetailsDto(
+            id = item.id,
+            title = item.title,
+            originalTitle = item.originalTitle,
+            description = item.description,
+            type = item.type,
+            year = item.year,
+            releaseDate = null,
+            genres = item.genres?.mapNotNull { it.name ?: it.id },
+            countries = null,
+            duration = null,
+            poster = item.posterUrl ?: item.posterPath,
+            backdrop = item.backdropUrl,
+            rawRating = item.rating,
+            ids = IdsDto(
+                kp = item.id.replace("kp_", "").replace("tv_", "").replace("movie_", "").toIntOrNull() ?: item.kpId?.toIntOrNull(),
+                imdb = item.imdbId,
+                tmdb = item.tmdbId?.toIntOrNull()
+            )
+        )
+        previewDetailsCache[item.identifier] = preview
+        previewDetailsCache[cleanId] = preview
     }
 
     suspend fun getMovieCollection(id: String): MovieCollectionDto? = withContext(Dispatchers.IO) {

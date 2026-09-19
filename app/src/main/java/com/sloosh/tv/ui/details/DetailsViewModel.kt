@@ -50,18 +50,26 @@ class DetailsViewModel(application: Application) : AndroidViewModel(application)
     val uiState: StateFlow<DetailsUiState> = _uiState.asStateFlow()
 
     fun loadDetails(mediaId: String) {
-        viewModelScope.launch {
+        val preview = repository.getPreviewDetails(mediaId)
+        if (preview != null) {
+            _uiState.value = _uiState.value.copy(
+                isLoading = false,
+                details = preview
+            )
+        } else {
             _uiState.value = _uiState.value.copy(isLoading = true)
+        }
 
+        viewModelScope.launch {
             val detailsDeferred = async { repository.getDetails(mediaId) }
             val progressDeferred = async { store.getProgress(mediaId) }
             val isFavDeferred = async { store.isFavorite(mediaId) }
 
-            val details = detailsDeferred.await()
+            val details = detailsDeferred.await() ?: preview
             val progress = progressDeferred.await()
             val isFav = isFavDeferred.await()
 
-            _uiState.value = DetailsUiState(
+            _uiState.value = _uiState.value.copy(
                 isLoading = false,
                 details = details,
                 progress = progress,

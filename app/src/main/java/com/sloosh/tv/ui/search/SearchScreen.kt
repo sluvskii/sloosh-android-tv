@@ -495,7 +495,10 @@ fun SearchScreen(
 
                                     MediaCard(
                                         item = item,
-                                        onClick = { onMediaSelected(item.identifier) },
+                                        onClick = {
+                                            com.sloosh.tv.data.repository.MoviesRepository.instance.setPreviewDetails(item)
+                                            onMediaSelected(item.identifier)
+                                        },
                                         compact = isCompact,
                                         modifier = cardModifier,
                                         onFocus = {
