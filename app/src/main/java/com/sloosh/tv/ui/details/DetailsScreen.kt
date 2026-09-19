@@ -40,9 +40,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.relocation.BringIntoViewResponder
+import androidx.compose.foundation.relocation.bringIntoViewResponder
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.layout.positionInRoot
 import android.view.KeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -181,20 +186,45 @@ private fun SidePosterDetailsLayout(
     var similarSectionHeight by remember { mutableFloatStateOf(0f) }
     var focusedSection by remember { mutableStateOf("top") } // "top", "cast", "similar"
 
-    val scrollToCenter: (Float, Float) -> Unit = { contentY, contentHeight ->
-        if (screenHeightPx > 0f) {
-            val target = (contentY - (screenHeightPx / 2f) + (contentHeight / 2f)).coerceAtLeast(0f).toInt()
-            coroutineScope.launch {
-                scrollState.animateScrollTo(
-                    value = target,
-                    animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing)
-                )
-            }
-        } else {
-            coroutineScope.launch {
-                scrollState.animateScrollTo(contentY.toInt())
+    @OptIn(ExperimentalFoundationApi::class)
+    val noOpBringIntoViewResponder = remember {
+        object : BringIntoViewResponder {
+            override fun calculateRectForParent(localRect: Rect): Rect = localRect
+            override suspend fun bringIntoView(localRect: () -> Rect?) {
+                // Intentionally consume bringIntoView so child card focus doesn't trigger jumpy edge scrolls
             }
         }
+    }
+
+    // Centering scroll automation on focused section changes
+    LaunchedEffect(focusedSection, castSectionY, similarSectionY) {
+        when (focusedSection) {
+            "top" -> {
+                scrollState.animateScrollTo(0, animationSpec = tween(300, easing = FastOutSlowInEasing))
+            }
+            "cast" -> {
+                if (castSectionY > 0f && screenHeightPx > 0f) {
+                    val center = castSectionY + (castSectionHeight / 2f)
+                    val target = (center - (screenHeightPx / 2f)).coerceAtLeast(0f).toInt()
+                    scrollState.animateScrollTo(target, animationSpec = tween(300, easing = FastOutSlowInEasing))
+                }
+            }
+            "similar" -> {
+                if (similarSectionY > 0f && screenHeightPx > 0f) {
+                    val center = similarSectionY + (similarSectionHeight / 2f)
+                    val target = (center - (screenHeightPx / 2f)).coerceAtLeast(0f).toInt()
+                    scrollState.animateScrollTo(target, animationSpec = tween(300, easing = FastOutSlowInEasing))
+                }
+            }
+        }
+    }
+
+    // Return to top section from cast or similar on TV remote Back press
+    androidx.activity.compose.BackHandler(enabled = focusedSection != "top") {
+        focusedSection = "top"
+        try {
+            watchButtonFocusRequester.requestFocus()
+        } catch (e: Exception) {}
     }
 
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -231,9 +261,13 @@ private fun SidePosterDetailsLayout(
         )
     }
 
-    // Dynamic backdrop dissolve on vertical scroll
-    val currentScroll = scrollState.value
-    val backdropAlpha = (1f - (currentScroll / 260f)).coerceIn(0f, 1f)
+    // Backdrop immediately disappears when leaving the top section or scrolling down
+    val showBackdrop = (focusedSection == "top" && scrollState.value < 20)
+    val backdropAlpha by animateFloatAsState(
+        targetValue = if (showBackdrop) 1f else 0f,
+        animationSpec = tween(durationMillis = 120),
+        label = "backdropAlpha"
+    )
 
     Box(
         modifier = Modifier
@@ -304,11 +338,8 @@ private fun SidePosterDetailsLayout(
                             .size(44.dp)
                             .focusRequester(backButtonFocusRequester)
                             .onFocusChanged {
-                                if (it.isFocused && focusedSection != "top") {
+                                if (it.isFocused) {
                                     focusedSection = "top"
-                                    coroutineScope.launch {
-                                        scrollState.animateScrollTo(0, animationSpec = tween(350, easing = FastOutSlowInEasing))
-                                    }
                                 }
                             }
                             .onPreviewKeyEvent { keyEvent ->
@@ -475,11 +506,8 @@ private fun SidePosterDetailsLayout(
                                     .wrapContentSize()
                                     .focusRequester(moreButtonFocusRequester)
                                     .onFocusChanged {
-                                        if (it.isFocused && focusedSection != "top") {
+                                        if (it.isFocused) {
                                             focusedSection = "top"
-                                            coroutineScope.launch {
-                                                scrollState.animateScrollTo(0, animationSpec = tween(350, easing = FastOutSlowInEasing))
-                                            }
                                         }
                                     }
                                     .onPreviewKeyEvent { keyEvent ->
@@ -600,11 +628,8 @@ private fun SidePosterDetailsLayout(
                             .widthIn(max = 240.dp)
                             .focusRequester(watchButtonFocusRequester)
                             .onFocusChanged {
-                                if (it.isFocused && focusedSection != "top") {
+                                if (it.isFocused) {
                                     focusedSection = "top"
-                                    coroutineScope.launch {
-                                        scrollState.animateScrollTo(0, animationSpec = tween(350, easing = FastOutSlowInEasing))
-                                    }
                                 }
                             }
                             .onPreviewKeyEvent { keyEvent ->
@@ -627,9 +652,11 @@ private fun SidePosterDetailsLayout(
                                             val cast = details.cast
                                             val similar = details.similar
                                             if (!cast.isNullOrEmpty()) {
+                                                focusedSection = "cast"
                                                 firstCastFocusRequester.requestFocus()
                                                 true
                                             } else if (!similar.isNullOrEmpty()) {
+                                                focusedSection = "similar"
                                                 firstSimilarFocusRequester.requestFocus()
                                                 true
                                             } else false
@@ -656,11 +683,8 @@ private fun SidePosterDetailsLayout(
                         modifier = Modifier
                             .size(52.dp)
                             .onFocusChanged {
-                                if (it.isFocused && focusedSection != "top") {
+                                if (it.isFocused) {
                                     focusedSection = "top"
-                                    coroutineScope.launch {
-                                        scrollState.animateScrollTo(0, animationSpec = tween(350, easing = FastOutSlowInEasing))
-                                    }
                                 }
                             }
                             .onPreviewKeyEvent { keyEvent ->
@@ -683,9 +707,11 @@ private fun SidePosterDetailsLayout(
                                             val cast = details.cast
                                             val similar = details.similar
                                             if (!cast.isNullOrEmpty()) {
+                                                focusedSection = "cast"
                                                 firstCastFocusRequester.requestFocus()
                                                 true
                                             } else if (!similar.isNullOrEmpty()) {
+                                                focusedSection = "similar"
                                                 firstSimilarFocusRequester.requestFocus()
                                                 true
                                             } else false
@@ -724,7 +750,7 @@ private fun SidePosterDetailsLayout(
                     modifier = Modifier
                         .fillMaxWidth()
                         .onGloballyPositioned { coordinates ->
-                            castSectionY = coordinates.positionInParent().y + scrollState.value
+                            castSectionY = coordinates.positionInRoot().y + scrollState.value
                             castSectionHeight = coordinates.size.height.toFloat()
                         }
                 ) {
@@ -741,7 +767,9 @@ private fun SidePosterDetailsLayout(
                     )
                     Spacer(modifier = Modifier.height(14.dp))
                     LazyRow(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .bringIntoViewResponder(noOpBringIntoViewResponder),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         contentPadding = PaddingValues(start = 56.dp, end = 56.dp)
                     ) {
@@ -755,21 +783,22 @@ private fun SidePosterDetailsLayout(
                                     .width(104.dp)
                                     .then(if (index == 0) Modifier.focusRequester(firstCastFocusRequester) else Modifier)
                                     .onFocusChanged {
-                                        if (it.isFocused && focusedSection != "cast") {
+                                        if (it.isFocused) {
                                             focusedSection = "cast"
-                                            scrollToCenter(castSectionY, castSectionHeight)
                                         }
                                     }
                                     .onPreviewKeyEvent { keyEvent ->
                                         if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
                                             when (keyEvent.nativeKeyEvent.keyCode) {
                                                 KeyEvent.KEYCODE_DPAD_UP -> {
+                                                    focusedSection = "top"
                                                     watchButtonFocusRequester.requestFocus()
                                                     true
                                                 }
                                                 KeyEvent.KEYCODE_DPAD_DOWN -> {
                                                     val similar = details.similar
                                                     if (!similar.isNullOrEmpty()) {
+                                                        focusedSection = "similar"
                                                         firstSimilarFocusRequester.requestFocus()
                                                         true
                                                     } else false
@@ -851,7 +880,7 @@ private fun SidePosterDetailsLayout(
                     modifier = Modifier
                         .fillMaxWidth()
                         .onGloballyPositioned { coordinates ->
-                            similarSectionY = coordinates.positionInParent().y + scrollState.value
+                            similarSectionY = coordinates.positionInRoot().y + scrollState.value
                             similarSectionHeight = coordinates.size.height.toFloat()
                         }
                 ) {
@@ -868,7 +897,9 @@ private fun SidePosterDetailsLayout(
                     )
                     Spacer(modifier = Modifier.height(14.dp))
                     LazyRow(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .bringIntoViewResponder(noOpBringIntoViewResponder),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         contentPadding = PaddingValues(start = 56.dp, end = 56.dp)
                     ) {
@@ -886,9 +917,8 @@ private fun SidePosterDetailsLayout(
                                     .height(195.dp)
                                     .then(if (index == 0) Modifier.focusRequester(firstSimilarFocusRequester) else Modifier)
                                     .onFocusChanged {
-                                        if (it.isFocused && focusedSection != "similar") {
+                                        if (it.isFocused) {
                                             focusedSection = "similar"
-                                            scrollToCenter(similarSectionY, similarSectionHeight)
                                         }
                                     }
                                     .onPreviewKeyEvent { keyEvent ->
@@ -897,9 +927,11 @@ private fun SidePosterDetailsLayout(
                                                 KeyEvent.KEYCODE_DPAD_UP -> {
                                                     val cast = details.cast
                                                     if (!cast.isNullOrEmpty()) {
+                                                        focusedSection = "cast"
                                                         firstCastFocusRequester.requestFocus()
                                                         true
                                                     } else {
+                                                        focusedSection = "top"
                                                         watchButtonFocusRequester.requestFocus()
                                                         true
                                                     }
