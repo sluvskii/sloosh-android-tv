@@ -199,22 +199,23 @@ fun PersonDetailScreen(
                     style = MaterialTheme.typography.bodyLarge
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                var isRetryFocused by remember { mutableStateOf(false) }
-                Box(
-                    modifier = Modifier
-                        .focusRequester(backFocusRequester)
-                        .onFocusChanged { isRetryFocused = it.isFocused }
-                        .focusable()
-                        .clickable { viewModel.loadPerson(personId) }
-                        .clip(ContinuousCapsule)
-                        .background(if (isRetryFocused) Color.White else Color.White.copy(alpha = 0.15f))
-                        .padding(horizontal = 20.dp, vertical = 10.dp)
-                ) {
-                    Text(
-                        text = "Повторить",
-                        color = if (isRetryFocused) Color.Black else Color.White,
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
-                    )
+                SlooshFocusableCard(
+                    onClick = { viewModel.loadPerson(personId) },
+                    shape = ContinuousCapsule,
+                    modifier = Modifier.focusRequester(backFocusRequester)
+                ) { isFocused ->
+                    Box(
+                        modifier = Modifier
+                            .clip(ContinuousCapsule)
+                            .background(if (isFocused) Color.White.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.12f))
+                            .padding(horizontal = 20.dp, vertical = 10.dp)
+                    ) {
+                        Text(
+                            text = "Повторить",
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                    }
                 }
             }
         }
@@ -303,24 +304,29 @@ fun PersonDetailScreen(
                 .padding(start = 56.dp, top = 36.dp, end = 24.dp, bottom = 48.dp)
         ) {
             // ─── Back Button ─────────────────────────────────────────
-            var isBackFocused by remember { mutableStateOf(false) }
-            Box(
+            SlooshFocusableCard(
+                onClick = onBackClick,
+                shape = CircleShape,
                 modifier = Modifier
                     .size(44.dp)
                     .focusRequester(backFocusRequester)
-                    .onFocusChanged { isBackFocused = it.isFocused }
-                    .focusable()
-                    .clickable { onBackClick() }
-                    .clip(CircleShape)
-                    .background(if (isBackFocused) Color.White else Color.White.copy(alpha = 0.12f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.ArrowBack,
-                    contentDescription = "Назад",
-                    tint = if (isBackFocused) Color.Black else Color.White,
-                    modifier = Modifier.size(20.dp)
-                )
+            ) { isFocused ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            if (isFocused) Color.White.copy(alpha = 0.30f)
+                            else Color.White.copy(alpha = 0.12f)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowBack,
+                        contentDescription = "Назад",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -462,24 +468,26 @@ fun PersonDetailScreen(
                     )
                     if (isLongBio) {
                         Spacer(modifier = Modifier.height(10.dp))
-                        var isButtonFocused by remember { mutableStateOf(false) }
-                        Box(
-                            modifier = Modifier
-                                .onFocusChanged { isButtonFocused = it.isFocused }
-                                .focusable()
-                                .clickable { isBioExpanded = !isBioExpanded }
-                                .clip(ContinuousCapsule)
-                                .background(if (isButtonFocused) Color.White else Color.White.copy(alpha = 0.12f))
-                                .padding(horizontal = 14.dp, vertical = 6.dp)
-                        ) {
-                            Text(
-                                text = if (isBioExpanded) "Свернуть" else "Читать далее",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 12.sp
-                                ),
-                                color = if (isButtonFocused) Color.Black else Color.White
-                            )
+                        SlooshFocusableCard(
+                            onClick = { isBioExpanded = !isBioExpanded },
+                            shape = ContinuousCapsule,
+                            modifier = Modifier.wrapContentSize()
+                        ) { isFocused ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(ContinuousCapsule)
+                                    .background(if (isFocused) Color.White.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.12f))
+                                    .padding(horizontal = 14.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = if (isBioExpanded) "Свернуть" else "Читать далее",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 12.sp
+                                    ),
+                                    color = Color.White
+                                )
+                            }
                         }
                     }
                 }
