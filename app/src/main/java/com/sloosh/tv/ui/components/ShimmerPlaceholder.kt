@@ -61,12 +61,14 @@ fun PosterGridShimmer(
     modifier: Modifier = Modifier
 ) {
     val brush = rememberShimmerBrush()
-    val gridSpacing = if (isCompact) 12.dp else 16.dp
+    val horizontalGridSpacing = if (isCompact) 4.dp else 6.dp
+    val verticalGridSpacing = if (isCompact) 8.dp else 10.dp
+    val skeletonShape = if (isCompact) ContinuousRoundedRectangle(13.dp) else ContinuousRoundedRectangle(16.dp)
 
     androidx.tv.foundation.lazy.grid.TvLazyVerticalGrid(
         columns = androidx.tv.foundation.lazy.grid.TvGridCells.Fixed(gridColumns),
-        horizontalArrangement = Arrangement.spacedBy(gridSpacing),
-        verticalArrangement = Arrangement.spacedBy(gridSpacing),
+        horizontalArrangement = Arrangement.spacedBy(horizontalGridSpacing),
+        verticalArrangement = Arrangement.spacedBy(verticalGridSpacing),
         contentPadding = PaddingValues(top = 16.dp, bottom = 80.dp),
         modifier = modifier.fillMaxSize()
     ) {
@@ -75,7 +77,7 @@ fun PosterGridShimmer(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(2f / 3f)
-                    .clip(ContinuousRoundedRectangle(16.dp))
+                    .clip(skeletonShape)
                     .background(Color.White.copy(alpha = 0.06f))
             ) {
                 ShimmerEffect(modifier = Modifier.fillMaxSize(), brush = brush)

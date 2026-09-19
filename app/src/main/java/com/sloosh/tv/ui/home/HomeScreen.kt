@@ -161,7 +161,8 @@ fun HomeScreen(
         val appSettings = remember { com.sloosh.tv.data.repository.AppSettings(context) }
         val gridColumns = appSettings.gridColumns
         val isCompact = gridColumns >= 6
-        val gridSpacing = if (isCompact) 12.dp else 16.dp
+        val horizontalGridSpacing = if (isCompact) 4.dp else 6.dp
+        val verticalGridSpacing = if (isCompact) 8.dp else 10.dp
 
         val isCurrentLoading = state.isLoading && categoryItems.isEmpty()
 
@@ -175,8 +176,8 @@ fun HomeScreen(
             androidx.tv.foundation.lazy.grid.TvLazyVerticalGrid(
                 state = gridState,
                 columns = androidx.tv.foundation.lazy.grid.TvGridCells.Fixed(gridColumns),
-                horizontalArrangement = Arrangement.spacedBy(gridSpacing),
-                verticalArrangement = Arrangement.spacedBy(gridSpacing),
+                horizontalArrangement = Arrangement.spacedBy(horizontalGridSpacing),
+                verticalArrangement = Arrangement.spacedBy(verticalGridSpacing),
                 contentPadding = PaddingValues(start = 12.dp, top = 75.dp, end = 20.dp, bottom = 40.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
@@ -460,10 +461,10 @@ fun HomeScreen(
 }
 
 
-private val StandardCardShape = ContinuousRoundedRectangle(18.dp)
-private val CompactCardShape = ContinuousRoundedRectangle(16.dp)
-private val StandardPosterShape = ContinuousRoundedRectangle(12.dp)
-private val CompactPosterShape = ContinuousRoundedRectangle(10.dp)
+private val StandardCardShape = ContinuousRoundedRectangle(22.dp)
+private val CompactCardShape = ContinuousRoundedRectangle(18.dp)
+private val StandardPosterShape = ContinuousRoundedRectangle(16.dp)
+private val CompactPosterShape = ContinuousRoundedRectangle(13.dp)
 private val StandardBadgeShape = ContinuousRoundedRectangle(7.dp)
 private val CompactBadgeShape = ContinuousRoundedRectangle(6.dp)
 
@@ -498,11 +499,12 @@ fun MediaCard(
         label = "cardMetaColor"
     )
 
-    val cardPaddingHorizontal = if (compact) 6.dp else 7.dp
-    val cardPaddingTop = if (compact) 6.dp else 7.dp
-    val cardPaddingBottom = if (compact) 8.dp else 9.5.dp
-    val posterToTitleSpacing = if (compact) 5.5.dp else 7.dp
+    val cardPaddingHorizontal = if (compact) 5.dp else 6.dp
+    val cardPaddingTop = if (compact) 5.dp else 6.dp
+    val cardPaddingBottom = if (compact) 10.dp else 12.dp
+    val posterToTitleSpacing = if (compact) 6.dp else 7.dp
     val titleToMetaSpacing = if (compact) 2.dp else 2.5.dp
+    val textHorizontalPadding = if (compact) 5.dp else 7.dp
 
     val titleSize = if (compact) 13.sp else 14.5.sp
     val titleLineHeight = if (compact) 16.sp else 18.sp
@@ -601,7 +603,7 @@ fun MediaCard(
                 }
             }
 
-            // ─── Movie Title & Metadata (Year • Genre) ──────────────────────
+            // ─── Movie Title & Metadata (Year • Genre) with extra horizontal breathing room ───
             Spacer(modifier = Modifier.height(posterToTitleSpacing))
 
             Text(
@@ -617,7 +619,7 @@ fun MediaCard(
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 1.dp)
+                    .padding(horizontal = textHorizontalPadding)
             )
 
             Spacer(modifier = Modifier.height(titleToMetaSpacing))
@@ -640,8 +642,10 @@ fun MediaCard(
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 1.dp)
+                    .padding(horizontal = textHorizontalPadding)
             )
+
+            Spacer(modifier = Modifier.height(if (compact) 2.dp else 3.dp))
         }
     }
 }

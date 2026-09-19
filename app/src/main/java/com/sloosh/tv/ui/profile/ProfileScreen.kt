@@ -68,7 +68,8 @@ fun ProfileScreen(
     val appSettings = remember { com.sloosh.tv.data.repository.AppSettings(context) }
     val gridColumns = appSettings.gridColumns
     val isCompact = gridColumns >= 6
-    val gridSpacing = if (isCompact) 12.dp else 16.dp
+    val horizontalGridSpacing = if (isCompact) 4.dp else 6.dp
+    val verticalGridSpacing = if (isCompact) 8.dp else 10.dp
     val activeCardFocusRequester = remember { FocusRequester() }
     val focusBridge = com.sloosh.tv.LocalSideDrawerFocusBridge.current
     val categories = FavoriteCategory.values()
@@ -407,8 +408,8 @@ fun ProfileScreen(
                 TvLazyVerticalGrid(
                     state = gridState,
                     columns = TvGridCells.Fixed(gridColumns),
-                    horizontalArrangement = Arrangement.spacedBy(gridSpacing),
-                    verticalArrangement = Arrangement.spacedBy(gridSpacing),
+                    horizontalArrangement = Arrangement.spacedBy(horizontalGridSpacing),
+                    verticalArrangement = Arrangement.spacedBy(verticalGridSpacing),
                     contentPadding = PaddingValues(bottom = 60.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
