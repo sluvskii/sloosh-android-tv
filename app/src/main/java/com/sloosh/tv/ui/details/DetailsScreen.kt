@@ -190,8 +190,8 @@ private fun SidePosterDetailsLayout(
     val noOpBringIntoViewResponder = remember {
         object : BringIntoViewResponder {
             override fun calculateRectForParent(localRect: Rect): Rect = localRect
-            override suspend fun bringIntoView(localRect: () -> Rect?) {
-                // Intentionally consume bringIntoView so child card focus doesn't trigger jumpy edge scrolls
+            override suspend fun bringChildIntoView(localRect: () -> Rect?) {
+                // Intentionally consume child bringIntoView so child card focus doesn't trigger jumpy edge scrolls
             }
         }
     }
