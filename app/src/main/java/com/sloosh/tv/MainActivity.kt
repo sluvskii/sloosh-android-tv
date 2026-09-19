@@ -9,6 +9,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -306,7 +308,29 @@ private fun AppNavHost(
 
         composable(
             route = "details/{mediaId}",
-            arguments = listOf(navArgument("mediaId") { type = NavType.StringType })
+            arguments = listOf(navArgument("mediaId") { type = NavType.StringType }),
+            enterTransition = {
+                slideInHorizontally(
+                    initialOffsetX = { fullWidth -> (fullWidth * 0.05f).toInt() },
+                    animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)
+                ) + fadeIn(
+                    animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing)
+                )
+            },
+            exitTransition = {
+                fadeOut(animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing))
+            },
+            popEnterTransition = {
+                fadeIn(animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing))
+            },
+            popExitTransition = {
+                slideOutHorizontally(
+                    targetOffsetX = { fullWidth -> (fullWidth * 0.05f).toInt() },
+                    animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing)
+                ) + fadeOut(
+                    animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)
+                )
+            }
         ) { backStack ->
             val mediaId = backStack.arguments?.getString("mediaId") ?: ""
             DetailsScreen(
@@ -352,7 +376,29 @@ private fun AppNavHost(
 
         composable(
             route = "person/{personId}",
-            arguments = listOf(navArgument("personId") { type = NavType.StringType })
+            arguments = listOf(navArgument("personId") { type = NavType.StringType }),
+            enterTransition = {
+                slideInHorizontally(
+                    initialOffsetX = { fullWidth -> (fullWidth * 0.05f).toInt() },
+                    animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)
+                ) + fadeIn(
+                    animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing)
+                )
+            },
+            exitTransition = {
+                fadeOut(animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing))
+            },
+            popEnterTransition = {
+                fadeIn(animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing))
+            },
+            popExitTransition = {
+                slideOutHorizontally(
+                    targetOffsetX = { fullWidth -> (fullWidth * 0.05f).toInt() },
+                    animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing)
+                ) + fadeOut(
+                    animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)
+                )
+            }
         ) { backStack ->
             val personId = backStack.arguments?.getString("personId") ?: ""
             PersonDetailScreen(

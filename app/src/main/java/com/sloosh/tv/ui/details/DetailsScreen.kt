@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -302,10 +303,42 @@ private fun SidePosterDetailsLayout(
         label = "backdropAlpha"
     )
 
+    // ─── Cinematic Entrance Animation (GPU-only, zero CPU layout cost) ───
+    var isEntered by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        isEntered = true
+    }
+
+    // 1. Ambient background bloom (fades in smoothly over 400ms)
+    val ambientAlpha by animateFloatAsState(
+        targetValue = if (isEntered) 1f else 0f,
+        animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
+        label = "ambientAlpha"
+    )
+
+    // 2. IMAX-style backdrop settle: softly settles from 1.05 to 1.00 over 650ms
+    val backdropScale by animateFloatAsState(
+        targetValue = if (isEntered) 1.0f else 1.05f,
+        animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+        label = "backdropEntranceScale"
+    )
+
+    // 3. Left content panel staggered entrance (-24dp -> 0dp slide + fade)
+    val contentEntranceOffset by animateDpAsState(
+        targetValue = if (isEntered) 0.dp else (-24).dp,
+        animationSpec = tween(durationMillis = 360, delayMillis = 40, easing = FastOutSlowInEasing),
+        label = "contentEntranceOffset"
+    )
+    val contentEntranceAlpha by animateFloatAsState(
+        targetValue = if (isEntered) 1f else 0f,
+        animationSpec = tween(durationMillis = 320, delayMillis = 40, easing = FastOutSlowInEasing),
+        label = "contentEntranceAlpha"
+    )
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(ambientColor)
+            .background(ambientColor.copy(alpha = ambientAlpha))
             .onGloballyPositioned { coordinates ->
                 screenHeightPx = coordinates.size.height.toFloat()
             }
@@ -322,7 +355,11 @@ private fun SidePosterDetailsLayout(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .graphicsLayer { alpha = backdropAlpha },
+                    .graphicsLayer {
+                        alpha = backdropAlpha
+                        scaleX = backdropScale
+                        scaleY = backdropScale
+                    },
                 contentAlignment = Alignment.CenterEnd
             ) {
                 AsyncImage(
@@ -360,6 +397,8 @@ private fun SidePosterDetailsLayout(
             Column(
                 modifier = Modifier
                     .fillMaxWidth(0.54f)
+                    .offset(x = contentEntranceOffset)
+                    .graphicsLayer { alpha = contentEntranceAlpha }
                     .padding(start = 56.dp, top = 36.dp, end = 24.dp)
             ) {
                 // Top Back Button
