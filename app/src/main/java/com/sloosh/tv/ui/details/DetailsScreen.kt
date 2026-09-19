@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -172,6 +173,8 @@ private fun SidePosterDetailsLayout(
 ) {
     val scrollState = rememberScrollState()
     val coroutineScope = rememberCoroutineScope()
+    val castListState = rememberLazyListState()
+    val similarListState = rememberLazyListState()
     val backButtonFocusRequester = remember { FocusRequester() }
     val moreButtonFocusRequester = remember { FocusRequester() }
     val firstCastFocusRequester = remember { FocusRequester() }
@@ -746,6 +749,8 @@ private fun SidePosterDetailsLayout(
             // ─── Cast / Actors Section (Full 100% Screen Width) ───────
             val cast = details.cast
             if (!cast.isNullOrEmpty()) {
+                val castItems = remember(cast) { cast.take(24) }
+                val castCount = castItems.size
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -767,13 +772,14 @@ private fun SidePosterDetailsLayout(
                     )
                     Spacer(modifier = Modifier.height(14.dp))
                     LazyRow(
+                        state = castListState,
                         modifier = Modifier
                             .fillMaxWidth()
                             .bringIntoViewResponder(noOpBringIntoViewResponder),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         contentPadding = PaddingValues(start = 56.dp, end = 56.dp)
                     ) {
-                        itemsIndexed(cast.take(24)) { index, actor ->
+                        itemsIndexed(castItems) { index, actor ->
                             SlooshFocusableCard(
                                 onClick = {
                                     onNavigateToPerson?.invoke(actor.id.toString())
@@ -785,6 +791,15 @@ private fun SidePosterDetailsLayout(
                                     .onFocusChanged {
                                         if (it.isFocused) {
                                             focusedSection = "cast"
+                                            if (index <= 1) {
+                                                coroutineScope.launch {
+                                                    castListState.animateScrollToItem(0, 0)
+                                                }
+                                            } else if (index >= castCount - 2 && castCount > 2) {
+                                                coroutineScope.launch {
+                                                    castListState.animateScrollToItem(castCount - 1)
+                                                }
+                                            }
                                         }
                                     }
                                     .onPreviewKeyEvent { keyEvent ->
@@ -876,6 +891,8 @@ private fun SidePosterDetailsLayout(
             // ─── Similar Movies Section (Full 100% Screen Width) ──────
             val similar = details.similar
             if (!similar.isNullOrEmpty()) {
+                val similarItems = remember(similar) { similar.take(20) }
+                val similarCount = similarItems.size
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -897,13 +914,14 @@ private fun SidePosterDetailsLayout(
                     )
                     Spacer(modifier = Modifier.height(14.dp))
                     LazyRow(
+                        state = similarListState,
                         modifier = Modifier
                             .fillMaxWidth()
                             .bringIntoViewResponder(noOpBringIntoViewResponder),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         contentPadding = PaddingValues(start = 56.dp, end = 56.dp)
                     ) {
-                        itemsIndexed(similar.take(20)) { index, item ->
+                        itemsIndexed(similarItems) { index, item ->
                             val targetId = item.originalId ?: item.identifier
                             SlooshFocusableCard(
                                 onClick = {
@@ -919,6 +937,15 @@ private fun SidePosterDetailsLayout(
                                     .onFocusChanged {
                                         if (it.isFocused) {
                                             focusedSection = "similar"
+                                            if (index <= 1) {
+                                                coroutineScope.launch {
+                                                    similarListState.animateScrollToItem(0, 0)
+                                                }
+                                            } else if (index >= similarCount - 2 && similarCount > 2) {
+                                                coroutineScope.launch {
+                                                    similarListState.animateScrollToItem(similarCount - 1)
+                                                }
+                                            }
                                         }
                                     }
                                     .onPreviewKeyEvent { keyEvent ->
