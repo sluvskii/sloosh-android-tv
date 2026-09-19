@@ -47,6 +47,7 @@ import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.sloosh.tv.data.api.MediaDto
 import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
@@ -518,14 +519,14 @@ fun MediaCard(
         label = "cardMetaColor"
     )
 
-    // Деликатный стеклянный блик (однократный диагональный проход за 440мс с эффектом наложения Screen)
+    // Деликатный стеклянный блик (однократный диагональный проход за 750мс с эффектом наложения Screen)
     val sheenProgress = remember { androidx.compose.animation.core.Animatable(0f) }
     LaunchedEffect(isFocused) {
         if (isFocused) {
             sheenProgress.snapTo(0f)
             sheenProgress.animateTo(
                 targetValue = 1f,
-                animationSpec = tween(durationMillis = 440, easing = FastOutSlowInEasing)
+                animationSpec = tween(durationMillis = 750, easing = FastOutSlowInEasing)
             )
         } else {
             sheenProgress.snapTo(0f)
@@ -599,27 +600,32 @@ fun MediaCard(
                     .clip(posterShape)
                     .background(SurfaceDark)
             ) {
+                val isSheenActive = isFocused && sheenProgress.value > 0f && sheenProgress.value < 1f
+
                 AsyncImage(
                     model = item.getDisplayPosterUrl(),
                     contentDescription = item.displayTitle,
                     modifier = Modifier
                         .fillMaxSize()
+                        .graphicsLayer(
+                            compositingStrategy = if (isSheenActive) CompositingStrategy.Offscreen else CompositingStrategy.Auto
+                        )
                         .drawWithContent {
                             drawContent()
-                            val progress = sheenProgress.value
-                            if (isFocused && progress > 0f && progress < 1f) {
+                            if (isSheenActive) {
                                 val w = size.width
                                 val h = size.height
                                 if (w > 0f && h > 0f) {
+                                    val progress = sheenProgress.value
                                     // Плавная синусоидальная огибающая: 0 на границах, 1.0 в центре
                                     val envelope = kotlin.math.sin(progress * Math.PI.toFloat())
                                     val maxProj = w * SHEEN_COS_THETA + h * SHEEN_SIN_THETA
-                                    val beamRadius = maxProj * 0.24f
+                                    val beamRadius = maxProj * 0.22f
                                     val startC = -beamRadius * 1.5f
                                     val endC = maxProj + beamRadius * 1.5f
                                     val currentC = startC + (endC - startC) * progress
 
-                                    val peakAlpha = 0.40f * envelope
+                                    val peakAlpha = 0.65f * envelope
                                     if (peakAlpha > 0.005f) {
                                         val pStart = androidx.compose.ui.geometry.Offset(
                                             (currentC - beamRadius) * SHEEN_COS_THETA,
@@ -631,13 +637,15 @@ fun MediaCard(
                                         )
                                         drawRect(
                                             brush = Brush.linearGradient(
-                                                0.0f to Color.Transparent,
-                                                0.20f to Color.White.copy(alpha = peakAlpha * 0.15f),
-                                                0.40f to Color.White.copy(alpha = peakAlpha * 0.70f),
+                                                0.00f to Color.Transparent,
+                                                0.20f to Color.White.copy(alpha = peakAlpha * 0.10f),
+                                                0.38f to Color.White.copy(alpha = peakAlpha * 0.35f),
+                                                0.46f to Color.White.copy(alpha = peakAlpha * 0.80f),
                                                 0.50f to Color.White.copy(alpha = peakAlpha),
-                                                0.60f to Color.White.copy(alpha = peakAlpha * 0.70f),
-                                                0.80f to Color.White.copy(alpha = peakAlpha * 0.15f),
-                                                1.0f to Color.Transparent,
+                                                0.54f to Color.White.copy(alpha = peakAlpha * 0.80f),
+                                                0.62f to Color.White.copy(alpha = peakAlpha * 0.35f),
+                                                0.80f to Color.White.copy(alpha = peakAlpha * 0.10f),
+                                                1.00f to Color.Transparent,
                                                 start = pStart,
                                                 end = pEnd
                                             ),
