@@ -430,7 +430,7 @@ fun SourceSelectionContentView(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 // 1. Translation picker
-                SectionHeader("Озвучка")
+                SectionLabel("Озвучка")
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -450,7 +450,7 @@ fun SourceSelectionContentView(
 
                 // 2. Season picker (if serial)
                 if (isSerial && allSeasons.size > 1) {
-                    SectionHeader("Сезон")
+                    SectionLabel("Сезон")
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -471,7 +471,7 @@ fun SourceSelectionContentView(
 
                 // 3. Episode picker (if serial)
                 if (isSerial && currentEpisodes.isNotEmpty()) {
-                    SectionHeader("Серия")
+                    SectionLabel("Серия")
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
