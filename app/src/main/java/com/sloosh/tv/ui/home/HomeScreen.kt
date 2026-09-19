@@ -29,6 +29,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
@@ -36,6 +37,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.tv.material3.Border
+import androidx.tv.material3.Card
+import androidx.tv.material3.CardDefaults
+import androidx.tv.material3.Glow
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
@@ -455,8 +460,10 @@ fun HomeScreen(
 }
 
 
-private val StandardPosterShape = ContinuousRoundedRectangle(16.dp)
-private val CompactPosterShape = ContinuousRoundedRectangle(14.dp)
+private val StandardCardShape = ContinuousRoundedRectangle(18.dp)
+private val CompactCardShape = ContinuousRoundedRectangle(16.dp)
+private val StandardPosterShape = ContinuousRoundedRectangle(12.dp)
+private val CompactPosterShape = ContinuousRoundedRectangle(10.dp)
 private val StandardBadgeShape = ContinuousRoundedRectangle(7.dp)
 private val CompactBadgeShape = ContinuousRoundedRectangle(6.dp)
 
@@ -468,23 +475,88 @@ fun MediaCard(
     compact: Boolean = false,
     onFocus: (() -> Unit)? = null
 ) {
+    val cardShape = if (compact) CompactCardShape else StandardCardShape
     val posterShape = if (compact) CompactPosterShape else StandardPosterShape
     val badgeShape = if (compact) CompactBadgeShape else StandardBadgeShape
 
-    Column(modifier = Modifier.fillMaxWidth()) {
-        // ─── Poster (True 2:3 aspect ratio, no top/bottom cropping) ─────
-        SlooshFocusableCard(
-            onClick = onClick,
-            modifier = modifier
+    val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
+
+    if (isFocused && onFocus != null) {
+        LaunchedEffect(Unit) { onFocus() }
+    }
+
+    val titleColor by animateColorAsState(
+        targetValue = if (isFocused) Color.Black else Color.White.copy(alpha = 0.92f),
+        animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+        label = "cardTitleColor"
+    )
+
+    val metaColor by animateColorAsState(
+        targetValue = if (isFocused) Color.Black.copy(alpha = 0.65f) else Color.White.copy(alpha = 0.50f),
+        animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+        label = "cardMetaColor"
+    )
+
+    val cardPaddingHorizontal = if (compact) 6.dp else 7.dp
+    val cardPaddingTop = if (compact) 6.dp else 7.dp
+    val cardPaddingBottom = if (compact) 8.dp else 9.5.dp
+    val posterToTitleSpacing = if (compact) 5.5.dp else 7.dp
+    val titleToMetaSpacing = if (compact) 2.dp else 2.5.dp
+
+    val titleSize = if (compact) 13.sp else 14.5.sp
+    val titleLineHeight = if (compact) 16.sp else 18.sp
+    val metaSize = if (compact) 11.sp else 12.sp
+    val metaLineHeight = if (compact) 14.sp else 15.sp
+
+    Card(
+        onClick = onClick,
+        modifier = modifier
+            .fillMaxWidth()
+            .zIndex(if (isFocused) 10f else 1f),
+        interactionSource = interactionSource,
+        shape = CardDefaults.shape(shape = cardShape),
+        colors = CardDefaults.colors(
+            containerColor = Color.Transparent,
+            focusedContainerColor = Color.White
+        ),
+        scale = CardDefaults.scale(
+            scale = 1.0f,
+            focusedScale = 1.05f
+        ),
+        border = CardDefaults.border(
+            border = Border(
+                border = BorderStroke(0.dp, Color.Transparent),
+                shape = cardShape
+            ),
+            focusedBorder = Border(
+                border = BorderStroke(0.dp, Color.Transparent),
+                shape = cardShape
+            )
+        ),
+        glow = CardDefaults.glow(
+            glow = Glow.None,
+            focusedGlow = Glow.None
+        )
+    ) {
+        Column(
+            modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(2f / 3f),
-            shape = posterShape,
-            focusedScale = 1.08f
-        ) { cardFocused ->
-            if (cardFocused && onFocus != null) {
-                LaunchedEffect(Unit) { onFocus() }
-            }
-            Box(modifier = Modifier.fillMaxSize()) {
+                .padding(
+                    start = cardPaddingHorizontal,
+                    top = cardPaddingTop,
+                    end = cardPaddingHorizontal,
+                    bottom = cardPaddingBottom
+                )
+        ) {
+            // ─── Poster (2:3 aspect ratio, concentric inner rounding) ───────
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(2f / 3f)
+                    .clip(posterShape)
+                    .background(SurfaceDark)
+            ) {
                 AsyncImage(
                     model = item.getDisplayPosterUrl(),
                     contentDescription = item.displayTitle,
@@ -492,12 +564,12 @@ fun MediaCard(
                     contentScale = ContentScale.Crop
                 )
 
-                // Adaptive rating badge top-left (proportional to compact mode)
+                // Adaptive rating badge top-left
                 if (item.rating != null && item.rating > 0) {
                     val badgePaddingHorizontal = if (compact) 5.dp else 6.5.dp
                     val badgePaddingVertical = if (compact) 2.dp else 2.5.dp
                     val badgeFontSize = if (compact) 12.sp else 13.5.sp
-                    val badgeMargin = if (compact) 6.dp else 8.dp
+                    val badgeMargin = if (compact) 6.dp else 7.5.dp
 
                     Box(
                         modifier = Modifier
@@ -505,7 +577,10 @@ fun MediaCard(
                             .padding(badgeMargin)
                             .clip(badgeShape)
                             .background(ratingColor(item.rating))
-                            .padding(horizontal = badgePaddingHorizontal, vertical = badgePaddingVertical),
+                            .padding(
+                                horizontal = badgePaddingHorizontal,
+                                vertical = badgePaddingVertical
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -525,44 +600,48 @@ fun MediaCard(
                     }
                 }
             }
-        }
 
-        // ─── Title + Meta BELOW ───────────────────────────────────────────────
-        val topSpacer = if (compact) 5.5.dp else 7.dp
-        val titleSize = if (compact) 13.5.sp else 15.sp
-        val titleLineHeight = if (compact) 17.sp else 19.sp
-        val metaSize = if (compact) 11.5.sp else 12.5.sp
+            // ─── Movie Title & Metadata (Year • Genre) ──────────────────────
+            Spacer(modifier = Modifier.height(posterToTitleSpacing))
 
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Spacer(modifier = Modifier.height(topSpacer))
             Text(
                 text = item.displayTitle,
                 style = MaterialTheme.typography.bodyMedium.copy(
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = if (isFocused) FontWeight.Bold else FontWeight.SemiBold,
                     fontSize = titleSize,
-                    lineHeight = titleLineHeight
+                    lineHeight = titleLineHeight,
+                    letterSpacing = (-0.2).sp
                 ),
-                color = Color.White.copy(alpha = 0.90f),
+                color = titleColor,
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 2.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 1.dp)
             )
-            Spacer(modifier = Modifier.height(2.dp))
-            val genreText: String? = item.genres?.firstOrNull()?.name
-            val metaText: String = listOfNotNull(item.yearString.ifEmpty { null }, genreText).joinToString(" • ")
-            if (metaText.isNotEmpty()) {
-                Text(
-                    text = metaText,
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = metaSize,
-                        fontWeight = FontWeight.Normal
-                    ),
-                    color = Color.White.copy(alpha = 0.50f),
-                    maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = 2.dp)
-                )
+
+            Spacer(modifier = Modifier.height(titleToMetaSpacing))
+
+            val genreText: String? = item.genres?.firstOrNull()?.name?.replaceFirstChar {
+                if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString()
             }
+            val metaText: String = listOfNotNull(item.yearString.ifEmpty { null }, genreText).joinToString(" • ")
+
+            Text(
+                text = if (metaText.isNotEmpty()) metaText else " ",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = metaSize,
+                    fontWeight = FontWeight.Medium,
+                    lineHeight = metaLineHeight,
+                    letterSpacing = (-0.1).sp
+                ),
+                color = metaColor,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 1.dp)
+            )
         }
     }
 }
