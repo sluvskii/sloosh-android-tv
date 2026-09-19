@@ -178,7 +178,9 @@ private fun SidePosterDetailsLayout(
     val backButtonFocusRequester = remember { FocusRequester() }
     val moreButtonFocusRequester = remember { FocusRequester() }
     val firstCastFocusRequester = remember { FocusRequester() }
+    val lastCastFocusRequester = remember { FocusRequester() }
     val firstSimilarFocusRequester = remember { FocusRequester() }
+    val lastSimilarFocusRequester = remember { FocusRequester() }
     var isExpanded by remember { mutableStateOf(false) }
     var canExpand by remember(details.description) { mutableStateOf(false) }
 
@@ -657,10 +659,16 @@ private fun SidePosterDetailsLayout(
                                             if (!cast.isNullOrEmpty()) {
                                                 focusedSection = "cast"
                                                 firstCastFocusRequester.requestFocus()
+                                                coroutineScope.launch {
+                                                    castListState.animateScrollToItem(0, 0)
+                                                }
                                                 true
                                             } else if (!similar.isNullOrEmpty()) {
                                                 focusedSection = "similar"
                                                 firstSimilarFocusRequester.requestFocus()
+                                                coroutineScope.launch {
+                                                    similarListState.animateScrollToItem(0, 0)
+                                                }
                                                 true
                                             } else false
                                         }
@@ -712,10 +720,16 @@ private fun SidePosterDetailsLayout(
                                             if (!cast.isNullOrEmpty()) {
                                                 focusedSection = "cast"
                                                 firstCastFocusRequester.requestFocus()
+                                                coroutineScope.launch {
+                                                    castListState.animateScrollToItem(0, 0)
+                                                }
                                                 true
                                             } else if (!similar.isNullOrEmpty()) {
                                                 focusedSection = "similar"
                                                 firstSimilarFocusRequester.requestFocus()
+                                                coroutineScope.launch {
+                                                    similarListState.animateScrollToItem(0, 0)
+                                                }
                                                 true
                                             } else false
                                         }
@@ -780,6 +794,8 @@ private fun SidePosterDetailsLayout(
                         contentPadding = PaddingValues(start = 56.dp, end = 56.dp)
                     ) {
                         itemsIndexed(castItems) { index, actor ->
+                            val isFirst = (index == 0)
+                            val isLast = (index == castCount - 1)
                             SlooshFocusableCard(
                                 onClick = {
                                     onNavigateToPerson?.invoke(actor.id.toString())
@@ -787,19 +803,14 @@ private fun SidePosterDetailsLayout(
                                 shape = ContinuousRoundedRectangle(16.dp),
                                 modifier = Modifier
                                     .width(104.dp)
-                                    .then(if (index == 0) Modifier.focusRequester(firstCastFocusRequester) else Modifier)
+                                    .then(
+                                        if (isFirst) Modifier.focusRequester(firstCastFocusRequester)
+                                        else if (isLast) Modifier.focusRequester(lastCastFocusRequester)
+                                        else Modifier
+                                    )
                                     .onFocusChanged {
                                         if (it.isFocused) {
                                             focusedSection = "cast"
-                                            if (index <= 1) {
-                                                coroutineScope.launch {
-                                                    castListState.animateScrollToItem(0, 0)
-                                                }
-                                            } else if (index >= castCount - 2 && castCount > 2) {
-                                                coroutineScope.launch {
-                                                    castListState.animateScrollToItem(castCount - 1)
-                                                }
-                                            }
                                         }
                                     }
                                     .onPreviewKeyEvent { keyEvent ->
@@ -815,7 +826,44 @@ private fun SidePosterDetailsLayout(
                                                     if (!similar.isNullOrEmpty()) {
                                                         focusedSection = "similar"
                                                         firstSimilarFocusRequester.requestFocus()
+                                                        coroutineScope.launch {
+                                                            similarListState.animateScrollToItem(0, 0)
+                                                        }
                                                         true
+                                                    } else false
+                                                }
+                                                KeyEvent.KEYCODE_DPAD_LEFT -> {
+                                                    if (index == 0) {
+                                                        // First card: preserve full 56.dp start margin and block overscroll
+                                                        true
+                                                    } else if (index == 1) {
+                                                        // Transition to first card: explicitly focus and restore 56.dp start indent
+                                                        try {
+                                                            firstCastFocusRequester.requestFocus()
+                                                            coroutineScope.launch {
+                                                                castListState.animateScrollToItem(0, 0)
+                                                            }
+                                                            true
+                                                        } catch (e: Exception) {
+                                                            false
+                                                        }
+                                                    } else false
+                                                }
+                                                KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                                                    if (index == castCount - 1) {
+                                                        // Last card: preserve full 56.dp end margin and block overscroll
+                                                        true
+                                                    } else if (index == castCount - 2 && castCount > 1) {
+                                                        // Transition to last card: explicitly focus and reveal full 56.dp end margin
+                                                        try {
+                                                            lastCastFocusRequester.requestFocus()
+                                                            coroutineScope.launch {
+                                                                castListState.animateScrollToItem(castCount - 1)
+                                                            }
+                                                            true
+                                                        } catch (e: Exception) {
+                                                            false
+                                                        }
                                                     } else false
                                                 }
                                                 else -> false
@@ -923,6 +971,8 @@ private fun SidePosterDetailsLayout(
                     ) {
                         itemsIndexed(similarItems) { index, item ->
                             val targetId = item.originalId ?: item.identifier
+                            val isFirst = (index == 0)
+                            val isLast = (index == similarCount - 1)
                             SlooshFocusableCard(
                                 onClick = {
                                     if (targetId.isNotBlank()) {
@@ -933,19 +983,14 @@ private fun SidePosterDetailsLayout(
                                 modifier = Modifier
                                     .width(130.dp)
                                     .height(195.dp)
-                                    .then(if (index == 0) Modifier.focusRequester(firstSimilarFocusRequester) else Modifier)
+                                    .then(
+                                        if (isFirst) Modifier.focusRequester(firstSimilarFocusRequester)
+                                        else if (isLast) Modifier.focusRequester(lastSimilarFocusRequester)
+                                        else Modifier
+                                    )
                                     .onFocusChanged {
                                         if (it.isFocused) {
                                             focusedSection = "similar"
-                                            if (index <= 1) {
-                                                coroutineScope.launch {
-                                                    similarListState.animateScrollToItem(0, 0)
-                                                }
-                                            } else if (index >= similarCount - 2 && similarCount > 2) {
-                                                coroutineScope.launch {
-                                                    similarListState.animateScrollToItem(similarCount - 1)
-                                                }
-                                            }
                                         }
                                     }
                                     .onPreviewKeyEvent { keyEvent ->
@@ -956,12 +1001,49 @@ private fun SidePosterDetailsLayout(
                                                     if (!cast.isNullOrEmpty()) {
                                                         focusedSection = "cast"
                                                         firstCastFocusRequester.requestFocus()
+                                                        coroutineScope.launch {
+                                                            castListState.animateScrollToItem(0, 0)
+                                                        }
                                                         true
                                                     } else {
                                                         focusedSection = "top"
                                                         watchButtonFocusRequester.requestFocus()
                                                         true
                                                     }
+                                                }
+                                                KeyEvent.KEYCODE_DPAD_LEFT -> {
+                                                    if (index == 0) {
+                                                        // First card: preserve full 56.dp start margin and block overscroll
+                                                        true
+                                                    } else if (index == 1) {
+                                                        // Transition to first card: explicitly focus and restore 56.dp start indent
+                                                        try {
+                                                            firstSimilarFocusRequester.requestFocus()
+                                                            coroutineScope.launch {
+                                                                similarListState.animateScrollToItem(0, 0)
+                                                            }
+                                                            true
+                                                        } catch (e: Exception) {
+                                                            false
+                                                        }
+                                                    } else false
+                                                }
+                                                KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                                                    if (index == similarCount - 1) {
+                                                        // Last card: preserve full 56.dp end margin and block overscroll
+                                                        true
+                                                    } else if (index == similarCount - 2 && similarCount > 1) {
+                                                        // Transition to last card: explicitly focus and reveal full 56.dp end margin
+                                                        try {
+                                                            lastSimilarFocusRequester.requestFocus()
+                                                            coroutineScope.launch {
+                                                                similarListState.animateScrollToItem(similarCount - 1)
+                                                            }
+                                                            true
+                                                        } catch (e: Exception) {
+                                                            false
+                                                        }
+                                                    } else false
                                                 }
                                                 else -> false
                                             }
