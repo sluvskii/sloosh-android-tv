@@ -1,4 +1,4 @@
-﻿package com.sloosh.tv.ui.details
+package com.sloosh.tv.ui.details
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -102,7 +102,7 @@ fun DetailsScreen(
         }
     }
 
-    // в”Ђв”Ђв”Ђ Loading в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+    // ─── Loading ──────────────────────────────────────────────────────────────
     if (state.isLoading) {
         Box(
             modifier = modifier
@@ -123,7 +123,7 @@ fun DetailsScreen(
                 .background(BackgroundDark),
             contentAlignment = Alignment.Center
         ) {
-            Text(text = "РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РґР°РЅРЅС‹Рµ", color = Color.White)
+            Text(text = "Не удалось загрузить данные", color = Color.White)
         }
         return
     }
@@ -141,7 +141,7 @@ fun DetailsScreen(
             onNavigateToMedia = onNavigateToMedia
         )
 
-        // в”Ђв”Ђв”Ђ Source Selection Sheet (In-hierarchy full-screen overlay) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+        // ─── Source Selection Sheet (In-hierarchy full-screen overlay) ─────────
         AnimatedVisibility(
             visible = state.showSourceSheet,
             enter = fadeIn(animationSpec = tween(200)),
@@ -162,7 +162,7 @@ fun DetailsScreen(
     }
 }
 
-// в”Ђв”Ђв”Ђ Details Layout With Side Poster в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Details Layout With Side Poster ──────────────────────────────────────────
 
 @Composable
 private fun SidePosterDetailsLayout(
@@ -213,86 +213,38 @@ private fun SidePosterDetailsLayout(
         }
     }
 
-    // Centering scroll automation and safe focus acquisition on focused section changes
-    LaunchedEffect(focusedSection) {
+    // Centering scroll automation on focused section changes
+    LaunchedEffect(focusedSection, castSectionY, franchiseSectionY, similarSectionY, studioSectionY) {
         when (focusedSection) {
             "top" -> {
                 scrollState.animateScrollTo(0, animationSpec = tween(300, easing = FastOutSlowInEasing))
-                repeat(25) {
-                    if (safeRequestFocus(watchButtonFocusRequester)) return@LaunchedEffect
-                    kotlinx.coroutines.delay(20)
-                }
             }
             "cast" -> {
-                if (castSectionY == 0f) {
-                    var waitCount = 0
-                    while (castSectionY == 0f && waitCount < 10) {
-                        kotlinx.coroutines.delay(16)
-                        waitCount++
-                    }
-                }
                 if (castSectionY > 0f && screenHeightPx > 0f) {
                     val center = castSectionY + (castSectionHeight / 2f)
                     val target = (center - (screenHeightPx / 2f)).coerceAtLeast(0f).toInt()
                     scrollState.animateScrollTo(target, animationSpec = tween(300, easing = FastOutSlowInEasing))
                 }
-                repeat(25) {
-                    if (safeRequestFocus(firstCastFocusRequester)) return@LaunchedEffect
-                    kotlinx.coroutines.delay(20)
-                }
             }
             "franchise" -> {
-                if (franchiseSectionY == 0f) {
-                    var waitCount = 0
-                    while (franchiseSectionY == 0f && waitCount < 10) {
-                        kotlinx.coroutines.delay(16)
-                        waitCount++
-                    }
-                }
                 if (franchiseSectionY > 0f && screenHeightPx > 0f) {
                     val center = franchiseSectionY + (franchiseSectionHeight / 2f)
                     val target = (center - (screenHeightPx / 2f)).coerceAtLeast(0f).toInt()
                     scrollState.animateScrollTo(target, animationSpec = tween(300, easing = FastOutSlowInEasing))
                 }
-                repeat(25) {
-                    if (safeRequestFocus(firstFranchiseFocusRequester)) return@LaunchedEffect
-                    kotlinx.coroutines.delay(20)
-                }
             }
             "similar" -> {
-                if (similarSectionY == 0f) {
-                    var waitCount = 0
-                    while (similarSectionY == 0f && waitCount < 10) {
-                        kotlinx.coroutines.delay(16)
-                        waitCount++
-                    }
-                }
                 if (similarSectionY > 0f && screenHeightPx > 0f) {
                     val center = similarSectionY + (similarSectionHeight / 2f)
                     val target = (center - (screenHeightPx / 2f)).coerceAtLeast(0f).toInt()
                     scrollState.animateScrollTo(target, animationSpec = tween(300, easing = FastOutSlowInEasing))
                 }
-                repeat(25) {
-                    if (safeRequestFocus(firstSimilarFocusRequester)) return@LaunchedEffect
-                    kotlinx.coroutines.delay(20)
-                }
             }
             "studio" -> {
-                if (studioSectionY == 0f) {
-                    var waitCount = 0
-                    while (studioSectionY == 0f && waitCount < 10) {
-                        kotlinx.coroutines.delay(16)
-                        waitCount++
-                    }
-                }
                 if (studioSectionY > 0f && screenHeightPx > 0f) {
                     val center = studioSectionY + (studioSectionHeight / 2f)
                     val target = (center - (screenHeightPx / 2f)).coerceAtLeast(0f).toInt()
                     scrollState.animateScrollTo(target, animationSpec = tween(300, easing = FastOutSlowInEasing))
-                }
-                repeat(25) {
-                    if (safeRequestFocus(firstStudioFocusRequester)) return@LaunchedEffect
-                    kotlinx.coroutines.delay(20)
                 }
             }
         }
@@ -338,7 +290,8 @@ private fun SidePosterDetailsLayout(
         )
     }
 
-    // Smooth cinematic backdrop dissolve when leaving or returning to the top section
+
+    // Плавное кинематографическое затухание постера при переходе между разделами
     val showBackdrop = (focusedSection == "top")
     val backdropAlpha by animateFloatAsState(
         targetValue = if (showBackdrop) 1f else 0f,
@@ -400,7 +353,7 @@ private fun SidePosterDetailsLayout(
                 .verticalScroll(scrollState)
                 .padding(bottom = 64.dp)
         ) {
-            // в”Ђв”Ђв”Ђ Top Details Section (Left 54% width) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+            // ─── Top Details Section (Left 54% width) ─────────────────
             Column(
                 modifier = Modifier
                     .fillMaxWidth(0.54f)
@@ -423,12 +376,8 @@ private fun SidePosterDetailsLayout(
                                 if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
                                     keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN
                                 ) {
-                                    try {
-                                        safeRequestFocus(watchButtonFocusRequester)
-                                        true
-                                    } catch (e: Exception) {
-                                        false
-                                    }
+                                    safeRequestFocus(watchButtonFocusRequester)
+                                    true
                                 } else false
                             }
                     ) { isFocused ->
@@ -443,7 +392,7 @@ private fun SidePosterDetailsLayout(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ArrowBack,
-                                contentDescription = "РќР°Р·Р°Рґ",
+                                contentDescription = "Назад",
                                 tint = Color.White,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -466,7 +415,7 @@ private fun SidePosterDetailsLayout(
                     Spacer(modifier = Modifier.height(16.dp))
                 } else {
                     Text(
-                        text = details.title ?: details.originalTitle ?: "Р‘РµР· РЅР°Р·РІР°РЅРёСЏ",
+                        text = details.title ?: details.originalTitle ?: "Без названия",
                         fontSize = 36.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
@@ -511,7 +460,7 @@ private fun SidePosterDetailsLayout(
                     if (details.duration != null && details.duration > 0) {
                         val h = details.duration / 60
                         val m = details.duration % 60
-                        val durStr = if (h > 0) "${h} С‡ ${m} РјРёРЅ" else "$m РјРёРЅ"
+                        val durStr = if (h > 0) "${h} ч ${m} мин" else "$m мин"
                         Text(
                             text = durStr,
                             style = MaterialTheme.typography.bodyLarge,
@@ -540,7 +489,7 @@ private fun SidePosterDetailsLayout(
                 if (!genres.isNullOrEmpty()) {
                     Spacer(modifier = Modifier.height(14.dp))
                     Text(
-                        text = genres.joinToString(" вЂў "),
+                        text = genres.joinToString(" • "),
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontSize = 13.5.sp,
                             letterSpacing = (-0.1).sp
@@ -591,22 +540,14 @@ private fun SidePosterDetailsLayout(
                                         if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
                                             when (keyEvent.nativeKeyEvent.keyCode) {
                                                 KeyEvent.KEYCODE_DPAD_UP -> {
-                                                    try {
-                                                        if (onBackClick != null) {
-                                                            safeRequestFocus(backButtonFocusRequester)
-                                                            true
-                                                        } else false
-                                                    } catch (e: Exception) {
-                                                        false
-                                                    }
+                                                    if (onBackClick != null) {
+                                                        safeRequestFocus(backButtonFocusRequester)
+                                                        true
+                                                    } else false
                                                 }
                                                 KeyEvent.KEYCODE_DPAD_DOWN -> {
-                                                    try {
-                                                        safeRequestFocus(watchButtonFocusRequester)
-                                                        true
-                                                    } catch (e: Exception) {
-                                                        false
-                                                    }
+                                                    safeRequestFocus(watchButtonFocusRequester)
+                                                    true
                                                 }
                                                 else -> false
                                             }
@@ -624,7 +565,7 @@ private fun SidePosterDetailsLayout(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = if (isExpanded) "РЎРІРµСЂРЅСѓС‚СЊ" else "Р•С‰С‘",
+                                        text = if (isExpanded) "Свернуть" else "Ещё",
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             fontWeight = FontWeight.SemiBold,
                                             fontSize = 12.sp,
@@ -650,7 +591,7 @@ private fun SidePosterDetailsLayout(
                         modifier = Modifier.padding(bottom = 8.dp)
                     ) {
                         Text(
-                            text = "РџСЂРѕСЃРјРѕС‚СЂРµРЅРѕ $posStr",
+                            text = "Просмотрено $posStr",
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White.copy(alpha = 0.90f)
                         )
@@ -686,8 +627,8 @@ private fun SidePosterDetailsLayout(
                     val hasProgress = prog != null && prog.positionSec > 10
                     val buttonText = if (hasProgress) {
                         val posStr = String.format("%02d:%02d", prog!!.positionSec.toInt() / 60, prog.positionSec.toInt() % 60)
-                        "РџСЂРѕРґРѕР»Р¶РёС‚СЊ СЃ $posStr"
-                    } else "РЎРјРѕС‚СЂРµС‚СЊ"
+                        "Продолжить с $posStr"
+                    } else "Смотреть"
 
                     SlooshButton(
                         text = buttonText,
@@ -709,50 +650,46 @@ private fun SidePosterDetailsLayout(
                                     focusedSection = "top"
                                 }
                             }
-                            .onPreviewKeyEvent { keyEvent ->
-                                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
-                                    when (keyEvent.nativeKeyEvent.keyCode) {
-                                        KeyEvent.KEYCODE_DPAD_UP -> {
-                                            try {
-                                                if (canExpand) {
-                                                    safeRequestFocus(moreButtonFocusRequester)
-                                                    true
-                                                } else if (onBackClick != null) {
-                                                    safeRequestFocus(backButtonFocusRequester)
-                                                    true
-                                                } else false
-                                            } catch (e: Exception) {
-                                                false
-                                            }
-                                        }
-                                        KeyEvent.KEYCODE_DPAD_DOWN -> {
-                                            val cast = details.cast
-                                            val movieCollection = state.movieCollection ?: details.collection
-                                            val franchiseParts = movieCollection?.parts
-                                            val similar = details.similar
-                                            val studio = state.relatedStudio?.allItems
-                                            if (!cast.isNullOrEmpty()) {
-                                                focusedSection = "cast"
-                                                safeRequestFocus(firstCastFocusRequester)
-                                                true
-                                            } else if (!franchiseParts.isNullOrEmpty()) {
-                                                focusedSection = "franchise"
-                                                safeRequestFocus(firstFranchiseFocusRequester)
-                                                true
-                                            } else if (!similar.isNullOrEmpty()) {
-                                                focusedSection = "similar"
-                                                safeRequestFocus(firstSimilarFocusRequester)
-                                                true
-                                            } else if (!studio.isNullOrEmpty()) {
-                                                focusedSection = "studio"
-                                                safeRequestFocus(firstStudioFocusRequester)
-                                                true
-                                            } else false
-                                        }
-                                        else -> false
-                                    }
-                                } else false
-                            }
+                                     .onPreviewKeyEvent { keyEvent ->
+                                         if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                                             when (keyEvent.nativeKeyEvent.keyCode) {
+                                                 KeyEvent.KEYCODE_DPAD_UP -> {
+                                                     if (canExpand) {
+                                                         safeRequestFocus(moreButtonFocusRequester)
+                                                         true
+                                                     } else if (onBackClick != null) {
+                                                         safeRequestFocus(backButtonFocusRequester)
+                                                         true
+                                                     } else false
+                                                 }
+                                                 KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                                     val cast = details.cast
+                                                     val movieCollection = state.movieCollection ?: details.collection
+                                                     val franchiseParts = movieCollection?.parts
+                                                     val similar = details.similar
+                                                     val studio = state.relatedStudio?.allItems
+                                                     if (!cast.isNullOrEmpty()) {
+                                                         focusedSection = "cast"
+                                                         safeRequestFocus(firstCastFocusRequester)
+                                                         true
+                                                     } else if (!franchiseParts.isNullOrEmpty()) {
+                                                         focusedSection = "franchise"
+                                                         safeRequestFocus(firstFranchiseFocusRequester)
+                                                         true
+                                                     } else if (!similar.isNullOrEmpty()) {
+                                                         focusedSection = "similar"
+                                                         safeRequestFocus(firstSimilarFocusRequester)
+                                                         true
+                                                     } else if (!studio.isNullOrEmpty()) {
+                                                         focusedSection = "studio"
+                                                         safeRequestFocus(firstStudioFocusRequester)
+                                                         true
+                                                     } else false
+                                                 }
+                                                 else -> false
+                                             }
+                                         } else false
+                                     }
                     )
 
                     var favBounce by remember { mutableStateOf(false) }
@@ -779,17 +716,13 @@ private fun SidePosterDetailsLayout(
                                 if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
                                     when (keyEvent.nativeKeyEvent.keyCode) {
                                         KeyEvent.KEYCODE_DPAD_UP -> {
-                                            try {
-                                                if (canExpand) {
-                                                    safeRequestFocus(moreButtonFocusRequester)
-                                                    true
-                                                } else if (onBackClick != null) {
-                                                    safeRequestFocus(backButtonFocusRequester)
-                                                    true
-                                                } else false
-                                            } catch (e: Exception) {
-                                                false
-                                            }
+                                            if (canExpand) {
+                                                safeRequestFocus(moreButtonFocusRequester)
+                                                true
+                                            } else if (onBackClick != null) {
+                                                safeRequestFocus(backButtonFocusRequester)
+                                                true
+                                            } else false
                                         }
                                         KeyEvent.KEYCODE_DPAD_DOWN -> {
                                             val cast = details.cast
@@ -831,7 +764,7 @@ private fun SidePosterDetailsLayout(
                         ) {
                             Icon(
                                 imageVector = if (state.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                contentDescription = "РР·Р±СЂР°РЅРЅРѕРµ",
+                                contentDescription = "Избранное",
                                 tint = if (state.isFavorite) Color.White else Color.White.copy(alpha = 0.8f),
                                 modifier = Modifier
                                     .size(24.dp)
@@ -842,7 +775,7 @@ private fun SidePosterDetailsLayout(
                 }
             }
 
-            // в”Ђв”Ђв”Ђ Cast / Actors Section (Full 100% Screen Width) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+            // ─── Cast / Actors Section (Full 100% Screen Width) ───────
             val cast = details.cast
             if (!cast.isNullOrEmpty()) {
                 val castItems = remember(cast) { cast.take(24) }
@@ -857,7 +790,7 @@ private fun SidePosterDetailsLayout(
                 ) {
                     Spacer(modifier = Modifier.height(28.dp))
                     Text(
-                        text = "Р’ РіР»Р°РІРЅС‹С… СЂРѕР»СЏС…",
+                        text = "В главных ролях",
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp,
@@ -1051,7 +984,7 @@ private fun SidePosterDetailsLayout(
                 }
             }
 
-            // в”Ђв”Ђв”Ђ Franchise Collection Section ("Р’СЃРµ С‡Р°СЃС‚Рё С„СЂР°РЅС€РёР·С‹") в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+            // ─── Franchise Collection Section ("Все части франшизы") ──────
             val movieCollection = state.movieCollection ?: details.collection
             val franchiseParts = movieCollection?.parts
             if (!franchiseParts.isNullOrEmpty()) {
@@ -1070,7 +1003,7 @@ private fun SidePosterDetailsLayout(
                     Spacer(modifier = Modifier.height(32.dp))
                     Column(modifier = Modifier.padding(start = 56.dp)) {
                         Text(
-                            text = "Р’СЃРµ С‡Р°СЃС‚Рё С„СЂР°РЅС€РёР·С‹",
+                            text = "Все части франшизы",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 18.sp,
@@ -1159,7 +1092,7 @@ private fun SidePosterDetailsLayout(
                 }
             }
 
-            // в”Ђв”Ђв”Ђ Similar Movies / Series Section в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+            // ─── Similar Movies / Series Section ───────────────────────
             val similar = details.similar
             if (!similar.isNullOrEmpty()) {
                 val similarItems = remember(similar) { similar.take(20) }
@@ -1175,7 +1108,7 @@ private fun SidePosterDetailsLayout(
                         }
                 ) {
                     Spacer(modifier = Modifier.height(32.dp))
-                    val similarTitle = if (details.isTvSeries) "РџРѕС…РѕР¶РёРµ СЃРµСЂРёР°Р»С‹" else "РџРѕС…РѕР¶РёРµ С„РёР»СЊРјС‹"
+                    val similarTitle = if (details.isTvSeries) "Похожие сериалы" else "Похожие фильмы"
                     Text(
                         text = similarTitle,
                         style = MaterialTheme.typography.titleMedium.copy(
@@ -1255,7 +1188,7 @@ private fun SidePosterDetailsLayout(
                 }
             }
 
-            // в”Ђв”Ђв”Ђ Related Studio Section ("Р”СЂСѓРіРёРµ СЂРµР»РёР·С‹") в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+            // ─── Related Studio Section ("Другие релизы") ──────────────
             val relatedStudio = state.relatedStudio
             val studioItems = relatedStudio?.allItems
             if (!studioItems.isNullOrEmpty()) {
@@ -1278,7 +1211,7 @@ private fun SidePosterDetailsLayout(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Text(
-                            text = "Р”СЂСѓРіРёРµ СЂРµР»РёР·С‹",
+                            text = "Другие релизы",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 18.sp,
@@ -1381,7 +1314,7 @@ private fun SidePosterDetailsLayout(
     }
 }
 
-// в”Ђв”Ђв”Ђ Helpers for Carousels & Poster Cards в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Helpers for Carousels & Poster Cards ─────────────────────────────────────
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -1568,11 +1501,11 @@ private fun MoviePosterRowCard(
     }
 }
 
-// в”Ђв”Ђв”Ђ Focus Utilities в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Focus Utilities ──────────────────────────────────────────────────────────
 
 /**
- * Safely request focus without crashing if the FocusRequester target
- * node is not yet attached to the hierarchy (returns true on success).
+ * Безопасный вызов requestFocus — не крашится если узел ещё не прикреплён к иерархии.
+ * Возвращает true при успехе, false если узел не готов.
  */
 private fun safeRequestFocus(requester: FocusRequester): Boolean {
     return try {
