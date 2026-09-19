@@ -117,10 +117,12 @@ data class MediaDetailsDto(
     @SerializedName("revenue") val revenue: Long? = null,
     @SerializedName("status") val status: String? = null,
     @SerializedName("ageRating") val ageRating: String? = null,
-    @SerializedName("collection") val collection: MovieCollectionDto? = null
+    @SerializedName("collection") val collection: MovieCollectionDto? = null,
+    @SerializedName("rating") val rawRating: Double? = null
 ) {
     val displayTitle: String get() = title ?: originalTitle ?: "Без названия"
-    val rating: Double? get() = ratings?.kp ?: ratings?.imdb ?: ratings?.tmdb
+    // rawRating is the top-level "rating" field the API always populates
+    val rating: Double? get() = ratings?.kp ?: ratings?.imdb ?: ratings?.tmdb ?: rawRating
     val yearString: String get() = year?.toString() ?: ""
 
     val isTvSeries: Boolean

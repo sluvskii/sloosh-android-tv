@@ -429,7 +429,7 @@ private fun SidePosterDetailsLayout(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    val kpRating = details.ratings?.kp
+                    val kpRating = details.rating
                     if (kpRating != null && kpRating > 0) {
                         Box(
                             modifier = Modifier
