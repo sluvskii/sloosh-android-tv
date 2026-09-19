@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -487,29 +488,76 @@ fun MediaCard(
         LaunchedEffect(Unit) { onFocus() }
     }
 
+    // 1. Упругое раскрытие белой подложки (от 0.94f до 1.0f — строго внутри ячейки!)
+    val bgScale by animateFloatAsState(
+        targetValue = if (isFocused) 1.0f else 0.94f,
+        animationSpec = spring(
+            dampingRatio = 0.74f,
+            stiffness = 380f
+        ),
+        label = "bgScale"
+    )
+
+    // 2. Плавное проявление белого фона
     val bgAlpha by animateFloatAsState(
         targetValue = if (isFocused) 1f else 0f,
-        animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
         label = "cardBgAlpha"
     )
 
+    // 3. Синхронное перетекание цвета текста
     val titleColor by animateColorAsState(
         targetValue = if (isFocused) Color.Black else Color.White.copy(alpha = 0.92f),
-        animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
         label = "cardTitleColor"
     )
 
     val metaColor by animateColorAsState(
         targetValue = if (isFocused) Color.Black.copy(alpha = 0.65f) else Color.White.copy(alpha = 0.50f),
-        animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
         label = "cardMetaColor"
     )
 
+    // 4. Тонкий микро-параллакс текста: при фокусе текст плавно поднимается на 3.dp
+    val textOffsetY by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (isFocused) 0.dp else 3.dp,
+        animationSpec = spring(
+            dampingRatio = 0.74f,
+            stiffness = 380f
+        ),
+        label = "textOffsetY"
+    )
+
+    // 5. Освещение постера (88% -> 100%)
     val posterAlpha by animateFloatAsState(
         targetValue = if (isFocused) 1.0f else 0.88f,
-        animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
         label = "posterAlpha"
     )
+
+    // 6. Упругий акцент бейджа рейтинга
+    val badgeScale by animateFloatAsState(
+        targetValue = if (isFocused) 1.0f else 0.90f,
+        animationSpec = spring(
+            dampingRatio = 0.74f,
+            stiffness = 380f
+        ),
+        label = "badgeScale"
+    )
+
+    // 7. Деликатный стеклянный блик (однократный диагональный проход за 340мс)
+    val sheenProgress = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(isFocused) {
+        if (isFocused) {
+            sheenProgress.snapTo(0f)
+            sheenProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = 340, easing = FastOutSlowInEasing)
+            )
+        } else {
+            sheenProgress.snapTo(0f)
+        }
+    }
 
     val cardPaddingHorizontal = if (compact) 5.dp else 6.dp
     val cardPaddingTop = if (compact) 5.dp else 6.dp
@@ -556,6 +604,10 @@ fun MediaCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .graphicsLayer {
+                    scaleX = bgScale
+                    scaleY = bgScale
+                }
                 .clip(cardShape)
                 .background(Color.White.copy(alpha = bgAlpha))
                 .padding(
@@ -581,7 +633,33 @@ fun MediaCard(
                     contentScale = ContentScale.Crop
                 )
 
-                // Adaptive rating badge top-left
+                // Glass sheen light sweep on focus
+                if (isFocused && sheenProgress.value > 0f && sheenProgress.value < 1f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .drawWithContent {
+                                drawContent()
+                                val progress = sheenProgress.value
+                                val w = size.width
+                                val h = size.height
+                                val xOffset = (w + h) * progress - h
+                                drawRect(
+                                    brush = Brush.linearGradient(
+                                        colors = listOf(
+                                            Color.Transparent,
+                                            Color.White.copy(alpha = 0.16f),
+                                            Color.Transparent
+                                        ),
+                                        start = androidx.compose.ui.geometry.Offset(xOffset - 40f, 0f),
+                                        end = androidx.compose.ui.geometry.Offset(xOffset + 40f, h)
+                                    )
+                                )
+                            }
+                    )
+                }
+
+                // Adaptive rating badge top-left with spring bounce
                 if (item.rating != null && item.rating > 0) {
                     val badgePaddingHorizontal = if (compact) 5.dp else 6.5.dp
                     val badgePaddingVertical = if (compact) 2.dp else 2.5.dp
@@ -592,6 +670,10 @@ fun MediaCard(
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .padding(badgeMargin)
+                            .graphicsLayer {
+                                scaleX = badgeScale
+                                scaleY = badgeScale
+                            }
                             .clip(badgeShape)
                             .background(ratingColor(item.rating))
                             .padding(
@@ -618,47 +700,50 @@ fun MediaCard(
                 }
             }
 
-            // ─── Movie Title & Metadata (Year • Genre) with extra horizontal breathing room ───
+            // ─── Movie Title & Metadata with Text Parallax ──────────────────
             Spacer(modifier = Modifier.height(posterToTitleSpacing))
 
-            Text(
-                text = item.displayTitle,
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontWeight = if (isFocused) FontWeight.Bold else FontWeight.SemiBold,
-                    fontSize = titleSize,
-                    lineHeight = titleLineHeight,
-                    letterSpacing = (-0.2).sp
-                ),
-                color = titleColor,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .offset(y = textOffsetY)
                     .padding(horizontal = textHorizontalPadding)
-            )
+            ) {
+                Text(
+                    text = item.displayTitle,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontWeight = if (isFocused) FontWeight.Bold else FontWeight.SemiBold,
+                        fontSize = titleSize,
+                        lineHeight = titleLineHeight,
+                        letterSpacing = (-0.2).sp
+                    ),
+                    color = titleColor,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth()
+                )
 
-            Spacer(modifier = Modifier.height(titleToMetaSpacing))
+                Spacer(modifier = Modifier.height(titleToMetaSpacing))
 
-            val genreText: String? = item.genres?.firstOrNull()?.name?.replaceFirstChar {
-                if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString()
+                val genreText: String? = item.genres?.firstOrNull()?.name?.replaceFirstChar {
+                    if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString()
+                }
+                val metaText: String = listOfNotNull(item.yearString.ifEmpty { null }, genreText).joinToString(" • ")
+
+                Text(
+                    text = if (metaText.isNotEmpty()) metaText else " ",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = metaSize,
+                        fontWeight = FontWeight.Medium,
+                        lineHeight = metaLineHeight,
+                        letterSpacing = (-0.1).sp
+                    ),
+                    color = metaColor,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
-            val metaText: String = listOfNotNull(item.yearString.ifEmpty { null }, genreText).joinToString(" • ")
-
-            Text(
-                text = if (metaText.isNotEmpty()) metaText else " ",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = metaSize,
-                    fontWeight = FontWeight.Medium,
-                    lineHeight = metaLineHeight,
-                    letterSpacing = (-0.1).sp
-                ),
-                color = metaColor,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = textHorizontalPadding)
-            )
         }
     }
 }
