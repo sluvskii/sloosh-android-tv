@@ -58,7 +58,7 @@ fun SearchScreen(
     val gridColumns = appSettings.gridColumns
     val isCompact = gridColumns >= 6
     val horizontalGridSpacing = if (isCompact) 4.dp else 6.dp
-    val verticalGridSpacing = if (isCompact) 8.dp else 10.dp
+    val verticalGridSpacing = if (isCompact) 2.dp else 4.dp
     val resultsGridState = rememberTvLazyGridState()
 
     var lastFocusedArea by rememberSaveable { mutableStateOf("input") }

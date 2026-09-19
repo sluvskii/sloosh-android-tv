@@ -62,7 +62,7 @@ fun PosterGridShimmer(
 ) {
     val brush = rememberShimmerBrush()
     val horizontalGridSpacing = if (isCompact) 4.dp else 6.dp
-    val verticalGridSpacing = if (isCompact) 8.dp else 10.dp
+    val verticalGridSpacing = if (isCompact) 2.dp else 4.dp
     val skeletonShape = if (isCompact) ContinuousRoundedRectangle(13.dp) else ContinuousRoundedRectangle(16.dp)
 
     androidx.tv.foundation.lazy.grid.TvLazyVerticalGrid(

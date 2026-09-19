@@ -162,7 +162,7 @@ fun HomeScreen(
         val gridColumns = appSettings.gridColumns
         val isCompact = gridColumns >= 6
         val horizontalGridSpacing = if (isCompact) 4.dp else 6.dp
-        val verticalGridSpacing = if (isCompact) 8.dp else 10.dp
+        val verticalGridSpacing = if (isCompact) 2.dp else 4.dp
 
         val isCurrentLoading = state.isLoading && categoryItems.isEmpty()
 
@@ -524,7 +524,7 @@ fun MediaCard(
         ),
         scale = CardDefaults.scale(
             scale = 1.0f,
-            focusedScale = 1.05f
+            focusedScale = 1.0f
         ),
         border = CardDefaults.border(
             border = Border(
