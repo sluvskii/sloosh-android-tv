@@ -580,6 +580,7 @@ fun MediaCard(
                     .aspectRatio(2f / 3f)
                     .clip(posterShape)
                     .background(SurfaceDark)
+            ) {
                 AsyncImage(
                     model = item.getDisplayPosterUrl(),
                     contentDescription = item.displayTitle,
