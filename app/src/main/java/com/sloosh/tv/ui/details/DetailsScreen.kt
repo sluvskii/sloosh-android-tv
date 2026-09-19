@@ -51,6 +51,7 @@ import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.layout.positionInRoot
 import android.view.KeyEvent
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -175,12 +176,12 @@ private fun SidePosterDetailsLayout(
     val coroutineScope = rememberCoroutineScope()
     val castListState = rememberLazyListState()
     val similarListState = rememberLazyListState()
+    val density = LocalDensity.current
+    val edgePaddingPx = with(density) { 56.dp.toPx() }
     val backButtonFocusRequester = remember { FocusRequester() }
     val moreButtonFocusRequester = remember { FocusRequester() }
     val firstCastFocusRequester = remember { FocusRequester() }
-    val lastCastFocusRequester = remember { FocusRequester() }
     val firstSimilarFocusRequester = remember { FocusRequester() }
-    val lastSimilarFocusRequester = remember { FocusRequester() }
     var isExpanded by remember { mutableStateOf(false) }
     var canExpand by remember(details.description) { mutableStateOf(false) }
 
@@ -785,6 +786,45 @@ private fun SidePosterDetailsLayout(
                         modifier = Modifier.padding(start = 56.dp)
                     )
                     Spacer(modifier = Modifier.height(14.dp))
+                    val castFirstItemBringIntoViewResponder = remember(edgePaddingPx) {
+                        object : BringIntoViewResponder {
+                            override fun calculateRectForParent(localRect: Rect): Rect {
+                                return Rect(
+                                    left = localRect.left - edgePaddingPx,
+                                    top = localRect.top,
+                                    right = localRect.right,
+                                    bottom = localRect.bottom
+                                )
+                            }
+                            override suspend fun bringChildIntoView(localRect: () -> Rect?) {}
+                        }
+                    }
+                    val castLastItemBringIntoViewResponder = remember(castCount, edgePaddingPx) {
+                        object : BringIntoViewResponder {
+                            override fun calculateRectForParent(localRect: Rect): Rect {
+                                return Rect(
+                                    left = localRect.left,
+                                    top = localRect.top,
+                                    right = localRect.right + edgePaddingPx,
+                                    bottom = localRect.bottom
+                                )
+                            }
+                            override suspend fun bringChildIntoView(localRect: () -> Rect?) {}
+                        }
+                    }
+                    val castSingleItemBringIntoViewResponder = remember(edgePaddingPx) {
+                        object : BringIntoViewResponder {
+                            override fun calculateRectForParent(localRect: Rect): Rect {
+                                return Rect(
+                                    left = localRect.left - edgePaddingPx,
+                                    top = localRect.top,
+                                    right = localRect.right + edgePaddingPx,
+                                    bottom = localRect.bottom
+                                )
+                            }
+                            override suspend fun bringChildIntoView(localRect: () -> Rect?) {}
+                        }
+                    }
                     LazyRow(
                         state = castListState,
                         modifier = Modifier
@@ -794,8 +834,12 @@ private fun SidePosterDetailsLayout(
                         contentPadding = PaddingValues(start = 56.dp, end = 56.dp)
                     ) {
                         itemsIndexed(castItems) { index, actor ->
-                            val isFirst = (index == 0)
-                            val isLast = (index == castCount - 1)
+                            val cardResponder = when {
+                                castCount == 1 -> castSingleItemBringIntoViewResponder
+                                index == 0 -> castFirstItemBringIntoViewResponder
+                                index == castCount - 1 -> castLastItemBringIntoViewResponder
+                                else -> null
+                            }
                             SlooshFocusableCard(
                                 onClick = {
                                     onNavigateToPerson?.invoke(actor.id.toString())
@@ -803,11 +847,8 @@ private fun SidePosterDetailsLayout(
                                 shape = ContinuousRoundedRectangle(16.dp),
                                 modifier = Modifier
                                     .width(104.dp)
-                                    .then(
-                                        if (isFirst) Modifier.focusRequester(firstCastFocusRequester)
-                                        else if (isLast) Modifier.focusRequester(lastCastFocusRequester)
-                                        else Modifier
-                                    )
+                                    .then(if (index == 0) Modifier.focusRequester(firstCastFocusRequester) else Modifier)
+                                    .then(if (cardResponder != null) Modifier.bringIntoViewResponder(cardResponder) else Modifier)
                                     .onFocusChanged {
                                         if (it.isFocused) {
                                             focusedSection = "cast"
@@ -826,45 +867,14 @@ private fun SidePosterDetailsLayout(
                                                     if (!similar.isNullOrEmpty()) {
                                                         focusedSection = "similar"
                                                         firstSimilarFocusRequester.requestFocus()
-                                                        coroutineScope.launch {
-                                                            similarListState.animateScrollToItem(0, 0)
-                                                        }
                                                         true
                                                     } else false
                                                 }
                                                 KeyEvent.KEYCODE_DPAD_LEFT -> {
-                                                    if (index == 0) {
-                                                        // First card: preserve full 56.dp start margin and block overscroll
-                                                        true
-                                                    } else if (index == 1) {
-                                                        // Transition to first card: explicitly focus and restore 56.dp start indent
-                                                        try {
-                                                            firstCastFocusRequester.requestFocus()
-                                                            coroutineScope.launch {
-                                                                castListState.animateScrollToItem(0, 0)
-                                                            }
-                                                            true
-                                                        } catch (e: Exception) {
-                                                            false
-                                                        }
-                                                    } else false
+                                                    if (index == 0) true else false
                                                 }
                                                 KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                                                    if (index == castCount - 1) {
-                                                        // Last card: preserve full 56.dp end margin and block overscroll
-                                                        true
-                                                    } else if (index == castCount - 2 && castCount > 1) {
-                                                        // Transition to last card: explicitly focus and reveal full 56.dp end margin
-                                                        try {
-                                                            lastCastFocusRequester.requestFocus()
-                                                            coroutineScope.launch {
-                                                                castListState.animateScrollToItem(castCount - 1)
-                                                            }
-                                                            true
-                                                        } catch (e: Exception) {
-                                                            false
-                                                        }
-                                                    } else false
+                                                    if (index == castCount - 1) true else false
                                                 }
                                                 else -> false
                                             }
@@ -961,6 +971,45 @@ private fun SidePosterDetailsLayout(
                         modifier = Modifier.padding(start = 56.dp)
                     )
                     Spacer(modifier = Modifier.height(14.dp))
+                    val similarFirstItemBringIntoViewResponder = remember(edgePaddingPx) {
+                        object : BringIntoViewResponder {
+                            override fun calculateRectForParent(localRect: Rect): Rect {
+                                return Rect(
+                                    left = localRect.left - edgePaddingPx,
+                                    top = localRect.top,
+                                    right = localRect.right,
+                                    bottom = localRect.bottom
+                                )
+                            }
+                            override suspend fun bringChildIntoView(localRect: () -> Rect?) {}
+                        }
+                    }
+                    val similarLastItemBringIntoViewResponder = remember(similarCount, edgePaddingPx) {
+                        object : BringIntoViewResponder {
+                            override fun calculateRectForParent(localRect: Rect): Rect {
+                                return Rect(
+                                    left = localRect.left,
+                                    top = localRect.top,
+                                    right = localRect.right + edgePaddingPx,
+                                    bottom = localRect.bottom
+                                )
+                            }
+                            override suspend fun bringChildIntoView(localRect: () -> Rect?) {}
+                        }
+                    }
+                    val similarSingleItemBringIntoViewResponder = remember(edgePaddingPx) {
+                        object : BringIntoViewResponder {
+                            override fun calculateRectForParent(localRect: Rect): Rect {
+                                return Rect(
+                                    left = localRect.left - edgePaddingPx,
+                                    top = localRect.top,
+                                    right = localRect.right + edgePaddingPx,
+                                    bottom = localRect.bottom
+                                )
+                            }
+                            override suspend fun bringChildIntoView(localRect: () -> Rect?) {}
+                        }
+                    }
                     LazyRow(
                         state = similarListState,
                         modifier = Modifier
@@ -971,8 +1020,12 @@ private fun SidePosterDetailsLayout(
                     ) {
                         itemsIndexed(similarItems) { index, item ->
                             val targetId = item.originalId ?: item.identifier
-                            val isFirst = (index == 0)
-                            val isLast = (index == similarCount - 1)
+                            val cardResponder = when {
+                                similarCount == 1 -> similarSingleItemBringIntoViewResponder
+                                index == 0 -> similarFirstItemBringIntoViewResponder
+                                index == similarCount - 1 -> similarLastItemBringIntoViewResponder
+                                else -> null
+                            }
                             SlooshFocusableCard(
                                 onClick = {
                                     if (targetId.isNotBlank()) {
@@ -983,11 +1036,8 @@ private fun SidePosterDetailsLayout(
                                 modifier = Modifier
                                     .width(130.dp)
                                     .height(195.dp)
-                                    .then(
-                                        if (isFirst) Modifier.focusRequester(firstSimilarFocusRequester)
-                                        else if (isLast) Modifier.focusRequester(lastSimilarFocusRequester)
-                                        else Modifier
-                                    )
+                                    .then(if (index == 0) Modifier.focusRequester(firstSimilarFocusRequester) else Modifier)
+                                    .then(if (cardResponder != null) Modifier.bringIntoViewResponder(cardResponder) else Modifier)
                                     .onFocusChanged {
                                         if (it.isFocused) {
                                             focusedSection = "similar"
@@ -1001,9 +1051,6 @@ private fun SidePosterDetailsLayout(
                                                     if (!cast.isNullOrEmpty()) {
                                                         focusedSection = "cast"
                                                         firstCastFocusRequester.requestFocus()
-                                                        coroutineScope.launch {
-                                                            castListState.animateScrollToItem(0, 0)
-                                                        }
                                                         true
                                                     } else {
                                                         focusedSection = "top"
@@ -1011,39 +1058,15 @@ private fun SidePosterDetailsLayout(
                                                         true
                                                     }
                                                 }
+                                                KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                                    // Bottom-most section on Details screen: block overscroll downwards
+                                                    true
+                                                }
                                                 KeyEvent.KEYCODE_DPAD_LEFT -> {
-                                                    if (index == 0) {
-                                                        // First card: preserve full 56.dp start margin and block overscroll
-                                                        true
-                                                    } else if (index == 1) {
-                                                        // Transition to first card: explicitly focus and restore 56.dp start indent
-                                                        try {
-                                                            firstSimilarFocusRequester.requestFocus()
-                                                            coroutineScope.launch {
-                                                                similarListState.animateScrollToItem(0, 0)
-                                                            }
-                                                            true
-                                                        } catch (e: Exception) {
-                                                            false
-                                                        }
-                                                    } else false
+                                                    if (index == 0) true else false
                                                 }
                                                 KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                                                    if (index == similarCount - 1) {
-                                                        // Last card: preserve full 56.dp end margin and block overscroll
-                                                        true
-                                                    } else if (index == similarCount - 2 && similarCount > 1) {
-                                                        // Transition to last card: explicitly focus and reveal full 56.dp end margin
-                                                        try {
-                                                            lastSimilarFocusRequester.requestFocus()
-                                                            coroutineScope.launch {
-                                                                similarListState.animateScrollToItem(similarCount - 1)
-                                                            }
-                                                            true
-                                                        } catch (e: Exception) {
-                                                            false
-                                                        }
-                                                    } else false
+                                                    if (index == similarCount - 1) true else false
                                                 }
                                                 else -> false
                                             }
