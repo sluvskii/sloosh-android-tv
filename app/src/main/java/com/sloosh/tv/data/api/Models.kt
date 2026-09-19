@@ -114,6 +114,7 @@ data class MediaDetailsDto(
     @SerializedName("budget") val budget: Long? = null,
     @SerializedName("revenue") val revenue: Long? = null,
     @SerializedName("status") val status: String? = null,
+    @SerializedName("ageRating") val ageRating: String? = null,
     @SerializedName("collection") val collection: MovieCollectionDto? = null
 ) {
     val displayTitle: String get() = title ?: originalTitle ?: "Без названия"
