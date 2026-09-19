@@ -23,6 +23,7 @@ import com.sloosh.tv.ui.components.NavSection
 import com.sloosh.tv.ui.components.SlooshSideDrawer
 import com.sloosh.tv.ui.continue_watching.ContinueScreen
 import com.sloosh.tv.ui.details.DetailsScreen
+import com.sloosh.tv.ui.person.PersonDetailScreen
 import com.sloosh.tv.ui.home.HomeScreen
 import com.sloosh.tv.ui.home.HomeViewModel
 import com.sloosh.tv.ui.player.PlayerScreen
@@ -289,6 +290,12 @@ private fun AppNavHost(
             DetailsScreen(
                 mediaId = mediaId,
                 onBackClick = { navController.popBackStack() },
+                onNavigateToPerson = { personId ->
+                    navController.navigate("person/$personId")
+                },
+                onNavigateToMedia = { newMediaId ->
+                    navController.navigate("details/$newMediaId")
+                },
                 onPlayClick = { iframeUrl, season, episode, movieTitle, voice, streamUrl, quality ->
                     val encodedUrl = android.util.Base64.encodeToString(
                         iframeUrl.toByteArray(StandardCharsets.UTF_8),
@@ -317,6 +324,20 @@ private fun AppNavHost(
                     val seasonParam = season ?: -1
                     val epParam = episode ?: -1
                     navController.navigate("player/$encodedUrl/$mediaId/$seasonParam/$epParam/$encodedTitle?voice=$encodedVoice&streamUrl=$encodedStream&quality=$encodedQuality")
+                }
+            )
+        }
+
+        composable(
+            route = "person/{personId}",
+            arguments = listOf(navArgument("personId") { type = NavType.StringType })
+        ) { backStack ->
+            val personId = backStack.arguments?.getString("personId") ?: ""
+            PersonDetailScreen(
+                personId = personId,
+                onBackClick = { navController.popBackStack() },
+                onNavigateToMedia = { newMediaId ->
+                    navController.navigate("details/$newMediaId")
                 }
             )
         }

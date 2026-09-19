@@ -99,8 +99,10 @@ fun PlayerScreen(
     val rootFocusRequester = remember { FocusRequester() }
     val modalFocusRequester = remember { FocusRequester() }
     val errorFocusRequester = remember { FocusRequester() }
+    val nextEpisodeFocusRequester = remember { FocusRequester() }
 
-    var hasAutoRetried by remember { mutableStateOf(false) }
+    var retryAttempts by remember { mutableIntStateOf(0) }
+    var nextEpisodeCountdown by remember { mutableIntStateOf(-1) }
 
     LaunchedEffect(iframeUrl, season, episode, title, selectedVoice, directStreamUrl, initialQuality) {
         viewModel.initPlayer(iframeUrl, mediaId, season, episode, title, selectedVoice, directStreamUrl, initialQuality)
@@ -286,11 +288,11 @@ fun PlayerScreen(
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 Log.w("PlayerScreen", "ExoPlayer error: ${error.errorCodeName} - ${error.message}")
                 val pos = exoPlayer.currentPosition
-                if (!hasAutoRetried) {
-                    hasAutoRetried = true
+                if (retryAttempts < 4) {
+                    retryAttempts++
                     val resumePos = pos.coerceAtLeast(0L)
                     lastPreservedPositionMs = resumePos
-                    Log.i("PlayerScreen", "Auto-recovering playback once at position $resumePos ms...")
+                    Log.i("PlayerScreen", "Auto-recovering playback (attempt $retryAttempts/4) at position $resumePos ms...")
                     viewModel.retryPlayback(resumePos) { newUrl ->
                         val mediaItem = androidx.media3.common.MediaItem.fromUri(newUrl)
                         exoPlayer.setMediaItem(mediaItem, resumePos)
@@ -306,12 +308,12 @@ fun PlayerScreen(
             }
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == androidx.media3.common.Player.STATE_READY) {
-                    hasAutoRetried = false
+                    retryAttempts = 0
                     playerError = null
                 }
                 if (playbackState == androidx.media3.common.Player.STATE_ENDED) {
                     if (viewModel.getNextEpisode() != null) {
-                        viewModel.playNextEpisode()
+                        nextEpisodeCountdown = 10
                     }
                 }
             }
@@ -616,17 +618,31 @@ fun PlayerScreen(
         }
     }
 
-    // Save progress on dispose
+    // Next episode countdown timer
+    LaunchedEffect(nextEpisodeCountdown) {
+        if (nextEpisodeCountdown > 0) {
+            try { nextEpisodeFocusRequester.requestFocus() } catch (_: Exception) {}
+            delay(1000)
+            nextEpisodeCountdown -= 1
+        } else if (nextEpisodeCountdown == 0) {
+            nextEpisodeCountdown = -1
+            viewModel.playNextEpisode()
+        }
+    }
+
+    // Save progress on dispose and release session webview
     DisposableEffect(Unit) {
         onDispose {
             viewModel.saveProgress(exoPlayer.currentPosition, exoPlayer.duration, force = true)
             exoPlayer.release()
+            com.sloosh.tv.data.alloha.SharedWebViewProvider.release()
         }
     }
 
     // Handle Back button hierarchy
     BackHandler {
         when {
+            nextEpisodeCountdown > 0 -> nextEpisodeCountdown = -1
             showAudioDialog -> showAudioDialog = false
             showQualityDialog -> showQualityDialog = false
             showSubtitleDialog -> showSubtitleDialog = false
@@ -1751,6 +1767,61 @@ fun PlayerScreen(
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            // ─── Next Episode Countdown Prompt ───────────────────────
+            AnimatedVisibility(
+                visible = nextEpisodeCountdown > 0,
+                enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
+                exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 2 }),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 48.dp, bottom = 48.dp)
+            ) {
+                var isNextBtnFocused by remember { mutableStateOf(false) }
+                Box(
+                    modifier = Modifier
+                        .focusRequester(nextEpisodeFocusRequester)
+                        .onFocusChanged { isNextBtnFocused = it.isFocused }
+                        .focusable()
+                        .onKeyEvent { keyEvent ->
+                            if (keyEvent.type == KeyEventType.KeyDown &&
+                                (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+                                 keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ENTER ||
+                                 keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)
+                            ) {
+                                nextEpisodeCountdown = -1
+                                viewModel.playNextEpisode()
+                                true
+                            } else false
+                        }
+                        .clip(ContinuousCapsule)
+                        .background(if (isNextBtnFocused) Color.White else GlassSurfaceDark)
+                        .border(
+                            1.dp,
+                            if (isNextBtnFocused) Color.White else Color.White.copy(alpha = 0.3f),
+                            ContinuousCapsule
+                        )
+                        .padding(horizontal = 20.dp, vertical = 12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SkipNext,
+                            contentDescription = null,
+                            tint = if (isNextBtnFocused) Color.Black else Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = "Следующая серия через $nextEpisodeCountdown с",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isNextBtnFocused) Color.Black else Color.White
+                        )
                     }
                 }
             }

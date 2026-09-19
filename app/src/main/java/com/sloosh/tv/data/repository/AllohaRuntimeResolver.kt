@@ -297,7 +297,18 @@ class AllohaRuntimeResolver(private val context: Context) {
             }
             isFinished = true
             Log.d(TAG, "Resolved stream successfully: videoUrl=${result.videoUrl}, audioVariants=${result.audioVariants.size}")
-            cleanup()
+            timeoutRunnable?.let { mainHandler.removeCallbacks(it) }
+            fallbackRunnable?.let { mainHandler.removeCallbacks(it) }
+            timeoutRunnable = null
+            fallbackRunnable = null
+
+            // Hand over active WebView to SharedWebViewProvider to maintain session WebSocket alive!
+            val wv = webView
+            if (wv != null) {
+                com.sloosh.tv.data.alloha.SharedWebViewProvider.retain(wv)
+                webView = null
+            }
+
             HlsProxyServer.shared.updateHeaders(result.headers)
             HlsProxyServer.shared.updateMasterUrl(result.videoUrl)
             if (continuation.isActive) {
@@ -458,9 +469,8 @@ class AllohaRuntimeResolver(private val context: Context) {
         mainHandler.postDelayed(timeoutTask, 20_000L)
 
         fun processIncomingMessage(raw: String?) {
-            if (raw.isNullOrBlank() || isFinished) return
+            if (raw.isNullOrBlank()) return
             mainHandler.post {
-                if (isFinished) return@post
                 runCatching {
                     val obj = JSONObject(raw)
                     val incomingHeaders = obj.optJSONObject("headers")
@@ -474,7 +484,7 @@ class AllohaRuntimeResolver(private val context: Context) {
                             }
                         }
                         HlsProxyServer.shared.updateHeaders(capturedHeaders)
-                        resolveBestPayloadIfReady()
+                        if (!isFinished) resolveBestPayloadIfReady()
                     }
 
                     val edgeHash = obj.optString("edge_hash")
@@ -483,8 +493,10 @@ class AllohaRuntimeResolver(private val context: Context) {
                         val ttl = obj.optInt("ttl", 0)
                         if (ttl > 0) capturedHeaders["x-neo-config-ttl"] = ttl.toString()
                         HlsProxyServer.shared.updateHeaders(capturedHeaders)
-                        resolveBestPayloadIfReady()
+                        if (!isFinished) resolveBestPayloadIfReady()
                     }
+
+                    if (isFinished) return@runCatching
 
                     val payload = obj.optString("payload", "")
                     if (payload.isNotBlank()) {

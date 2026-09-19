@@ -696,6 +696,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         super.onCleared()
         proactiveRefreshJob?.cancel()
         HlsProxyServer.shared.onSessionExpired = null
+        com.sloosh.tv.data.alloha.SharedWebViewProvider.release()
         AllohaSessionHolder.clear()
     }
 

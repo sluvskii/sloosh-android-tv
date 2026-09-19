@@ -45,14 +45,31 @@ interface MoviesApiService {
     @GET("api/v2/movie/{id}")
     suspend fun getMovieDetails(
         @Path("id") id: String,
-        @Query("v") version: String = "5"
+        @Query("v") version: String = "6"
     ): ApiEnvelope<MediaDetailsDto>
 
     @GET("api/v2/tv/{id}")
     suspend fun getTvDetails(
         @Path("id") id: String,
-        @Query("v") version: String = "5"
+        @Query("v") version: String = "6"
     ): ApiEnvelope<MediaDetailsDto>
+
+    @GET("api/v1/config/streams")
+    suspend fun getStreamTokens(): ApiEnvelope<StreamConfigDto>
+
+    @GET("api/v2/person/{id}")
+    suspend fun getPersonDetails(
+        @Path("id") id: String
+    ): ApiEnvelope<PersonDetailDto>
+
+    @GET("api/v1/categories")
+    suspend fun getCategories(): ApiEnvelope<List<CategorySectionDto>>
+
+    @GET("api/v1/collection/{id}")
+    suspend fun getCollection(
+        @Path("id") id: String,
+        @Query("page") page: Int = 1
+    ): ApiEnvelope<MediaResponse>
 
     @GET("api/v1/tv/{id}/season/{season}")
     suspend fun getSeason(

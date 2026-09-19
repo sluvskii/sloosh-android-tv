@@ -52,10 +52,12 @@ import coil.compose.AsyncImage
 import com.kyant.capsule.ContinuousCapsule
 import com.kyant.capsule.ContinuousRoundedRectangle
 import com.sloosh.tv.data.api.MediaDetailsDto
+import com.sloosh.tv.data.api.MediaDto
 import com.sloosh.tv.ui.components.SlooshButton
 import com.sloosh.tv.ui.components.SlooshFocusableCard
 import com.sloosh.tv.ui.theme.*
 import com.sloosh.tv.ui.util.rememberAdaptiveAmbientColor
+import java.util.Locale
 import kotlinx.coroutines.launch
 
 @Composable
@@ -63,6 +65,8 @@ fun DetailsScreen(
     mediaId: String,
     onPlayClick: (iframeUrl: String, season: Int?, episode: Int?, title: String, voice: String?, streamUrl: String?, quality: String?) -> Unit,
     onBackClick: (() -> Unit)? = null,
+    onNavigateToPerson: ((String) -> Unit)? = null,
+    onNavigateToMedia: ((String) -> Unit)? = null,
     viewModel: DetailsViewModel = viewModel(),
     modifier: Modifier = Modifier
 ) {
@@ -118,7 +122,9 @@ fun DetailsScreen(
             state = state,
             viewModel = viewModel,
             watchButtonFocusRequester = watchButtonFocusRequester,
-            onBackClick = onBackClick
+            onBackClick = onBackClick,
+            onNavigateToPerson = onNavigateToPerson,
+            onNavigateToMedia = onNavigateToMedia
         )
 
         // ─── Source Selection Sheet (In-hierarchy full-screen overlay) ─────────
@@ -150,7 +156,9 @@ private fun SidePosterDetailsLayout(
     state: DetailsUiState,
     viewModel: DetailsViewModel,
     watchButtonFocusRequester: FocusRequester,
-    onBackClick: (() -> Unit)? = null
+    onBackClick: (() -> Unit)? = null,
+    onNavigateToPerson: ((String) -> Unit)? = null,
+    onNavigateToMedia: ((String) -> Unit)? = null
 ) {
     val scrollState = rememberScrollState()
     val coroutineScope = rememberCoroutineScope()
@@ -620,51 +628,174 @@ private fun SidePosterDetailsLayout(
                 )
                 Spacer(modifier = Modifier.height(14.dp))
                 LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
                     contentPadding = PaddingValues(end = 24.dp)
                 ) {
-                    items(cast.take(12)) { actor ->
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.width(80.dp)
-                        ) {
-                            Box(
+                    items(cast.take(16)) { actor ->
+                        SlooshFocusableCard(
+                            onClick = {
+                                onNavigateToPerson?.invoke(actor.id.toString())
+                            },
+                            shape = ContinuousRoundedRectangle(16.dp),
+                            modifier = Modifier.width(96.dp)
+                        ) { isFocused ->
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
                                 modifier = Modifier
-                                    .size(68.dp)
-                                    .clip(CircleShape)
-                                    .background(Color.White.copy(alpha = 0.08f)),
-                                contentAlignment = Alignment.Center
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp, horizontal = 6.dp)
                             ) {
-                                val photoUrl = actor.getDisplayPhotoUrl()
-                                if (!photoUrl.isNullOrEmpty()) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(68.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isFocused) Color.White.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.08f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    val photoUrl = actor.getDisplayPhotoUrl()
+                                    if (!photoUrl.isNullOrEmpty()) {
+                                        AsyncImage(
+                                            model = photoUrl,
+                                            contentDescription = actor.name,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    } else {
+                                        Text(
+                                            text = actor.name.take(1),
+                                            style = MaterialTheme.typography.titleMedium.copy(
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = Color.White.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = actor.name,
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 12.sp,
+                                        lineHeight = 14.sp,
+                                        textAlign = TextAlign.Center
+                                    ),
+                                    color = if (isFocused) Color.White else Color.White.copy(alpha = 0.88f),
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (!actor.character.isNullOrBlank()) {
+                                    Text(
+                                        text = actor.character,
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 10.sp,
+                                            lineHeight = 12.sp,
+                                            textAlign = TextAlign.Center
+                                        ),
+                                        color = TextMutedDark,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ─── Similar Movies Section ───────────────────────────────────
+            val similar = details.similar
+            if (!similar.isNullOrEmpty()) {
+                Spacer(modifier = Modifier.height(28.dp))
+                Text(
+                    text = "Похожие",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp,
+                        letterSpacing = (-0.2).sp
+                    ),
+                    color = Color.White
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    contentPadding = PaddingValues(end = 24.dp)
+                ) {
+                    items(similar.take(14)) { item ->
+                        val targetId = item.originalId ?: item.identifier
+                        SlooshFocusableCard(
+                            onClick = {
+                                if (targetId.isNotBlank()) {
+                                    onNavigateToMedia?.invoke(targetId)
+                                }
+                            },
+                            shape = ContinuousRoundedRectangle(14.dp),
+                            modifier = Modifier
+                                .width(120.dp)
+                                .height(180.dp)
+                        ) { _ ->
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                val itemPoster = item.getDisplayPosterUrl()
+                                if (!itemPoster.isNullOrEmpty()) {
                                     AsyncImage(
-                                        model = photoUrl,
-                                        contentDescription = actor.name,
+                                        model = itemPoster,
+                                        contentDescription = item.displayTitle,
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Crop
                                     )
                                 } else {
-                                    Text(
-                                        text = actor.name.take(1),
-                                        style = MaterialTheme.typography.titleMedium.copy(
-                                            fontWeight = FontWeight.Bold
-                                        ),
-                                        color = Color.White.copy(alpha = 0.7f)
-                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(SurfaceDark),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = item.displayTitle,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color.White.copy(alpha = 0.7f),
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier.padding(8.dp)
+                                        )
+                                    }
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(60.dp)
+                                        .align(Alignment.BottomCenter)
+                                        .background(
+                                            Brush.verticalGradient(
+                                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
+                                            )
+                                        )
+                                )
+
+                                val rating = item.rating ?: item.ratings?.kp ?: item.ratings?.imdb
+                                if (rating != null && rating > 0.0) {
+                                    val ratingColor = when {
+                                        rating >= 7.0 -> RatingIosGreen
+                                        rating >= 5.0 -> RatingIosGray
+                                        else -> RatingIosRed
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(6.dp)
+                                            .clip(ContinuousCapsule)
+                                            .background(Color.Black.copy(alpha = 0.75f))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = String.format(Locale.ROOT, "%.1f", rating),
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = ratingColor
+                                        )
+                                    }
                                 }
                             }
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = actor.name,
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 12.sp,
-                                    lineHeight = 14.sp,
-                                    textAlign = TextAlign.Center
-                                ),
-                                color = Color.White.copy(alpha = 0.88f),
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
                         }
                     }
                 }

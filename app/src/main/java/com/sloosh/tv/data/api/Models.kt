@@ -113,7 +113,8 @@ data class MediaDetailsDto(
     @SerializedName("externalIds") val externalIds: ExternalIdsDto? = null,
     @SerializedName("budget") val budget: Long? = null,
     @SerializedName("revenue") val revenue: Long? = null,
-    @SerializedName("status") val status: String? = null
+    @SerializedName("status") val status: String? = null,
+    @SerializedName("collection") val collection: MovieCollectionDto? = null
 ) {
     val displayTitle: String get() = title ?: originalTitle ?: "Без названия"
     val rating: Double? get() = ratings?.kp ?: ratings?.imdb ?: ratings?.tmdb
@@ -199,6 +200,96 @@ data class CrewMemberDto(
     @SerializedName("originalName") val originalName: String? = null,
     @SerializedName("role") val role: String? = null,
     @SerializedName("photo") val photo: String? = null
+) {
+    fun getDisplayPhotoUrl(): String? {
+        val p = photo ?: return null
+        return adjustExternalImageUrl(p, isLowQuality = false)
+    }
+}
+
+data class StreamConfigDto(
+    @SerializedName("tokens") val tokens: List<String> = emptyList()
+)
+
+data class PersonDetailDto(
+    @SerializedName("id") val id: Any?,
+    @SerializedName("name") val name: String?,
+    @SerializedName("originalName") val originalName: String? = null,
+    @SerializedName("biography") val biography: String? = null,
+    @SerializedName("birthday") val birthday: String? = null,
+    @SerializedName("deathday") val deathday: String? = null,
+    @SerializedName("placeOfBirth") val placeOfBirth: String? = null,
+    @SerializedName("photo") val photo: String? = null,
+    @SerializedName("knownForDepartment") val knownForDepartment: String? = null,
+    @SerializedName("department") val department: String? = null,
+    @SerializedName("gender") val gender: Int? = null,
+    @SerializedName("filmography") val filmography: List<MediaDto>? = null,
+    @SerializedName("photos") val photos: List<String>? = null,
+    @SerializedName("awards") val awards: String? = null,
+    @SerializedName("keyProjects") val keyProjects: String? = null,
+    @SerializedName("interestingFact") val interestingFact: String? = null
+) {
+    val displayId: String get() = id?.toString() ?: ""
+    val displayName: String get() = name ?: originalName ?: "Неизвестно"
+
+    fun getDisplayPhotoUrl(): String? {
+        val p = photo ?: return null
+        return adjustExternalImageUrl(p, isLowQuality = false)
+    }
+
+    val age: Int?
+        get() {
+            val bday = birthday?.trim() ?: return null
+            if (bday.length < 4) return null
+            return try {
+                val birthYear = bday.substring(0, 4).toIntOrNull() ?: return null
+                val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+                val deathYear = deathday?.trim()?.takeIf { it.length >= 4 }?.substring(0, 4)?.toIntOrNull()
+                (deathYear ?: currentYear) - birthYear
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+    val formattedBirthdayWithAge: String?
+        get() {
+            val bday = birthday?.trim() ?: return null
+            if (bday.isEmpty()) return null
+            val calculatedAge = age
+            return if (calculatedAge != null && calculatedAge > 0) {
+                val suffix = when {
+                    calculatedAge % 100 in 11..19 -> "лет"
+                    calculatedAge % 10 == 1 -> "год"
+                    calculatedAge % 10 in 2..4 -> "года"
+                    else -> "лет"
+                }
+                "$bday ($calculatedAge $suffix)"
+            } else {
+                bday
+            }
+        }
+}
+
+data class CategorySectionDto(
+    @SerializedName("section") val section: String,
+    @SerializedName("items") val items: List<CategoryItemDto> = emptyList()
+)
+
+data class CategoryItemDto(
+    @SerializedName("id") val id: String,
+    @SerializedName("name") val name: String,
+    @SerializedName("slug") val slug: String? = null,
+    @SerializedName("type") val type: String? = null,
+    @SerializedName("backdrop") val backdrop: String? = null
+)
+
+data class MovieCollectionDto(
+    @SerializedName("id") val id: String?,
+    @SerializedName("name") val name: String?,
+    @SerializedName("overview") val overview: String? = null,
+    @SerializedName("poster") val poster: String? = null,
+    @SerializedName("backdrop") val backdrop: String? = null,
+    @SerializedName("parts") val parts: List<MediaDto>? = null
 )
 
 data class TvSeasonSummaryDto(

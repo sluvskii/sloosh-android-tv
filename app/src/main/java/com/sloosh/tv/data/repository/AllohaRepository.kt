@@ -10,7 +10,10 @@ import com.sloosh.tv.data.api.AllohaSeason
 import com.sloosh.tv.data.api.AllohaTranslation
 import com.sloosh.tv.data.api.AllohaResolvedStream
 import com.sloosh.tv.data.api.AudioVariant
+import com.sloosh.tv.data.api.MoviesApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -381,10 +384,72 @@ class AllohaRepository(private val context: Context) {
             .build()
     }
 
-    private val token = "ffbd312217e27c4245f2678afe1881"
+    private var remoteTokens: List<String> = emptyList()
+    private var lastFetchDate: Long = 0L
+    private val tokensFetchTtl = 10 * 60 * 1000L // 10 minutes
+    private val tokenCooldownDuration = 5 * 60 * 1000L // 5 minutes
+    private val failedTokens = ConcurrentHashMap<String, Long>()
+    private val tokenMutex = Mutex()
 
     private val userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) " +
         "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1"
+
+    suspend fun ensureTokensLoaded(): List<String> {
+        val now = System.currentTimeMillis()
+        val expired = (now - lastFetchDate) > tokensFetchTtl
+        if (!expired && remoteTokens.isNotEmpty()) {
+            return getHealthyCandidateTokens()
+        }
+
+        tokenMutex.withLock {
+            val lockedNow = System.currentTimeMillis()
+            if ((lockedNow - lastFetchDate) <= tokensFetchTtl && remoteTokens.isNotEmpty()) {
+                return getHealthyCandidateTokens()
+            }
+
+            try {
+                val envelope = MoviesApi.service.getStreamTokens()
+                val tokens = envelope.data?.tokens?.filter { it.isNotBlank() } ?: emptyList()
+                if (tokens.isNotEmpty()) {
+                    remoteTokens = tokens
+                    lastFetchDate = lockedNow
+                    Log.d("AllohaRepository", "Dynamic stream tokens loaded from backend: ${tokens.size} tokens")
+                }
+            } catch (e: Exception) {
+                Log.w("AllohaRepository", "Failed to fetch stream tokens from backend: ${e.message}")
+            }
+        }
+
+        return getHealthyCandidateTokens()
+    }
+
+    private fun getHealthyCandidateTokens(): List<String> {
+        val all = remoteTokens.filter { it.isNotBlank() }.distinct().toMutableList()
+        if (all.isEmpty()) {
+            all.add("ffbd312217e27c4245f2678afe1881")
+        }
+
+        val now = System.currentTimeMillis()
+        val available = all.filter { candidate ->
+            val cooldownUntil = failedTokens[candidate] ?: return@filter true
+            now >= cooldownUntil
+        }
+
+        if (available.isEmpty()) {
+            failedTokens.clear()
+            return all
+        }
+        return available
+    }
+
+    private fun markTokenFailed(token: String) {
+        failedTokens[token] = System.currentTimeMillis() + tokenCooldownDuration
+        Log.w("AllohaRepository", "Token ending with ...${token.takeLast(6)} marked failed for 5m cooldown")
+    }
+
+    private fun markTokenSuccess(token: String) {
+        failedTokens.remove(token)
+    }
 
     fun invalidateCache() {
         cache.clear()
@@ -436,46 +501,68 @@ class AllohaRepository(private val context: Context) {
             return cached.first
         }
 
-        return try {
-            val encodedVal = URLEncoder.encode(value, "UTF-8")
-            val url = "https://api.alloha.tv/?token=$token&$param=$encodedVal"
-            Log.d("AllohaRepository", "Fetching Alloha catalog: $url")
+        val candidates = ensureTokensLoaded()
+        if (candidates.isEmpty()) return null
+
+        val encodedVal = URLEncoder.encode(value, "UTF-8")
+
+        for (candidateToken in candidates) {
+            val url = "https://api.alloha.tv/?token=$candidateToken&$param=$encodedVal"
+            Log.d("AllohaRepository", "Fetching Alloha catalog with token ...${candidateToken.takeLast(6)}: $url")
             val request = Request.Builder()
                 .url(url)
                 .addHeader("User-Agent", userAgent)
                 .build()
 
-            val response = client.newCall(request).execute()
-            Log.d("AllohaRepository", "Alloha API HTTP response: ${response.code} for $queryParam")
-            if (!response.isSuccessful) {
-                Log.w("AllohaRepository", "Alloha request unsuccessful: ${response.code} ${response.message}")
-                return null
-            }
+            try {
+                val response = client.newCall(request).execute()
+                if (response.code in listOf(401, 403, 429) || response.code >= 500) {
+                    markTokenFailed(candidateToken)
+                    response.close()
+                    continue
+                }
 
-            val body = response.body?.string() ?: run {
-                Log.w("AllohaRepository", "Alloha response body is empty")
-                return null
-            }
-            val json = JSONObject(body)
-            val data = json.optJSONObject("data") ?: run {
-                Log.w("AllohaRepository", "Alloha response has no 'data' object")
-                return null
-            }
+                val body = response.body?.string()
+                if (body.isNullOrBlank()) {
+                    markTokenFailed(candidateToken)
+                    continue
+                }
 
-            val title = data.optString("name", "Фильм")
-            val result = parseAllohaData(title, data)
+                val json = JSONObject(body)
+                val status = json.optString("status", "").lowercase(Locale.ROOT)
+                if (status == "error") {
+                    val errorInfo = json.optString("error_info", "").lowercase(Locale.ROOT)
+                    if (errorInfo.contains("not movie")) {
+                        // Token is healthy! The title simply does not exist for this search param
+                        markTokenSuccess(candidateToken)
+                        // DO NOT query backup tokens for this query; advance to next fallback param immediately
+                        return null
+                    }
+                    // Real token error / ban
+                    markTokenFailed(candidateToken)
+                    continue
+                }
 
-            if (result != null) {
-                cache[queryParam] = Pair(result, System.currentTimeMillis())
-                Log.d("AllohaRepository", "Successfully parsed Alloha data: title=${result.title}, isSerial=${result.isSerial}, seasons=${result.seasons.size}, movieTranslations=${result.movie?.translations?.size}")
-            } else {
-                Log.w("AllohaRepository", "Failed to parse valid stream sources from Alloha data for $queryParam")
+                val data = json.optJSONObject("data")
+                if (data == null) {
+                    markTokenFailed(candidateToken)
+                    continue
+                }
+
+                markTokenSuccess(candidateToken)
+                val title = data.optString("name", "Фильм")
+                val result = parseAllohaData(title, data)
+                if (result != null) {
+                    cache[queryParam] = Pair(result, System.currentTimeMillis())
+                    Log.d("AllohaRepository", "Successfully parsed Alloha data with token ...${candidateToken.takeLast(6)}: title=${result.title}, isSerial=${result.isSerial}, seasons=${result.seasons.size}, movieTranslations=${result.movie?.translations?.size}")
+                    return result
+                }
+            } catch (e: Exception) {
+                Log.w("AllohaRepository", "Exception with token ...${candidateToken.takeLast(6)}: ${e.message}")
+                markTokenFailed(candidateToken)
             }
-            result
-        } catch (e: Exception) {
-            Log.e("AllohaRepository", "Exception fetching Alloha catalog for $queryParam", e)
-            null
         }
+        return null
     }
 
     private suspend fun parseAllohaData(title: String, data: JSONObject): AllohaApiResult? {

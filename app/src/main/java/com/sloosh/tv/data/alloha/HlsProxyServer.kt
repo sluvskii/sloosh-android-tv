@@ -314,26 +314,56 @@ class HlsProxyServer(
         }.getOrNull()
     }
 
+    private fun extractSessionHash(url: String): String? {
+        val pattern = Regex("""/(?:1|stream|video|hls)/([A-Za-z0-9_=-]{20,})/""")
+        val match = pattern.find(url)
+        if (match != null) return match.groupValues[1]
+
+        val path = runCatching { URI(url.substringBefore('?')).path }.getOrNull() ?: url
+        val segments = path.split('/')
+        return segments.firstOrNull { it.length >= 32 && it.all { c -> c.isLetterOrDigit() || c == '_' || c == '-' } }
+    }
+
+    private fun remapSessionHash(targetUrl: String, masterUrl: String): String {
+        if (masterUrl.isBlank()) return targetUrl
+        val oldHash = extractSessionHash(targetUrl) ?: return targetUrl
+        val newHash = extractSessionHash(masterUrl) ?: return targetUrl
+        if (oldHash == newHash) return targetUrl
+
+        val replaced = targetUrl.replace(oldHash, newHash)
+        Log.i(TAG, "Remapping segment session hash: ...${oldHash.takeLast(8)} -> ...${newHash.takeLast(8)}")
+        return replaced
+    }
+
     private fun servePlaylist(url: String, out: OutputStream) {
         val cleanUrl = if (url.startsWith("//")) "https:$url" else url
-        var body = fetchText(cleanUrl)
+        var targetUrl = cleanUrl
+        var body = fetchText(targetUrl)
+        if (body == null && activeMasterUrl.isNotBlank()) {
+            val remapped = remapSessionHash(targetUrl, activeMasterUrl)
+            if (remapped != targetUrl) {
+                targetUrl = remapped
+                body = fetchText(targetUrl)
+            }
+        }
         if (body == null && onSessionExpired != null) {
             Log.i(TAG, "servePlaylist: fetch failed, notifying onSessionExpired and waiting for refresh...")
             onSessionExpired?.invoke()
             val startWait = System.currentTimeMillis()
             while (System.currentTimeMillis() - startWait < 1500 && body == null) {
                 try { Thread.sleep(100) } catch (_: Exception) {}
-                if (activeMasterUrl.isNotBlank() && (cleanUrl == activeMasterUrl || !cleanUrl.contains(".m3u8"))) {
+                if (activeMasterUrl.isNotBlank()) {
                     body = fetchText(activeMasterUrl)
+                    if (body != null) targetUrl = activeMasterUrl
                 }
             }
         }
         if (body == null || !body.contains("#EXT")) {
-            Log.w(TAG, "servePlaylist: playlist unavailable or not starting with #EXT for ${cleanUrl.take(80)}, sending 503 Retry-After: 1")
+            Log.w(TAG, "servePlaylist: playlist unavailable or not starting with #EXT for ${targetUrl.take(80)}, sending 503 Retry-After: 1")
             send503(out)
             return
         }
-        val rewritten = rewriteM3u8(body, cleanUrl)
+        val rewritten = rewriteM3u8(body, targetUrl)
         val bytes = rewritten.toByteArray(Charsets.UTF_8)
         val header = "HTTP/1.1 200 OK\r\nContent-Type: application/vnd.apple.mpegurl\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n"
         out.write(header.toByteArray(Charsets.UTF_8))
@@ -357,25 +387,43 @@ class HlsProxyServer(
 
     private fun serveSegment(url: String, incomingHeaders: Map<String, String>, out: OutputStream) {
         val cleanUrl = if (url.startsWith("//")) "https:$url" else url
-        val reqBuilder = buildRequest(cleanUrl)
         val range = incomingHeaders["range"]
-        if (!range.isNullOrBlank()) {
-            reqBuilder.header("Range", range)
+
+        var candidateUrl = cleanUrl
+        val remapped = remapSessionHash(cleanUrl, activeMasterUrl)
+        if (remapped != cleanUrl) {
+            candidateUrl = remapped
         }
-        val req = reqBuilder.build()
 
         var response: okhttp3.Response? = null
         var attempts = 0
         while (attempts < 3) {
             attempts++
             try {
-                response = client.newCall(req).execute()
+                val reqBuilder = buildRequest(candidateUrl)
+                if (!range.isNullOrBlank()) {
+                    reqBuilder.header("Range", range)
+                }
+                response = client.newCall(reqBuilder.build()).execute()
                 if (response.isSuccessful) break
-                if (response.code == 404 || response.code == 410) break
+
+                val code = response.code
+                if (code == 403 || code == 410 || code == 404 || code >= 500) {
+                    if (candidateUrl == cleanUrl && remapped != cleanUrl) {
+                        Log.i(TAG, "Segment returned $code, trying remapped URL...")
+                        candidateUrl = remapped
+                    } else if (onSessionExpired != null) {
+                        Log.w(TAG, "serveSegment HTTP $code. Notifying onSessionExpired...")
+                        onSessionExpired?.invoke()
+                    }
+                }
                 response.close()
                 response = null
             } catch (e: Exception) {
                 Log.w(TAG, "serveSegment fetch error (attempt $attempts): ${e.message}")
+                if (candidateUrl == cleanUrl && remapped != cleanUrl) {
+                    candidateUrl = remapped
+                }
             }
             if (attempts < 3) {
                 try { Thread.sleep(150L * attempts) } catch (_: Exception) {}
@@ -384,12 +432,8 @@ class HlsProxyServer(
 
         if (response == null || !response.isSuccessful) {
             val code = response?.code ?: 0
-            if (code == 403 || code == 410) {
-                Log.w(TAG, "serveSegment HTTP $code. Notifying onSessionExpired...")
-                onSessionExpired?.invoke()
-            }
             response?.close()
-            Log.w(TAG, "serveSegment: upstream failed ($code) for ${cleanUrl.take(80)}, sending 503 Retry-After: 1")
+            Log.w(TAG, "serveSegment: upstream failed ($code) for ${candidateUrl.take(80)}, sending 503 Retry-After: 1")
             send503(out)
             return
         }
@@ -397,7 +441,7 @@ class HlsProxyServer(
         response.use { resp ->
             val statusCode = resp.code
             val reason = if (statusCode == 206) "Partial Content" else if (statusCode == 200) "OK" else "Success"
-            val contentType = resolveContentType(cleanUrl, resp)
+            val contentType = resolveContentType(candidateUrl, resp)
             val contentLength = resp.body?.contentLength() ?: -1L
             val contentRange = resp.header("Content-Range")
 

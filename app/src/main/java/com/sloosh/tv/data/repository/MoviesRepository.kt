@@ -3,6 +3,7 @@ package com.sloosh.tv.data.repository
 import com.sloosh.tv.data.api.MediaDetailsDto
 import com.sloosh.tv.data.api.MediaDto
 import com.sloosh.tv.data.api.MoviesApi
+import com.sloosh.tv.data.api.PersonDetailDto
 import com.sloosh.tv.data.api.TvEpisodeDetailsDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -16,6 +17,7 @@ class MoviesRepository {
         val instance by lazy { MoviesRepository() }
 
         private val detailsCache = ConcurrentHashMap<String, MediaDetailsDto>()
+        private val personCache = ConcurrentHashMap<String, PersonDetailDto>()
         private val popularMoviesCache = ConcurrentHashMap<Int, List<MediaDto>>()
         private val topMoviesCache = ConcurrentHashMap<Int, List<MediaDto>>()
         private val topTvCache = ConcurrentHashMap<Int, List<MediaDto>>()
@@ -159,8 +161,23 @@ class MoviesRepository {
         }
     }
 
+    suspend fun getPersonDetails(id: String): PersonDetailDto? = withContext(Dispatchers.IO) {
+        val cleanId = id.replace("person_", "").trim()
+        personCache[cleanId]?.let { return@withContext it }
+        try {
+            val details = api.getPersonDetails(cleanId).data
+            if (details != null) {
+                personCache[cleanId] = details
+            }
+            details
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     fun clearCache() {
         detailsCache.clear()
+        personCache.clear()
         popularMoviesCache.clear()
         topMoviesCache.clear()
         topTvCache.clear()
