@@ -128,7 +128,7 @@ fun SearchScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 16.dp, top = 36.dp, end = 24.dp, bottom = 24.dp)
+                .padding(start = 6.dp, top = 36.dp, end = 10.dp, bottom = 24.dp)
         ) {
 
             // ─── Search Title ─────────────────────────────────────────

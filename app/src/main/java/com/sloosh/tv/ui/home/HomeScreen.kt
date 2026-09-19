@@ -46,7 +46,6 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.sloosh.tv.data.api.MediaDto
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
@@ -172,7 +171,7 @@ fun HomeScreen(
             com.sloosh.tv.ui.components.PosterGridShimmer(
                 gridColumns = gridColumns,
                 isCompact = isCompact,
-                modifier = Modifier.padding(start = 12.dp, top = 60.dp, end = 20.dp)
+                modifier = Modifier.padding(start = 4.dp, top = 60.dp, end = 8.dp)
             )
         } else {
             androidx.tv.foundation.lazy.grid.TvLazyVerticalGrid(
@@ -180,7 +179,7 @@ fun HomeScreen(
                 columns = androidx.tv.foundation.lazy.grid.TvGridCells.Fixed(gridColumns),
                 horizontalArrangement = Arrangement.spacedBy(horizontalGridSpacing),
                 verticalArrangement = Arrangement.spacedBy(verticalGridSpacing),
-                contentPadding = PaddingValues(start = 12.dp, top = 75.dp, end = 20.dp, bottom = 40.dp),
+                contentPadding = PaddingValues(start = 4.dp, top = 75.dp, end = 8.dp, bottom = 40.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
                 // Poster Items
@@ -337,7 +336,7 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
-                .padding(start = 12.dp, top = 15.dp, end = 20.dp, bottom = 20.dp),
+                .padding(start = 4.dp, top = 15.dp, end = 8.dp, bottom = 20.dp),
             contentAlignment = Alignment.Center
         ) {
             Box(
@@ -470,9 +469,6 @@ private val CompactPosterShape = ContinuousRoundedRectangle(13.dp)
 private val StandardBadgeShape = ContinuousRoundedRectangle(7.dp)
 private val CompactBadgeShape = ContinuousRoundedRectangle(6.dp)
 
-private const val SHEEN_COS_25 = 0.9063f // cos(25 deg)
-private const val SHEEN_SIN_25 = 0.4226f // sin(25 deg)
-
 @Composable
 fun MediaCard(
     item: MediaDto,
@@ -517,20 +513,6 @@ fun MediaCard(
         animationSpec = tween(durationMillis = 140, easing = FastOutSlowInEasing),
         label = "cardMetaColor"
     )
-
-    // Деликатный стеклянный блик (однократный диагональный проход за 750мс с эффектом наложения Screen)
-    val sheenProgress = remember { androidx.compose.animation.core.Animatable(0f) }
-    LaunchedEffect(isFocused) {
-        if (isFocused) {
-            sheenProgress.snapTo(0f)
-            sheenProgress.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = 750, easing = FastOutSlowInEasing)
-            )
-        } else {
-            sheenProgress.snapTo(0f)
-        }
-    }
 
     val cardPaddingHorizontal = if (compact) 5.dp else 6.dp
     val cardPaddingTop = if (compact) 5.dp else 6.dp
@@ -598,59 +580,10 @@ fun MediaCard(
                     .aspectRatio(2f / 3f)
                     .clip(posterShape)
                     .background(SurfaceDark)
-            ) {
-                val isSheenActive = isFocused && sheenProgress.value > 0f && sheenProgress.value < 1f
-
                 AsyncImage(
                     model = item.getDisplayPosterUrl(),
                     contentDescription = item.displayTitle,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .drawWithContent {
-                            drawContent()
-                            if (isSheenActive) {
-                                val w = size.width
-                                val h = size.height
-                                if (w > 0f && h > 0f) {
-                                    val progress = sheenProgress.value
-                                    // Плавная синусоидальная огибающая: 0 на границах, 1.0 в центре
-                                    val envelope = kotlin.math.sin(progress * Math.PI.toFloat())
-                                    // Деликатная полупрозрачность (пик 20% белого света, 80% постера видно насквозь)
-                                    val peakAlpha = 0.20f * envelope
-
-                                    if (peakAlpha > 0.005f) {
-                                        val beamWidth = w * 0.45f
-                                        val halfBeam = beamWidth / 2f
-                                        val diagonal = kotlin.math.hypot(w, h)
-                                        val beamHeight = diagonal * 1.5f
-
-                                        val spanX = w * SHEEN_COS_25 + h * SHEEN_SIN_25
-                                        val startX = (w / 2f) - (spanX / 2f) - halfBeam - 20f
-                                        val endX = (w / 2f) + (spanX / 2f) + halfBeam + 20f
-                                        val currentX = startX + (endX - startX) * progress
-
-                                        rotate(degrees = -25f, pivot = center) {
-                                            drawRect(
-                                                brush = Brush.horizontalGradient(
-                                                    0.00f to Color.White.copy(alpha = 0f),
-                                                    0.25f to Color.White.copy(alpha = peakAlpha * 0.35f),
-                                                    0.50f to Color.White.copy(alpha = peakAlpha),
-                                                    0.75f to Color.White.copy(alpha = peakAlpha * 0.35f),
-                                                    1.00f to Color.White.copy(alpha = 0f),
-                                                    startX = currentX - halfBeam,
-                                                    endX = currentX + halfBeam
-                                                ),
-                                                topLeft = androidx.compose.ui.geometry.Offset(
-                                                    currentX - halfBeam,
-                                                    (h / 2f) - (beamHeight / 2f)
-                                                ),
-                                                size = androidx.compose.ui.geometry.Size(beamWidth, beamHeight)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        },
+                    modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
 
