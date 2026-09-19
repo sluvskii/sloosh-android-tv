@@ -178,6 +178,7 @@ private fun SidePosterDetailsLayout(
     val similarListState = rememberLazyListState()
     val density = LocalDensity.current
     val edgePaddingPx = with(density) { 56.dp.toPx() }
+    val scrollMarginPx = with(density) { 80.dp.toPx() }
     val backButtonFocusRequester = remember { FocusRequester() }
     val moreButtonFocusRequester = remember { FocusRequester() }
     val firstCastFocusRequester = remember { FocusRequester() }
@@ -786,24 +787,24 @@ private fun SidePosterDetailsLayout(
                         modifier = Modifier.padding(start = 56.dp)
                     )
                     Spacer(modifier = Modifier.height(14.dp))
-                    val castFirstItemBringIntoViewResponder = remember(edgePaddingPx) {
+                    val castFirstItemBringIntoViewResponder = remember(edgePaddingPx, scrollMarginPx) {
                         object : BringIntoViewResponder {
                             override fun calculateRectForParent(localRect: Rect): Rect {
                                 return Rect(
                                     left = localRect.left - edgePaddingPx,
                                     top = localRect.top,
-                                    right = localRect.right,
+                                    right = localRect.right + scrollMarginPx,
                                     bottom = localRect.bottom
                                 )
                             }
                             override suspend fun bringChildIntoView(localRect: () -> Rect?) {}
                         }
                     }
-                    val castLastItemBringIntoViewResponder = remember(castCount, edgePaddingPx) {
+                    val castLastItemBringIntoViewResponder = remember(castCount, edgePaddingPx, scrollMarginPx) {
                         object : BringIntoViewResponder {
                             override fun calculateRectForParent(localRect: Rect): Rect {
                                 return Rect(
-                                    left = localRect.left,
+                                    left = localRect.left - scrollMarginPx,
                                     top = localRect.top,
                                     right = localRect.right + edgePaddingPx,
                                     bottom = localRect.bottom
@@ -825,6 +826,19 @@ private fun SidePosterDetailsLayout(
                             override suspend fun bringChildIntoView(localRect: () -> Rect?) {}
                         }
                     }
+                    val castMiddleItemBringIntoViewResponder = remember(scrollMarginPx) {
+                        object : BringIntoViewResponder {
+                            override fun calculateRectForParent(localRect: Rect): Rect {
+                                return Rect(
+                                    left = localRect.left - scrollMarginPx,
+                                    top = localRect.top,
+                                    right = localRect.right + scrollMarginPx,
+                                    bottom = localRect.bottom
+                                )
+                            }
+                            override suspend fun bringChildIntoView(localRect: () -> Rect?) {}
+                        }
+                    }
                     LazyRow(
                         state = castListState,
                         modifier = Modifier
@@ -838,7 +852,7 @@ private fun SidePosterDetailsLayout(
                                 castCount == 1 -> castSingleItemBringIntoViewResponder
                                 index == 0 -> castFirstItemBringIntoViewResponder
                                 index == castCount - 1 -> castLastItemBringIntoViewResponder
-                                else -> null
+                                else -> castMiddleItemBringIntoViewResponder
                             }
                             SlooshFocusableCard(
                                 onClick = {
@@ -848,7 +862,7 @@ private fun SidePosterDetailsLayout(
                                 modifier = Modifier
                                     .width(104.dp)
                                     .then(if (index == 0) Modifier.focusRequester(firstCastFocusRequester) else Modifier)
-                                    .then(if (cardResponder != null) Modifier.bringIntoViewResponder(cardResponder) else Modifier)
+                                    .bringIntoViewResponder(cardResponder)
                                     .onFocusChanged {
                                         if (it.isFocused) {
                                             focusedSection = "cast"
@@ -971,24 +985,24 @@ private fun SidePosterDetailsLayout(
                         modifier = Modifier.padding(start = 56.dp)
                     )
                     Spacer(modifier = Modifier.height(14.dp))
-                    val similarFirstItemBringIntoViewResponder = remember(edgePaddingPx) {
+                    val similarFirstItemBringIntoViewResponder = remember(edgePaddingPx, scrollMarginPx) {
                         object : BringIntoViewResponder {
                             override fun calculateRectForParent(localRect: Rect): Rect {
                                 return Rect(
                                     left = localRect.left - edgePaddingPx,
                                     top = localRect.top,
-                                    right = localRect.right,
+                                    right = localRect.right + scrollMarginPx,
                                     bottom = localRect.bottom
                                 )
                             }
                             override suspend fun bringChildIntoView(localRect: () -> Rect?) {}
                         }
                     }
-                    val similarLastItemBringIntoViewResponder = remember(similarCount, edgePaddingPx) {
+                    val similarLastItemBringIntoViewResponder = remember(similarCount, edgePaddingPx, scrollMarginPx) {
                         object : BringIntoViewResponder {
                             override fun calculateRectForParent(localRect: Rect): Rect {
                                 return Rect(
-                                    left = localRect.left,
+                                    left = localRect.left - scrollMarginPx,
                                     top = localRect.top,
                                     right = localRect.right + edgePaddingPx,
                                     bottom = localRect.bottom
@@ -1010,6 +1024,19 @@ private fun SidePosterDetailsLayout(
                             override suspend fun bringChildIntoView(localRect: () -> Rect?) {}
                         }
                     }
+                    val similarMiddleItemBringIntoViewResponder = remember(scrollMarginPx) {
+                        object : BringIntoViewResponder {
+                            override fun calculateRectForParent(localRect: Rect): Rect {
+                                return Rect(
+                                    left = localRect.left - scrollMarginPx,
+                                    top = localRect.top,
+                                    right = localRect.right + scrollMarginPx,
+                                    bottom = localRect.bottom
+                                )
+                            }
+                            override suspend fun bringChildIntoView(localRect: () -> Rect?) {}
+                        }
+                    }
                     LazyRow(
                         state = similarListState,
                         modifier = Modifier
@@ -1024,7 +1051,7 @@ private fun SidePosterDetailsLayout(
                                 similarCount == 1 -> similarSingleItemBringIntoViewResponder
                                 index == 0 -> similarFirstItemBringIntoViewResponder
                                 index == similarCount - 1 -> similarLastItemBringIntoViewResponder
-                                else -> null
+                                else -> similarMiddleItemBringIntoViewResponder
                             }
                             SlooshFocusableCard(
                                 onClick = {
@@ -1037,7 +1064,7 @@ private fun SidePosterDetailsLayout(
                                     .width(130.dp)
                                     .height(195.dp)
                                     .then(if (index == 0) Modifier.focusRequester(firstSimilarFocusRequester) else Modifier)
-                                    .then(if (cardResponder != null) Modifier.bringIntoViewResponder(cardResponder) else Modifier)
+                                    .bringIntoViewResponder(cardResponder)
                                     .onFocusChanged {
                                         if (it.isFocused) {
                                             focusedSection = "similar"
