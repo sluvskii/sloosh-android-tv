@@ -1,4 +1,4 @@
-package com.sloosh.tv.ui.details
+﻿package com.sloosh.tv.ui.details
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -98,11 +98,11 @@ fun DetailsScreen(
 
     LaunchedEffect(state.isLoading) {
         if (!state.isLoading) {
-            try { watchButtonFocusRequester.requestFocus() } catch (e: Exception) {}
+            safeRequestFocus(watchButtonFocusRequester)
         }
     }
 
-    // ─── Loading ──────────────────────────────────────────────────────────────
+    // в”Ђв”Ђв”Ђ Loading в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
     if (state.isLoading) {
         Box(
             modifier = modifier
@@ -123,7 +123,7 @@ fun DetailsScreen(
                 .background(BackgroundDark),
             contentAlignment = Alignment.Center
         ) {
-            Text(text = "Не удалось загрузить данные", color = Color.White)
+            Text(text = "РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РґР°РЅРЅС‹Рµ", color = Color.White)
         }
         return
     }
@@ -141,7 +141,7 @@ fun DetailsScreen(
             onNavigateToMedia = onNavigateToMedia
         )
 
-        // ─── Source Selection Sheet (In-hierarchy full-screen overlay) ─────────
+        // в”Ђв”Ђв”Ђ Source Selection Sheet (In-hierarchy full-screen overlay) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
         AnimatedVisibility(
             visible = state.showSourceSheet,
             enter = fadeIn(animationSpec = tween(200)),
@@ -162,7 +162,7 @@ fun DetailsScreen(
     }
 }
 
-// ─── Details Layout With Side Poster ──────────────────────────────────────────
+// в”Ђв”Ђв”Ђ Details Layout With Side Poster в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 @Composable
 private fun SidePosterDetailsLayout(
@@ -213,38 +213,86 @@ private fun SidePosterDetailsLayout(
         }
     }
 
-    // Centering scroll automation on focused section changes
-    LaunchedEffect(focusedSection, castSectionY, franchiseSectionY, similarSectionY, studioSectionY) {
+    // Centering scroll automation and safe focus acquisition on focused section changes
+    LaunchedEffect(focusedSection) {
         when (focusedSection) {
             "top" -> {
                 scrollState.animateScrollTo(0, animationSpec = tween(300, easing = FastOutSlowInEasing))
+                repeat(25) {
+                    if (safeRequestFocus(watchButtonFocusRequester)) return@LaunchedEffect
+                    kotlinx.coroutines.delay(20)
+                }
             }
             "cast" -> {
+                if (castSectionY == 0f) {
+                    var waitCount = 0
+                    while (castSectionY == 0f && waitCount < 10) {
+                        kotlinx.coroutines.delay(16)
+                        waitCount++
+                    }
+                }
                 if (castSectionY > 0f && screenHeightPx > 0f) {
                     val center = castSectionY + (castSectionHeight / 2f)
                     val target = (center - (screenHeightPx / 2f)).coerceAtLeast(0f).toInt()
                     scrollState.animateScrollTo(target, animationSpec = tween(300, easing = FastOutSlowInEasing))
                 }
+                repeat(25) {
+                    if (safeRequestFocus(firstCastFocusRequester)) return@LaunchedEffect
+                    kotlinx.coroutines.delay(20)
+                }
             }
             "franchise" -> {
+                if (franchiseSectionY == 0f) {
+                    var waitCount = 0
+                    while (franchiseSectionY == 0f && waitCount < 10) {
+                        kotlinx.coroutines.delay(16)
+                        waitCount++
+                    }
+                }
                 if (franchiseSectionY > 0f && screenHeightPx > 0f) {
                     val center = franchiseSectionY + (franchiseSectionHeight / 2f)
                     val target = (center - (screenHeightPx / 2f)).coerceAtLeast(0f).toInt()
                     scrollState.animateScrollTo(target, animationSpec = tween(300, easing = FastOutSlowInEasing))
                 }
+                repeat(25) {
+                    if (safeRequestFocus(firstFranchiseFocusRequester)) return@LaunchedEffect
+                    kotlinx.coroutines.delay(20)
+                }
             }
             "similar" -> {
+                if (similarSectionY == 0f) {
+                    var waitCount = 0
+                    while (similarSectionY == 0f && waitCount < 10) {
+                        kotlinx.coroutines.delay(16)
+                        waitCount++
+                    }
+                }
                 if (similarSectionY > 0f && screenHeightPx > 0f) {
                     val center = similarSectionY + (similarSectionHeight / 2f)
                     val target = (center - (screenHeightPx / 2f)).coerceAtLeast(0f).toInt()
                     scrollState.animateScrollTo(target, animationSpec = tween(300, easing = FastOutSlowInEasing))
                 }
+                repeat(25) {
+                    if (safeRequestFocus(firstSimilarFocusRequester)) return@LaunchedEffect
+                    kotlinx.coroutines.delay(20)
+                }
             }
             "studio" -> {
+                if (studioSectionY == 0f) {
+                    var waitCount = 0
+                    while (studioSectionY == 0f && waitCount < 10) {
+                        kotlinx.coroutines.delay(16)
+                        waitCount++
+                    }
+                }
                 if (studioSectionY > 0f && screenHeightPx > 0f) {
                     val center = studioSectionY + (studioSectionHeight / 2f)
                     val target = (center - (screenHeightPx / 2f)).coerceAtLeast(0f).toInt()
                     scrollState.animateScrollTo(target, animationSpec = tween(300, easing = FastOutSlowInEasing))
+                }
+                repeat(25) {
+                    if (safeRequestFocus(firstStudioFocusRequester)) return@LaunchedEffect
+                    kotlinx.coroutines.delay(20)
                 }
             }
         }
@@ -253,9 +301,7 @@ private fun SidePosterDetailsLayout(
     // Return to top section from cast or similar on TV remote Back press
     androidx.activity.compose.BackHandler(enabled = focusedSection != "top") {
         focusedSection = "top"
-        try {
-            watchButtonFocusRequester.requestFocus()
-        } catch (e: Exception) {}
+        safeRequestFocus(watchButtonFocusRequester)
     }
 
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -292,11 +338,11 @@ private fun SidePosterDetailsLayout(
         )
     }
 
-    // Backdrop immediately disappears when leaving the top section or scrolling down
-    val showBackdrop = (focusedSection == "top" && scrollState.value < 20)
+    // Smooth cinematic backdrop dissolve when leaving or returning to the top section
+    val showBackdrop = (focusedSection == "top")
     val backdropAlpha by animateFloatAsState(
         targetValue = if (showBackdrop) 1f else 0f,
-        animationSpec = tween(durationMillis = 120),
+        animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing),
         label = "backdropAlpha"
     )
 
@@ -354,7 +400,7 @@ private fun SidePosterDetailsLayout(
                 .verticalScroll(scrollState)
                 .padding(bottom = 64.dp)
         ) {
-            // ─── Top Details Section (Left 54% width) ─────────────────
+            // в”Ђв”Ђв”Ђ Top Details Section (Left 54% width) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
             Column(
                 modifier = Modifier
                     .fillMaxWidth(0.54f)
@@ -378,7 +424,7 @@ private fun SidePosterDetailsLayout(
                                     keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN
                                 ) {
                                     try {
-                                        watchButtonFocusRequester.requestFocus()
+                                        safeRequestFocus(watchButtonFocusRequester)
                                         true
                                     } catch (e: Exception) {
                                         false
@@ -397,7 +443,7 @@ private fun SidePosterDetailsLayout(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ArrowBack,
-                                contentDescription = "Назад",
+                                contentDescription = "РќР°Р·Р°Рґ",
                                 tint = Color.White,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -420,7 +466,7 @@ private fun SidePosterDetailsLayout(
                     Spacer(modifier = Modifier.height(16.dp))
                 } else {
                     Text(
-                        text = details.title ?: details.originalTitle ?: "Без названия",
+                        text = details.title ?: details.originalTitle ?: "Р‘РµР· РЅР°Р·РІР°РЅРёСЏ",
                         fontSize = 36.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
@@ -465,7 +511,7 @@ private fun SidePosterDetailsLayout(
                     if (details.duration != null && details.duration > 0) {
                         val h = details.duration / 60
                         val m = details.duration % 60
-                        val durStr = if (h > 0) "${h} ч ${m} мин" else "$m мин"
+                        val durStr = if (h > 0) "${h} С‡ ${m} РјРёРЅ" else "$m РјРёРЅ"
                         Text(
                             text = durStr,
                             style = MaterialTheme.typography.bodyLarge,
@@ -494,7 +540,7 @@ private fun SidePosterDetailsLayout(
                 if (!genres.isNullOrEmpty()) {
                     Spacer(modifier = Modifier.height(14.dp))
                     Text(
-                        text = genres.joinToString(" • "),
+                        text = genres.joinToString(" вЂў "),
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontSize = 13.5.sp,
                             letterSpacing = (-0.1).sp
@@ -547,7 +593,7 @@ private fun SidePosterDetailsLayout(
                                                 KeyEvent.KEYCODE_DPAD_UP -> {
                                                     try {
                                                         if (onBackClick != null) {
-                                                            backButtonFocusRequester.requestFocus()
+                                                            safeRequestFocus(backButtonFocusRequester)
                                                             true
                                                         } else false
                                                     } catch (e: Exception) {
@@ -556,7 +602,7 @@ private fun SidePosterDetailsLayout(
                                                 }
                                                 KeyEvent.KEYCODE_DPAD_DOWN -> {
                                                     try {
-                                                        watchButtonFocusRequester.requestFocus()
+                                                        safeRequestFocus(watchButtonFocusRequester)
                                                         true
                                                     } catch (e: Exception) {
                                                         false
@@ -578,7 +624,7 @@ private fun SidePosterDetailsLayout(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = if (isExpanded) "Свернуть" else "Ещё",
+                                        text = if (isExpanded) "РЎРІРµСЂРЅСѓС‚СЊ" else "Р•С‰С‘",
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             fontWeight = FontWeight.SemiBold,
                                             fontSize = 12.sp,
@@ -604,7 +650,7 @@ private fun SidePosterDetailsLayout(
                         modifier = Modifier.padding(bottom = 8.dp)
                     ) {
                         Text(
-                            text = "Просмотрено $posStr",
+                            text = "РџСЂРѕСЃРјРѕС‚СЂРµРЅРѕ $posStr",
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White.copy(alpha = 0.90f)
                         )
@@ -640,8 +686,8 @@ private fun SidePosterDetailsLayout(
                     val hasProgress = prog != null && prog.positionSec > 10
                     val buttonText = if (hasProgress) {
                         val posStr = String.format("%02d:%02d", prog!!.positionSec.toInt() / 60, prog.positionSec.toInt() % 60)
-                        "Продолжить с $posStr"
-                    } else "Смотреть"
+                        "РџСЂРѕРґРѕР»Р¶РёС‚СЊ СЃ $posStr"
+                    } else "РЎРјРѕС‚СЂРµС‚СЊ"
 
                     SlooshButton(
                         text = buttonText,
@@ -669,10 +715,10 @@ private fun SidePosterDetailsLayout(
                                         KeyEvent.KEYCODE_DPAD_UP -> {
                                             try {
                                                 if (canExpand) {
-                                                    moreButtonFocusRequester.requestFocus()
+                                                    safeRequestFocus(moreButtonFocusRequester)
                                                     true
                                                 } else if (onBackClick != null) {
-                                                    backButtonFocusRequester.requestFocus()
+                                                    safeRequestFocus(backButtonFocusRequester)
                                                     true
                                                 } else false
                                             } catch (e: Exception) {
@@ -687,19 +733,19 @@ private fun SidePosterDetailsLayout(
                                             val studio = state.relatedStudio?.allItems
                                             if (!cast.isNullOrEmpty()) {
                                                 focusedSection = "cast"
-                                                firstCastFocusRequester.requestFocus()
+                                                safeRequestFocus(firstCastFocusRequester)
                                                 true
                                             } else if (!franchiseParts.isNullOrEmpty()) {
                                                 focusedSection = "franchise"
-                                                firstFranchiseFocusRequester.requestFocus()
+                                                safeRequestFocus(firstFranchiseFocusRequester)
                                                 true
                                             } else if (!similar.isNullOrEmpty()) {
                                                 focusedSection = "similar"
-                                                firstSimilarFocusRequester.requestFocus()
+                                                safeRequestFocus(firstSimilarFocusRequester)
                                                 true
                                             } else if (!studio.isNullOrEmpty()) {
                                                 focusedSection = "studio"
-                                                firstStudioFocusRequester.requestFocus()
+                                                safeRequestFocus(firstStudioFocusRequester)
                                                 true
                                             } else false
                                         }
@@ -735,10 +781,10 @@ private fun SidePosterDetailsLayout(
                                         KeyEvent.KEYCODE_DPAD_UP -> {
                                             try {
                                                 if (canExpand) {
-                                                    moreButtonFocusRequester.requestFocus()
+                                                    safeRequestFocus(moreButtonFocusRequester)
                                                     true
                                                 } else if (onBackClick != null) {
-                                                    backButtonFocusRequester.requestFocus()
+                                                    safeRequestFocus(backButtonFocusRequester)
                                                     true
                                                 } else false
                                             } catch (e: Exception) {
@@ -753,19 +799,19 @@ private fun SidePosterDetailsLayout(
                                             val studio = state.relatedStudio?.allItems
                                             if (!cast.isNullOrEmpty()) {
                                                 focusedSection = "cast"
-                                                firstCastFocusRequester.requestFocus()
+                                                safeRequestFocus(firstCastFocusRequester)
                                                 true
                                             } else if (!franchiseParts.isNullOrEmpty()) {
                                                 focusedSection = "franchise"
-                                                firstFranchiseFocusRequester.requestFocus()
+                                                safeRequestFocus(firstFranchiseFocusRequester)
                                                 true
                                             } else if (!similar.isNullOrEmpty()) {
                                                 focusedSection = "similar"
-                                                firstSimilarFocusRequester.requestFocus()
+                                                safeRequestFocus(firstSimilarFocusRequester)
                                                 true
                                             } else if (!studio.isNullOrEmpty()) {
                                                 focusedSection = "studio"
-                                                firstStudioFocusRequester.requestFocus()
+                                                safeRequestFocus(firstStudioFocusRequester)
                                                 true
                                             } else false
                                         }
@@ -785,7 +831,7 @@ private fun SidePosterDetailsLayout(
                         ) {
                             Icon(
                                 imageVector = if (state.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                contentDescription = "Избранное",
+                                contentDescription = "РР·Р±СЂР°РЅРЅРѕРµ",
                                 tint = if (state.isFavorite) Color.White else Color.White.copy(alpha = 0.8f),
                                 modifier = Modifier
                                     .size(24.dp)
@@ -796,7 +842,7 @@ private fun SidePosterDetailsLayout(
                 }
             }
 
-            // ─── Cast / Actors Section (Full 100% Screen Width) ───────
+            // в”Ђв”Ђв”Ђ Cast / Actors Section (Full 100% Screen Width) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
             val cast = details.cast
             if (!cast.isNullOrEmpty()) {
                 val castItems = remember(cast) { cast.take(24) }
@@ -811,7 +857,7 @@ private fun SidePosterDetailsLayout(
                 ) {
                     Spacer(modifier = Modifier.height(28.dp))
                     Text(
-                        text = "В главных ролях",
+                        text = "Р’ РіР»Р°РІРЅС‹С… СЂРѕР»СЏС…",
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp,
@@ -907,7 +953,7 @@ private fun SidePosterDetailsLayout(
                                             when (keyEvent.nativeKeyEvent.keyCode) {
                                                 KeyEvent.KEYCODE_DPAD_UP -> {
                                                     focusedSection = "top"
-                                                    watchButtonFocusRequester.requestFocus()
+                                                    safeRequestFocus(watchButtonFocusRequester)
                                                     true
                                                 }
                                                 KeyEvent.KEYCODE_DPAD_DOWN -> {
@@ -917,15 +963,15 @@ private fun SidePosterDetailsLayout(
                                                     val studio = state.relatedStudio?.allItems
                                                     if (!franchiseParts.isNullOrEmpty()) {
                                                         focusedSection = "franchise"
-                                                        firstFranchiseFocusRequester.requestFocus()
+                                                        safeRequestFocus(firstFranchiseFocusRequester)
                                                         true
                                                     } else if (!similar.isNullOrEmpty()) {
                                                         focusedSection = "similar"
-                                                        firstSimilarFocusRequester.requestFocus()
+                                                        safeRequestFocus(firstSimilarFocusRequester)
                                                         true
                                                     } else if (!studio.isNullOrEmpty()) {
                                                         focusedSection = "studio"
-                                                        firstStudioFocusRequester.requestFocus()
+                                                        safeRequestFocus(firstStudioFocusRequester)
                                                         true
                                                     } else true
                                                 }
@@ -1005,7 +1051,7 @@ private fun SidePosterDetailsLayout(
                 }
             }
 
-            // ─── Franchise Collection Section ("Все части франшизы") ──────
+            // в”Ђв”Ђв”Ђ Franchise Collection Section ("Р’СЃРµ С‡Р°СЃС‚Рё С„СЂР°РЅС€РёР·С‹") в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
             val movieCollection = state.movieCollection ?: details.collection
             val franchiseParts = movieCollection?.parts
             if (!franchiseParts.isNullOrEmpty()) {
@@ -1024,7 +1070,7 @@ private fun SidePosterDetailsLayout(
                     Spacer(modifier = Modifier.height(32.dp))
                     Column(modifier = Modifier.padding(start = 56.dp)) {
                         Text(
-                            text = "Все части франшизы",
+                            text = "Р’СЃРµ С‡Р°СЃС‚Рё С„СЂР°РЅС€РёР·С‹",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 18.sp,
@@ -1070,11 +1116,11 @@ private fun SidePosterDetailsLayout(
                                                 val cast = details.cast
                                                 if (!cast.isNullOrEmpty()) {
                                                     focusedSection = "cast"
-                                                    firstCastFocusRequester.requestFocus()
+                                                    safeRequestFocus(firstCastFocusRequester)
                                                     true
                                                 } else {
                                                     focusedSection = "top"
-                                                    watchButtonFocusRequester.requestFocus()
+                                                    safeRequestFocus(watchButtonFocusRequester)
                                                     true
                                                 }
                                             }
@@ -1083,11 +1129,11 @@ private fun SidePosterDetailsLayout(
                                                 val studio = state.relatedStudio?.allItems
                                                 if (!similar.isNullOrEmpty()) {
                                                     focusedSection = "similar"
-                                                    firstSimilarFocusRequester.requestFocus()
+                                                    safeRequestFocus(firstSimilarFocusRequester)
                                                     true
                                                 } else if (!studio.isNullOrEmpty()) {
                                                     focusedSection = "studio"
-                                                    firstStudioFocusRequester.requestFocus()
+                                                    safeRequestFocus(firstStudioFocusRequester)
                                                     true
                                                 } else false
                                             }
@@ -1113,7 +1159,7 @@ private fun SidePosterDetailsLayout(
                 }
             }
 
-            // ─── Similar Movies / Series Section ───────────────────────
+            // в”Ђв”Ђв”Ђ Similar Movies / Series Section в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
             val similar = details.similar
             if (!similar.isNullOrEmpty()) {
                 val similarItems = remember(similar) { similar.take(20) }
@@ -1129,7 +1175,7 @@ private fun SidePosterDetailsLayout(
                         }
                 ) {
                     Spacer(modifier = Modifier.height(32.dp))
-                    val similarTitle = if (details.isTvSeries) "Похожие сериалы" else "Похожие фильмы"
+                    val similarTitle = if (details.isTvSeries) "РџРѕС…РѕР¶РёРµ СЃРµСЂРёР°Р»С‹" else "РџРѕС…РѕР¶РёРµ С„РёР»СЊРјС‹"
                     Text(
                         text = similarTitle,
                         style = MaterialTheme.typography.titleMedium.copy(
@@ -1167,15 +1213,15 @@ private fun SidePosterDetailsLayout(
                                                 val cast = details.cast
                                                 if (!franchiseParts.isNullOrEmpty()) {
                                                     focusedSection = "franchise"
-                                                    firstFranchiseFocusRequester.requestFocus()
+                                                    safeRequestFocus(firstFranchiseFocusRequester)
                                                     true
                                                 } else if (!cast.isNullOrEmpty()) {
                                                     focusedSection = "cast"
-                                                    firstCastFocusRequester.requestFocus()
+                                                    safeRequestFocus(firstCastFocusRequester)
                                                     true
                                                 } else {
                                                     focusedSection = "top"
-                                                    watchButtonFocusRequester.requestFocus()
+                                                    safeRequestFocus(watchButtonFocusRequester)
                                                     true
                                                 }
                                             }
@@ -1183,7 +1229,7 @@ private fun SidePosterDetailsLayout(
                                                 val studio = state.relatedStudio?.allItems
                                                 if (!studio.isNullOrEmpty()) {
                                                     focusedSection = "studio"
-                                                    firstStudioFocusRequester.requestFocus()
+                                                    safeRequestFocus(firstStudioFocusRequester)
                                                     true
                                                 } else true
                                             }
@@ -1209,7 +1255,7 @@ private fun SidePosterDetailsLayout(
                 }
             }
 
-            // ─── Related Studio Section ("Другие релизы") ──────────────
+            // в”Ђв”Ђв”Ђ Related Studio Section ("Р”СЂСѓРіРёРµ СЂРµР»РёР·С‹") в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
             val relatedStudio = state.relatedStudio
             val studioItems = relatedStudio?.allItems
             if (!studioItems.isNullOrEmpty()) {
@@ -1232,7 +1278,7 @@ private fun SidePosterDetailsLayout(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Text(
-                            text = "Другие релизы",
+                            text = "Р”СЂСѓРіРёРµ СЂРµР»РёР·С‹",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 18.sp,
@@ -1288,19 +1334,19 @@ private fun SidePosterDetailsLayout(
                                                 val cast = details.cast
                                                 if (!similar.isNullOrEmpty()) {
                                                     focusedSection = "similar"
-                                                    firstSimilarFocusRequester.requestFocus()
+                                                    safeRequestFocus(firstSimilarFocusRequester)
                                                     true
                                                 } else if (!franchiseParts.isNullOrEmpty()) {
                                                     focusedSection = "franchise"
-                                                    firstFranchiseFocusRequester.requestFocus()
+                                                    safeRequestFocus(firstFranchiseFocusRequester)
                                                     true
                                                 } else if (!cast.isNullOrEmpty()) {
                                                     focusedSection = "cast"
-                                                    firstCastFocusRequester.requestFocus()
+                                                    safeRequestFocus(firstCastFocusRequester)
                                                     true
                                                 } else {
                                                     focusedSection = "top"
-                                                    watchButtonFocusRequester.requestFocus()
+                                                    safeRequestFocus(watchButtonFocusRequester)
                                                     true
                                                 }
                                             }
@@ -1335,7 +1381,7 @@ private fun SidePosterDetailsLayout(
     }
 }
 
-// ─── Helpers for Carousels & Poster Cards ─────────────────────────────────────
+// в”Ђв”Ђв”Ђ Helpers for Carousels & Poster Cards в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -1519,5 +1565,22 @@ private fun MoviePosterRowCard(
                     .padding(8.dp)
             )
         }
+    }
+}
+
+// в”Ђв”Ђв”Ђ Focus Utilities в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+
+/**
+ * Safely request focus without crashing if the FocusRequester target
+ * node is not yet attached to the hierarchy (returns true on success).
+ */
+private fun safeRequestFocus(requester: FocusRequester): Boolean {
+    return try {
+        requester.requestFocus()
+        true
+    } catch (e: IllegalStateException) {
+        false
+    } catch (e: Exception) {
+        false
     }
 }
