@@ -6,7 +6,9 @@ import android.os.Bundle
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
+import coil.intercept.Interceptor
 import coil.memory.MemoryCache
+import com.sloosh.tv.data.api.MoviesApi
 import com.sloosh.tv.data.db.AppDatabase
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
@@ -20,6 +22,7 @@ class SlooshApplication : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
+        MoviesApi.init(this)
         AppDatabase.getDatabase(this)
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
@@ -55,6 +58,19 @@ class SlooshApplication : Application(), ImageLoaderFactory {
 
         return ImageLoader.Builder(this)
             .okHttpClient(okHttpClient)
+            .components {
+                add(Interceptor { chain ->
+                    val request = chain.request
+                    val data = request.data
+                    if (data is String) {
+                        val resolved = MoviesApi.resolveEffectiveImageUrl(data)
+                        if (resolved != null && resolved != data) {
+                            return@Interceptor chain.proceed(request.newBuilder().data(resolved).build())
+                        }
+                    }
+                    chain.proceed(request)
+                })
+            }
             .memoryCache {
                 MemoryCache.Builder(this)
                     .maxSizePercent(0.25)

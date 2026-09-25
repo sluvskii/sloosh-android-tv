@@ -144,7 +144,7 @@ data class MediaDetailsDto(
         }
         val validId = id?.replace("kp_", "")?.trim() ?: return null
         if (validId.isEmpty()) return null
-        return "https://api-sloosh.vercel.app/api/v1/images/backdrops/$validId/original"
+        return "${MoviesApi.activeImagesBaseUrl}/api/v1/images/backdrops/$validId/original"
     }
 
     fun getPreviewBackdropUrl(): String? {
@@ -156,7 +156,7 @@ data class MediaDetailsDto(
         }
         val validId = id?.replace("kp_", "")?.trim() ?: return null
         if (validId.isEmpty()) return null
-        return "https://api-sloosh.vercel.app/api/v1/images/backdrops/$validId/small"
+        return "${MoviesApi.activeImagesBaseUrl}/api/v1/images/backdrops/$validId/small"
     }
 
     fun getDisplayLogoUrl(): String? {
@@ -165,7 +165,7 @@ data class MediaDetailsDto(
         }
         val validId = id?.replace("kp_", "")?.trim() ?: return null
         if (validId.isEmpty()) return null
-        return "https://api-sloosh.vercel.app/api/v1/images/logos/$validId/original"
+        return "${MoviesApi.activeImagesBaseUrl}/api/v1/images/logos/$validId/original"
     }
 }
 
@@ -338,7 +338,7 @@ data class TvSeasonEpisodeDto(
     fun getDisplayStillUrl(): String? {
         if (!stillPath.isNullOrEmpty()) {
             if (stillPath.startsWith("http")) return stillPath
-            return "https://api-sloosh.vercel.app/api/v1/images/tmdb/w500$stillPath"
+            return "${MoviesApi.activeImagesBaseUrl}/api/v1/images/tmdb/w500$stillPath"
         }
         return null
     }
@@ -451,7 +451,7 @@ fun adjustExternalImageUrl(urlStr: String, isLowQuality: Boolean): String {
         } else {
             result.replace("/w342/", "/w500/")
         }
-        result = result.replace("https://image.tmdb.org/t/p/", "https://api-sloosh.vercel.app/api/v1/images/tmdb/")
+        result = result.replace("https://image.tmdb.org/t/p/", "${MoviesApi.activeImagesBaseUrl}/api/v1/images/tmdb/")
     } else {
         result = if (isLowQuality) {
             if (result.contains("/kp/")) result.replace("/kp/", "/kp_small/") else result
@@ -464,7 +464,7 @@ fun adjustExternalImageUrl(urlStr: String, isLowQuality: Boolean): String {
 
 fun normalizeImageUrl(path: String?, id: String? = null, isLowQuality: Boolean = false): String? {
     if (path != null && path.contains("no-poster")) return null
-    val baseUrl = "https://api-sloosh.vercel.app"
+    val baseUrl = MoviesApi.activeImagesBaseUrl
     var rawUrl = path
     if (rawUrl != null) {
         if (rawUrl.contains("no-poster")) return null
@@ -475,6 +475,10 @@ fun normalizeImageUrl(path: String?, id: String? = null, isLowQuality: Boolean =
     if (!trimmed.isNullOrEmpty()) {
         if (trimmed.contains("no-poster")) return null
         if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            if (trimmed.contains("api-sloosh.vercel.app")) {
+                return trimmed.replace("https://api-sloosh.vercel.app", baseUrl)
+                    .replace("http://api-sloosh.vercel.app", baseUrl)
+            }
             return trimmed.replace("https://image.tmdb.org/t/p/", "$baseUrl/api/v1/images/tmdb/")
         }
         if (trimmed.startsWith("/")) {
